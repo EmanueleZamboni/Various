@@ -16,17 +16,24 @@ Access is read-only: the scripts can't change anything on your channel.
 
 ### 1. Create a Google Cloud project and OAuth client
 
-1. Go to <https://console.cloud.google.com/> and create a project (any name, e.g. `yt-analytics`).
-2. In **APIs & Services → Library**, enable **YouTube Analytics API** and **YouTube Data API v3**.
-3. Open **Google Auth Platform** (called **OAuth consent screen** in older consoles) and click
-   **Get started**. Use app name `yt-analytics`, your email as support and contact email,
-   and audience **External**.
-4. Under **Audience**, click **Publish app** so the status is **In production**.
-   In *Testing* mode Google cancels your sign-in every 7 days. You don't need to submit
-   the app for verification.
-5. Under **Clients**, click **Create client**, choose **Desktop app**, then **Create**.
-   Click **Download JSON** right away (newer consoles show the secret only once) and save
-   the file as `client_secret.json` next to `get_refresh_token.py`.
+Already use Google Cloud? Keep your account, but a new project is the cleanest choice:
+this app's sign-in settings then can't affect anything else you run. No billing is
+needed; these APIs are free.
+
+1. [Create a project](https://console.cloud.google.com/projectcreate) (any name, e.g. `yt-analytics`)
+   and check it's selected in the project picker at the top of the console.
+2. Enable the [YouTube Analytics API](https://console.cloud.google.com/apis/library/youtubeanalytics.googleapis.com)
+   and the [YouTube Data API v3](https://console.cloud.google.com/apis/library/youtube.googleapis.com).
+3. Open [Google Auth Platform](https://console.cloud.google.com/auth/overview) (called
+   **OAuth consent screen** in older consoles) and click **Get started**. Use app name
+   `yt-analytics`, your email as support and contact email, and audience **External**.
+4. On the [Audience](https://console.cloud.google.com/auth/audience) page, click **Publish app**
+   so the status is **In production**. In *Testing* mode Google cancels your sign-in every
+   7 days. You don't need to submit the app for verification.
+5. On the [Clients](https://console.cloud.google.com/auth/clients) page, click **Create client**,
+   choose **Desktop app**, then **Create**. Click **Download JSON** right away (the console
+   shows the full secret only once) and save the file as `client_secret.json` next to
+   `get_refresh_token.py`.
 
 ### 2. Sign in (on your computer)
 
