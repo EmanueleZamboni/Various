@@ -859,8 +859,8 @@ export class AccountSync {
   }
 }
 
-function friendlyError(msg: string): string {
-  if (/auth|login|credentials|password/i.test(msg)) return 'Login refused: check the user name and password.';
+export function friendlyError(msg: string): string {
+  if (/auth|login|credentials|password|command failed|invalid credentials/i.test(msg)) return 'Login refused: check the user name and password.';
   if (/ENOTFOUND|getaddrinfo/i.test(msg)) return 'Server not found: check the IMAP host name.';
   if (/ECONNREFUSED/i.test(msg)) return 'Connection refused: check the port and whether SSL is on.';
   if (/certificate|self signed|CERT_/i.test(msg)) return 'Certificate problem: the server\'s SSL certificate is not trusted.';

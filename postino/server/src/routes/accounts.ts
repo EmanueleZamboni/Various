@@ -8,6 +8,7 @@ import { verifySmtp } from '../mail/send.js';
 import { accountView, folderView, type AccountRow } from '../views.js';
 import type { FolderRow } from '../mail/store.js';
 import { bus } from '../events.js';
+import { friendlyError } from '../mail/sync.js';
 
 const palette = ['#3B6CF6', '#E0567B', '#16A37A', '#9466E0', '#E8792B', '#13A1B5', '#8C9A1F', '#D23C6A', '#5B7A99', '#C2410C'];
 
@@ -63,12 +64,12 @@ export function registerAccountRoutes(app: FastifyInstance): void {
     try {
       await testImap({ ...v.imap, user: v.username, pass: v.password });
     } catch (err) {
-      return reply.code(400).send({ error: 'imap_login_failed', message: `IMAP: ${(err as Error).message}` });
+      return reply.code(400).send({ error: 'imap_login_failed', message: `Incoming mail (IMAP): ${friendlyError((err as Error).message)}` });
     }
     try {
       await verifySmtp({ smtp_host: v.smtp.host, smtp_port: v.smtp.port, smtp_secure: v.smtp.secure ? 1 : 0, username: v.username, password_enc: encrypt(v.password) } as AccountRow);
     } catch (err) {
-      return reply.code(400).send({ error: 'smtp_login_failed', message: `SMTP: ${(err as Error).message}` });
+      return reply.code(400).send({ error: 'smtp_login_failed', message: `Outgoing mail (SMTP): ${friendlyError((err as Error).message)}` });
     }
     return { ok: true };
   });
@@ -79,12 +80,12 @@ export function registerAccountRoutes(app: FastifyInstance): void {
     try {
       await testImap({ ...v.imap, user: v.username, pass: v.password });
     } catch (err) {
-      return reply.code(400).send({ error: 'imap_login_failed', message: `IMAP: ${(err as Error).message}` });
+      return reply.code(400).send({ error: 'imap_login_failed', message: `Incoming mail (IMAP): ${friendlyError((err as Error).message)}` });
     }
     try {
       await verifySmtp({ smtp_host: v.smtp.host, smtp_port: v.smtp.port, smtp_secure: v.smtp.secure ? 1 : 0, username: v.username, password_enc: encrypt(v.password) } as AccountRow);
     } catch (err) {
-      return reply.code(400).send({ error: 'smtp_login_failed', message: `SMTP: ${(err as Error).message}` });
+      return reply.code(400).send({ error: 'smtp_login_failed', message: `Outgoing mail (SMTP): ${friendlyError((err as Error).message)}` });
     }
     const count = (db.prepare('SELECT COUNT(*) AS n FROM accounts').get() as { n: number }).n;
     const color = req.body.color && /^#[0-9a-f]{6}$/i.test(req.body.color) ? req.body.color : palette[count % palette.length];

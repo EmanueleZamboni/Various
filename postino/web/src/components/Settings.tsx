@@ -74,7 +74,8 @@ export function SettingsPage({ me, onLogout }: { me?: Me; onLogout: () => void }
 
 function AccountsSettings() {
   const { data: accounts, isLoading } = useAccounts();
-  const [adding, setAdding] = useState(false);
+  const loc = useLocation();
+  const [adding, setAdding] = useState(() => new URLSearchParams(loc.search).get('add') === '1');
   const [editing, setEditing] = useState<string | null>(null);
   return (
     <>

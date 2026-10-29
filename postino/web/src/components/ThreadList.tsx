@@ -5,6 +5,7 @@ import { api } from '../api/client';
 import type { ThreadSummary, ThreadsResponse } from '../api/types';
 import { Icon, type IconName } from '../icons';
 import { useNav, VIEW_LABEL } from '../nav';
+import { useNavigate } from 'react-router-dom';
 import { useUI } from '../store';
 import { accountLabel, dayGroup, pluralize } from '../util/format';
 import { ThreadRow } from './ThreadRow';
@@ -306,6 +307,18 @@ function Skeletons() {
 
 function Empty({ view, q }: { view: string; q: string }) {
   const openCompose = useUI((s) => s.openCompose);
+  const { data: accounts } = useAccounts();
+  const navigate = useNavigate();
+  // Brand-new install: the only useful thing to do is connect a mailbox.
+  if (accounts && accounts.length === 0 && view !== 'search')
+    return (
+      <div className="empty">
+        <div className="big"><Icon name="people" size={24} /></div>
+        <h2>Connect your first mailbox</h2>
+        <p>Add each address once (Gmail, your own domains…). They all land in this one inbox.</p>
+        <button className="btn btn-primary" onClick={() => navigate('/settings/accounts?add=1')}>Add an account</button>
+      </div>
+    );
   if (view === 'search')
     return (
       <div className="empty">
