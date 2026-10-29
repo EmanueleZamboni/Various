@@ -1,7 +1,10 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { BrowserRouter } from 'react-router-dom';
+import { BrowserRouter, HashRouter } from 'react-router-dom';
+
+// Demo builds (hosted as a static page) use hash routes so deep links survive without a server.
+const Router = import.meta.env.VITE_HASH === '1' ? HashRouter : BrowserRouter;
 import App from './App';
 import './styles/app.css';
 
@@ -10,7 +13,7 @@ async function boot() {
     const { installMock } = await import('./mock');
     installMock();
   }
-  if ('serviceWorker' in navigator && import.meta.env.PROD) {
+  if ('serviceWorker' in navigator && import.meta.env.PROD && import.meta.env.VITE_MOCK !== '1') {
     const { registerSW } = await import('virtual:pwa-register');
     registerSW({ immediate: true });
   }
@@ -22,9 +25,9 @@ async function boot() {
   ReactDOM.createRoot(document.getElementById('root')!).render(
     <React.StrictMode>
       <QueryClientProvider client={qc}>
-        <BrowserRouter>
+        <Router>
           <App />
-        </BrowserRouter>
+        </Router>
       </QueryClientProvider>
     </React.StrictMode>,
   );
