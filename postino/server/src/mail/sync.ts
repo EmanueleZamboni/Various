@@ -13,7 +13,7 @@ import {
   upsertHeader, updateFlags, storeBody, markBodyError, storeAttachment, registerAttachmentMeta, attachmentPath,
   deleteMessagesByIds, deleteFolderMessages, refreshFolderCounts, isBlocked, folderByRole, type FolderRow, type FolderRole, type MessageRow,
 } from './store.js';
-import { bodyFromParsed, normalizeMsgId, parseReferences, pickUnsubscribe, splitQuoted, makeSnippet, parserOptions, type ParsedHeaders, type Address } from './parse.js';
+import { bodyFromParsed, normalizeMsgId, parseReferences, pickUnsubscribe, splitQuoted, makeSnippet, parserOptions, defaultFilename, type ParsedHeaders, type Address } from './parse.js';
 import { sanitizeEmailHtml, htmlToText, textToHtml } from './sanitize.js';
 
 const EXTRA_HEADERS = ['references', 'list-unsubscribe', 'list-id', 'precedence', 'auto-submitted', 'x-auto-response-suppress', 'feedback-id', 'x-mailgun-sid', 'x-campaign', 'x-mailchimp-id', 'x-sg-eid'];
@@ -742,14 +742,25 @@ export class AccountSync {
         if (!msg || !msg.source) throw new Error('Message not found on the server');
         const mail = await simpleParser(msg.source, parserOptions);
         const rows = db.prepare('SELECT id, filename, content_id, size FROM attachments WHERE message_row = (SELECT message_row FROM attachments WHERE id = ?) ORDER BY id').all(a.id) as { id: number; filename: string; content_id: string | null; size: number }[];
-        const parsed = (mail.attachments || []).map((x) => ({ filename: x.filename || '', contentId: x.contentId ? normalizeMsgId(x.contentId) : null, size: x.size || x.content?.length || 0, content: x.content as Buffer }));
-        for (const row of rows) {
-          const match = parsed.find((x) => (row.content_id && x.contentId === row.content_id) || (x.filename === row.filename && x.size === row.size)) || parsed.find((x) => x.filename === row.filename);
+        // Same naming as bodyFromParsed so rows stored at sync time match the re-parsed parts.
+        const parsed = (mail.attachments || []).map((x) => ({ filename: x.filename || defaultFilename(x.contentType), contentId: x.contentId ? normalizeMsgId(x.contentId) : null, size: x.size || x.content?.length || 0, content: x.content as Buffer }));
+        const used = new Set<number>();
+        rows.forEach((row, i) => {
+          const pick = (pred: (x: (typeof parsed)[number], idx: number) => boolean) => {
+            const idx = parsed.findIndex((x, j) => !used.has(j) && pred(x, j));
+            return idx;
+          };
+          let idx = pick((x) => Boolean(row.content_id) && x.contentId === row.content_id);
+          if (idx < 0) idx = pick((x) => x.filename === row.filename && x.size === row.size);
+          if (idx < 0) idx = pick((x) => x.filename === row.filename);
+          if (idx < 0 && rows.length === parsed.length) idx = pick((_x, j) => j === i); // same order as when first stored
+          const match = idx >= 0 ? parsed[idx] : null;
+          if (match) used.add(idx);
           if (match) {
             fs.writeFileSync(attachmentPath(row.id), match.content);
             db.prepare('UPDATE attachments SET cached = 1 WHERE id = ?').run(row.id);
           }
-        }
+        });
       });
       if (!fs.existsSync(file)) throw new Error('Attachment not found in the message');
       return file;

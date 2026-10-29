@@ -214,7 +214,7 @@ export function bodyFromParsed(mail: ParsedMail, cidUrl: (contentId: string) => 
   return { text, html, quoted, hasRemoteImages, snippet, attachments, calendar };
 }
 
-function defaultFilename(contentType?: string): string {
+export function defaultFilename(contentType?: string): string {
   const ext = (contentType || '').split('/')[1]?.split(';')[0] || 'bin';
   return `attachment.${ext}`;
 }
