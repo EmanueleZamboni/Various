@@ -40,6 +40,18 @@ export function sanitizeEmailHtml(html: string, cidMap: Map<string, string>): Sa
     nonTextTags: ['script', 'textarea', 'option', 'noscript', 'head', 'title'],
     exclusiveFilter: (frame) => frame.tag === 'style' && /expression\(|javascript:|@import|url\(/i.test(frame.text),
     transformTags: {
+      '*': (tagName, attribs) => {
+        // CSS url() in an inline style loads remote content even when images are blocked.
+        if (attribs.style && /url\s*\(|expression\s*\(|@import|behavior\s*:/i.test(attribs.style)) {
+          const attrs: Record<string, string> = { ...attribs };
+          attrs.style = attribs.style
+            .split(';')
+            .filter((d) => !/url\s*\(|expression\s*\(|@import|behavior\s*:/i.test(d))
+            .join(';');
+          return { tagName, attribs: attrs };
+        }
+        return { tagName, attribs };
+      },
       a: (tagName, attribs) => {
         const href = attribs.href || '';
         const attrs: Record<string, string> = { ...attribs };

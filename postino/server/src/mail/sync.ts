@@ -245,7 +245,7 @@ export class AccountSync {
   private scheduleReconnect(): void {
     if (this.stopped || this.reconnectTimer) return;
     const wait = this.backoffMs;
-    this.backoffMs = Math.min(this.backoffMs * 2, 5 * 60_000);
+    this.backoffMs = Math.min(this.backoffMs * 2, 60_000); // a provider hiccup should not cost minutes of mail
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       void this.connect();
