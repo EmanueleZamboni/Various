@@ -161,6 +161,7 @@ export class AccountSync {
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     if (this.pollTimer) clearInterval(this.pollTimer);
     if (this.inboxSyncTimer) clearTimeout(this.inboxSyncTimer);
+    await this.connectPromise?.catch(() => undefined); // a connect in flight retires itself (see connect())
     const c = this.client;
     this.client = null;
     if (c) {
@@ -193,6 +194,8 @@ export class AccountSync {
         clientInfo: { name: 'Postino', version: '0.1' },
         socketTimeout: 5 * 60_000,
         connectionTimeout: 30_000,
+        // On port 143 the password must still only travel inside TLS (no STARTTLS stripping).
+        doSTARTTLS: !this.account.imap_secure && process.env.POSTINO_TLS_INSECURE !== '1',
         tls: { rejectUnauthorized: process.env.POSTINO_TLS_INSECURE !== '1' },
       } as ConstructorParameters<typeof ImapFlow>[0]);
       client.on('error', (err) => {
@@ -213,6 +216,11 @@ export class AccountSync {
       try {
         this.setStatus('syncing');
         await client.connect();
+        if (this.stopped) {
+          // stop()/restart() happened while we were connecting: this instance is retired.
+          await client.logout().catch(() => client.close());
+          return;
+        }
         this.client = client;
         this.backoffMs = 2000;
         log.info({ account: this.email }, 'imap connected');

@@ -182,7 +182,9 @@ async function tick(): Promise<void> {
       } catch (err) {
         const msg = (err as Error).message;
         log.warn({ id: row.id, err: msg }, 'outbox send failed');
-        db.prepare("UPDATE outbox SET status = 'failed', error = ? WHERE id = ?").run(msg.slice(0, 300), row.id);
+        // Only a job that never left the server is "failed"; one SMTP already accepted stays delivered.
+        const r = db.prepare("UPDATE outbox SET status = 'failed', error = ? WHERE id = ? AND status = 'sending'").run(msg.slice(0, 300), row.id);
+        if (!r.changes) db.prepare("UPDATE outbox SET status = 'sent', error = ? WHERE id = ? AND status = 'delivered'").run(`Sent, but afterwards: ${msg.slice(0, 280)}`, row.id);
         bus.publish({ type: 'action.failed', message: `Could not send "${(JSON.parse(row.payload) as SendJob).subject || '(no subject)'}": ${msg}` });
         bus.publish({ type: 'outbox.updated', id: String(row.id), status: 'failed' } as never);
       }

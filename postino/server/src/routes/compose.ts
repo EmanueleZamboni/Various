@@ -341,6 +341,8 @@ export function registerComposeRoutes(app: FastifyInstance): void {
     reply.header('Content-Length', stat.size);
     reply.header('X-Content-Type-Options', 'nosniff');
     reply.header('Cache-Control', 'private, max-age=86400');
+    // A PDF (or audio/video) shown inline must not act as a page of this site.
+    reply.header('Content-Security-Policy', "default-src 'none'; sandbox");
     reply.header('Content-Disposition', `${safeInline ? 'inline' : 'attachment'}; filename*=UTF-8''${name}`);
     return reply.send(fs.createReadStream(file));
   });
@@ -353,7 +355,7 @@ export function registerComposeRoutes(app: FastifyInstance): void {
     if (/^mailto:/i.test(url)) {
       const u = new URL(url);
       const addr = u.pathname;
-      const subject = u.searchParams.get('subject') || 'Unsubscribe';
+      const subject = (u.searchParams.get('subject') || 'Unsubscribe').replace(/[\r\n]/g, ' ').slice(0, 200);
       const bodyText = u.searchParams.get('body') || 'Unsubscribe';
       const account = db.prepare('SELECT * FROM accounts WHERE id = ?').get(m.account_id) as AccountRow;
       try {

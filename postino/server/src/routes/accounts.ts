@@ -17,9 +17,14 @@ type AccountIn = { email?: string; name?: string; password?: string; username?: 
 
 function server(s: ServerIn | undefined, defPort: number): { host: string; port: number; secure: boolean } | null {
   if (!s || !s.host) return null;
-  const port = Number(s.port || defPort);
+  const host = String(s.host).trim().toLowerCase();
+  if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/.test(host) && !/^[\d.]+$/.test(host)) {
+    throw Object.assign(new Error('That server name does not look right.'), { statusCode: 400, code: 'invalid_host' });
+  }
+  const port = s.port === undefined || s.port === '' ? defPort : Number(s.port);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) throw Object.assign(new Error('The port must be a number between 1 and 65535.'), { statusCode: 400, code: 'invalid_port' });
   const secure = s.secure === undefined ? port === 993 || port === 465 : s.secure === true || s.secure === 'true';
-  return { host: String(s.host).trim(), port, secure };
+  return { host, port, secure };
 }
 
 async function testImap(opts: { host: string; port: number; secure: boolean; user: string; pass: string }): Promise<void> {
@@ -31,6 +36,7 @@ async function testImap(opts: { host: string; port: number; secure: boolean; use
     logger: false,
     verifyOnly: true,
     connectionTimeout: 15_000, // a wrong host must fail in seconds, not hang the "Test connection" button
+    doSTARTTLS: !opts.secure && process.env.POSTINO_TLS_INSECURE !== '1',
     tls: { rejectUnauthorized: process.env.POSTINO_TLS_INSECURE !== '1' },
   });
   await client.connect();

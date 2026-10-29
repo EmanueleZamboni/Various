@@ -1,3 +1,4 @@
+import { isAuthenticated } from '../auth.js';
 import type { FastifyInstance } from 'fastify';
 import { db } from '../db.js';
 import { bus, type AppEvent } from '../events.js';
@@ -48,8 +49,14 @@ export function registerMiscRoutes(app: FastifyInstance): void {
   app.put<{ Body: unknown }>('/api/settings', async (req) => updateUiSettings(req.body || {}));
 
   app.post<{ Body: { subscription?: { endpoint?: string } } }>('/api/push/subscribe', async (req, reply) => {
-    const sub = req.body?.subscription;
-    if (!sub || !sub.endpoint) return reply.code(400).send({ error: 'invalid', message: 'Missing subscription.' });
+    const sub = req.body?.subscription as { endpoint?: string; keys?: { p256dh?: string; auth?: string } } | undefined;
+    let ok = false;
+    try {
+      ok = !!sub && typeof sub.endpoint === 'string' && new URL(sub.endpoint).protocol === 'https:' && typeof sub.keys?.p256dh === 'string' && typeof sub.keys?.auth === 'string' && JSON.stringify(sub).length < 4000;
+    } catch {
+      ok = false;
+    }
+    if (!ok || !sub) return reply.code(400).send({ error: 'invalid', message: 'That push subscription is not valid.' });
     db.prepare('INSERT INTO push_subscriptions(endpoint, subscription_json, user_agent) VALUES (?, ?, ?) ON CONFLICT(endpoint) DO UPDATE SET subscription_json = excluded.subscription_json').run(
       sub.endpoint,
       JSON.stringify(sub),
@@ -109,5 +116,5 @@ export function registerMiscRoutes(app: FastifyInstance): void {
     return reply.send(fs.createReadStream(a.file));
   });
 
-  app.get('/api/health', async () => ({ ok: true, accounts: manager.all().length, uptime: Math.round(process.uptime()) }));
+  app.get('/api/health', async (req) => (isAuthenticated(req) ? { ok: true, accounts: manager.all().length, uptime: Math.round(process.uptime()) } : { ok: true }));
 }

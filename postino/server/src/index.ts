@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { config } from './config.js';
 import { log } from './log.js';
-import { registerAuthRoutes, isAuthenticated } from './auth.js';
+import { registerAuthRoutes, isAuthenticated, announceSetupCode } from './auth.js';
 import { registerAccountRoutes } from './routes/accounts.js';
 import { registerThreadRoutes } from './routes/threads.js';
 import { registerBlockedRoutes } from './routes/blocked.js';
@@ -23,18 +23,31 @@ import { pruneAttachmentCache, pruneUploads } from './mail/store.js';
 import { db } from './db.js';
 
 export async function buildApp() {
-  const app = Fastify({ logger: false, trustProxy: config.trustProxy, bodyLimit: 2 * 1024 * 1024 });
+  // trustProxy 'loopback,…' would need Caddy's container address; one hop is what the compose setup has.
+  const app = Fastify({ logger: false, trustProxy: config.trustProxy ? ((_addr: string, hop: number) => hop === 0) : false, bodyLimit: 2 * 1024 * 1024 });
   await app.register(cookie);
   await app.register(rateLimit, { global: false });
   await app.register(multipart, { limits: { fileSize: 25 * 1024 * 1024, files: 10 } });
 
+  // Routes anyone may call without a session. Everything else under /api needs one.
+  const PUBLIC_ROUTES = new Set(['/api/setup', '/api/login', '/api/health', '/api/passkeys/login/options', '/api/passkeys/login/verify']);
   app.addHook('onRequest', async (req, reply) => {
-    if (!req.url.startsWith('/api/')) return;
+    // Decide on the matched route pattern, never on the URL text: the router decodes
+    // percent-encoding (/%61pi/… is /api/…), so the text can lie.
+    const routeUrl = req.routeOptions?.url || '';
+    let decodedPath = '';
+    try {
+      decodedPath = decodeURIComponent(req.url.split('?')[0]);
+    } catch {
+      return reply.code(400).send({ error: 'bad_request', message: 'Malformed URL.' });
+    }
+    const isApi = routeUrl.startsWith('/api') || decodedPath.startsWith('/api') || /^\/+api/i.test(decodedPath);
+    if (!isApi) return;
     // Cross-site requests never get to change anything, whatever the cookie says.
     if (req.method !== 'GET' && req.method !== 'HEAD') {
       const origin = req.headers.origin;
-      const host = String(req.headers['x-forwarded-host'] || req.headers.host || '');
-      if (origin && host && new URL(origin).host !== host.split(',')[0].trim()) {
+      const host = req.host;
+      if (origin && host && new URL(origin).host !== host) {
         return reply.code(403).send({ error: 'forbidden', message: 'Cross-site request refused.' });
       }
       const site = req.headers['sec-fetch-site'];
@@ -42,8 +55,7 @@ export async function buildApp() {
         return reply.code(403).send({ error: 'forbidden', message: 'Cross-site request refused.' });
       }
     }
-    const open = ['/api/setup', '/api/login', '/api/health', '/api/passkeys/login/options', '/api/passkeys/login/verify'];
-    if (open.some((p) => req.url === p || req.url.startsWith(p + '?'))) return;
+    if (routeUrl && PUBLIC_ROUTES.has(routeUrl) && decodedPath === routeUrl) return;
     if (!isAuthenticated(req)) return reply.code(401).send({ error: 'unauthorized', message: 'Sign in to continue.' });
   });
 
@@ -58,7 +70,7 @@ export async function buildApp() {
         'Content-Security-Policy',
         [
           "default-src 'self'",
-          "script-src 'self' 'unsafe-inline'", // the inline script is only the mail iframe's height reporter
+          "script-src 'self'", // the inline script is only the mail iframe's height reporter
           "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
           'font-src https://fonts.gstatic.com data:',
           "img-src 'self' data: blob: https: http:", // remote images in mail, only after "Load images"
@@ -158,6 +170,7 @@ async function main(): Promise<void> {
   setInterval(prune, 6 * 3_600_000).unref();
   await app.listen({ port: config.port, host: config.host });
   log.info({ port: config.port, data: config.dataDir }, 'postino listening');
+  announceSetupCode();
   const shutdown = async () => {
     log.info('shutting down');
     await manager.stopAll();

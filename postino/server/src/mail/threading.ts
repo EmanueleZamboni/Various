@@ -1,4 +1,5 @@
 import { db } from '../db.js';
+import { bus } from '../events.js';
 import { normalizeSubject, hasReplyPrefix, type Address } from './parse.js';
 
 type ThreadRow = { id: number; first_date: string; participants: string };
@@ -17,7 +18,7 @@ export function assignThread(opts: {
   date: string;
   participants: Address[];
 }): number {
-  const refs = new Set<string>(opts.references);
+  const refs = new Set<string>(opts.references.slice(-50)); // a References header is at most the last 50 ids
   if (opts.inReplyTo) refs.add(opts.inReplyTo);
   refs.delete(opts.messageId);
   const subjectNorm = normalizeSubject(opts.subject);
@@ -87,6 +88,7 @@ export function assignThread(opts: {
       merge.run(keep, other);
       draft.run(keep, other);
       del.run(other);
+      bus.publish({ type: 'thread.removed', threadId: String(other) });
     }
   }
   return keep;

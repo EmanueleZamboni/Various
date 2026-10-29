@@ -49,8 +49,8 @@ function saveTokens(t: Tokens | null): void {
 }
 
 function redirectUri(req: FastifyRequest): string {
-  const host = String(req.headers['x-forwarded-host'] || req.headers.host || 'localhost').split(',')[0].trim();
-  const proto = String(req.headers['x-forwarded-proto'] || req.protocol || 'http').split(',')[0].trim();
+  const host = String(req.host || 'localhost').split(',')[0].trim(); // trustProxy decides whether X-Forwarded-Host counts
+  const proto = String(req.protocol || 'http');
   return `${proto}://${host}/api/google/callback`;
 }
 

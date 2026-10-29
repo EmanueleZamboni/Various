@@ -122,7 +122,8 @@ export function upsertHeader(h: HeaderInsert): { id: number; isNew: boolean; thr
   const mine = myAddresses();
   const date = (h.headers.date && !Number.isNaN(h.headers.date.getTime()) ? h.headers.date : h.internalDate || new Date()).toISOString();
   const participants = uniqueAddresses([h.headers.from, ...h.headers.to, ...h.headers.cc]);
-  const isMine = mine.has(h.headers.from.email);
+  // A message is "mine" only when it sits in my Sent/Drafts: a From header can be spoofed.
+  const isMine = ['sent', 'drafts'].includes(h.folder.role) && mine.has(h.headers.from.email);
   const category = categorize(h.headers, senderOverride(h.headers.from.email));
 
   const tx = db.transaction(() => {
@@ -294,7 +295,7 @@ export function pruneUploads(maxAgeMs = 7 * 86_400_000): number {
       // ignore a malformed row
     }
   }
-  for (const r of db.prepare("SELECT payload FROM outbox WHERE status = 'queued'").all() as { payload: string }[]) {
+  for (const r of db.prepare("SELECT payload FROM outbox WHERE status IN ('queued', 'sending', 'failed')").all() as { payload: string }[]) {
     try {
       for (const id of (JSON.parse(r.payload) as { uploadIds?: string[] }).uploadIds || []) referenced.add(id);
     } catch {

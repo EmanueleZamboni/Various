@@ -9,6 +9,7 @@ type BlockedRow = { id: number; pattern: string; note: string; created_at: strin
 
 function normalizePattern(raw: string): string | null {
   const p = raw.trim().toLowerCase();
+  if (/[%_*?]/.test(p)) return null; // no wildcards: a pattern is one address or one domain
   if (/^@[^@\s]+\.[^@\s]+$/.test(p)) return p; // @domain
   if (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(p)) return p;
   if (/^[^@\s]+\.[^@\s]+$/.test(p)) return '@' + p; // bare domain
@@ -66,16 +67,33 @@ async function sweep(pattern: string, fromRole: FolderRole, toRole: FolderRole):
   return moved;
 }
 
-function view(r: BlockedRow) {
-  const { sql, params } = matchSql(r.pattern);
-  const count = (db.prepare(`SELECT COUNT(*) AS n FROM messages m WHERE ${sql}`).get(...params) as { n: number }).n;
+function view(r: BlockedRow, counts?: Map<string, number>) {
+  let count = counts?.get(r.pattern);
+  if (count === undefined) {
+    const { sql, params } = matchSql(r.pattern);
+    count = (db.prepare(`SELECT COUNT(*) AS n FROM messages m WHERE ${sql}`).get(...params) as { n: number }).n;
+  }
   return { id: String(r.id), pattern: r.pattern, note: r.note, createdAt: r.created_at, count };
+}
+
+/** One pass over the senders instead of a scan per blocked pattern. */
+function countsFor(rows: BlockedRow[]): Map<string, number> {
+  const out = new Map<string, number>();
+  if (!rows.length) return out;
+  const senders = db.prepare('SELECT from_email AS email, COUNT(*) AS n FROM messages GROUP BY from_email').all() as { email: string; n: number }[];
+  for (const r of rows) out.set(r.pattern, 0);
+  for (const s of senders) {
+    const domain = '@' + (s.email.split('@')[1] || '');
+    for (const key of [s.email, domain]) if (out.has(key)) out.set(key, (out.get(key) || 0) + s.n);
+  }
+  return out;
 }
 
 export function registerBlockedRoutes(app: FastifyInstance): void {
   app.get('/api/blocked', async () => {
     const rows = db.prepare('SELECT * FROM blocked_senders ORDER BY created_at DESC').all() as BlockedRow[];
-    return { senders: rows.map(view) };
+    const counts = countsFor(rows);
+    return { senders: rows.map((r) => view(r, counts)) };
   });
 
   app.post<{ Body: { pattern?: string; note?: string } }>('/api/blocked', async (req, reply) => {

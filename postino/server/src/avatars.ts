@@ -2,7 +2,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import dns from 'node:dns/promises';
+import https from 'node:https';
 import { config } from './config.js';
+import { db } from './db.js';
 import { log } from './log.js';
 
 /**
@@ -48,9 +50,17 @@ function writeMeta(k: string, m: Meta): void {
 export function isPrivateAddress(ip: string): boolean {
   if (ip.includes(':')) {
     const v6 = ip.toLowerCase();
-    if (v6 === '::1' || v6 === '::' || v6.startsWith('fe80:') || v6.startsWith('fc') || v6.startsWith('fd')) return true;
+    if (v6 === '::1' || v6 === '::' || v6.startsWith('fe80:') || v6.startsWith('fe9') || v6.startsWith('fea') || v6.startsWith('feb') || v6.startsWith('fec') || v6.startsWith('fed') || v6.startsWith('fee') || v6.startsWith('fef') || v6.startsWith('fc') || v6.startsWith('fd')) return true;
+    if (v6.startsWith('64:ff9b:') || v6.startsWith('2002:')) return true; // NAT64 / 6to4 can wrap private IPv4
     const mapped = v6.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
-    return mapped ? isPrivateAddress(mapped[1]) : false;
+    if (mapped) return isPrivateAddress(mapped[1]);
+    const hexMapped = v6.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
+    if (hexMapped) {
+      const a = parseInt(hexMapped[1], 16);
+      const b = parseInt(hexMapped[2], 16);
+      return isPrivateAddress(`${a >> 8}.${a & 255}.${b >> 8}.${b & 255}`);
+    }
+    return false;
   }
   const p = ip.split('.').map(Number);
   if (p.length !== 4 || p.some((n) => Number.isNaN(n))) return true;
@@ -65,29 +75,78 @@ export function isPrivateAddress(ip: string): boolean {
 }
 
 /** Resolve a host and refuse it when any address is private. */
-async function assertPublicHost(hostname: string): Promise<void> {
+/** Resolve a host, refuse private addresses, and return the one address we will connect to. */
+async function assertPublicHost(hostname: string): Promise<{ address: string; family: 4 | 6 }> {
   const h = hostname.replace(/^\[|\]$/g, '');
   if (/^[\d.]+$/.test(h) || h.includes(':')) {
     if (isPrivateAddress(h)) throw new Error('private address');
-    return;
+    return { address: h, family: h.includes(':') ? 6 : 4 };
   }
   if (h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.local') || h.endsWith('.internal')) throw new Error('private host');
   const addrs = await dns.lookup(h, { all: true });
   if (!addrs.length || addrs.some((a) => isPrivateAddress(a.address))) throw new Error('private address');
+  const pick = addrs.find((a) => a.family === 4) || addrs[0];
+  return { address: pick.address, family: pick.family === 6 ? 6 : 4 };
 }
 
 /** fetch() that only talks to public https hosts, checking every redirect hop. */
-async function safeFetch(url: string, init: RequestInit & { signal: AbortSignal }, hops = 0): Promise<Response> {
+type SafeResponse = { ok: boolean; status: number; url: string; headers: { get: (k: string) => string | null }; arrayBuffer: () => Promise<ArrayBuffer>; text: (max?: number) => Promise<string> };
+
+/**
+ * HTTPS GET that only ever connects to an address we vetted as public (no DNS
+ * rebinding between the check and the connection), follows at most 3 redirects
+ * through the same check, and caps the body.
+ */
+async function safeFetch(url: string, init: { signal: AbortSignal; headers?: Record<string, string> }, hops = 0): Promise<SafeResponse> {
   const u = new URL(url);
   if (u.protocol !== 'https:') throw new Error('https only');
-  await assertPublicHost(u.hostname);
-  const res = await fetch(u, { ...init, redirect: 'manual' });
+  const vetted = await assertPublicHost(u.hostname);
+  const res = await new Promise<{ status: number; headers: Record<string, string | string[] | undefined>; body: Buffer }>((resolve, reject) => {
+    const req = https.request(
+      u,
+      {
+        method: 'GET',
+        headers: init.headers,
+        signal: init.signal,
+        servername: u.hostname,
+        lookup: (_host, _opts, cb) => (cb as unknown as (err: null, addrs: { address: string; family: number }[]) => void)(null, [{ address: vetted.address, family: vetted.family }]),
+      },
+      (r) => {
+        const chunks: Buffer[] = [];
+        let total = 0;
+        r.on('data', (c: Buffer) => {
+          total += c.length;
+          if (total > MAX_BYTES) {
+            r.destroy();
+            reject(new Error('too large'));
+            return;
+          }
+          chunks.push(c);
+        });
+        r.on('end', () => resolve({ status: r.statusCode || 0, headers: r.headers, body: Buffer.concat(chunks) }));
+        r.on('error', reject);
+      },
+    );
+    req.on('error', reject);
+    req.end();
+  });
   if ([301, 302, 303, 307, 308].includes(res.status)) {
-    const loc = res.headers.get('location');
+    const loc = res.headers.location;
     if (!loc || hops >= 3) throw new Error('too many redirects');
-    return safeFetch(new URL(loc, u).toString(), init, hops + 1);
+    return safeFetch(new URL(String(loc), u).toString(), init, hops + 1);
   }
-  return res;
+  const get = (k: string) => {
+    const v = res.headers[k.toLowerCase()];
+    return v === undefined ? null : Array.isArray(v) ? v.join(', ') : v;
+  };
+  return {
+    ok: res.status >= 200 && res.status < 300,
+    status: res.status,
+    url: u.toString(),
+    headers: { get },
+    arrayBuffer: async () => res.body.buffer.slice(res.body.byteOffset, res.body.byteOffset + res.body.byteLength) as ArrayBuffer,
+    text: async (max = 300_000) => res.body.subarray(0, max).toString('utf8'),
+  };
 }
 
 async function fetchImage(url: string, accept = 'image/*'): Promise<{ bytes: Buffer; contentType: string } | null> {
@@ -141,20 +200,7 @@ async function fromSiteIcon(domain: string): Promise<{ bytes: Buffer; contentTyp
       const res = await safeFetch(base, { signal: ctrl.signal, headers: { accept: 'text/html', 'user-agent': 'Mozilla/5.0 (compatible; Postino/0.1)' } });
       if (!res.ok) continue;
       finalBase = res.url || base;
-      const reader = res.body?.getReader();
-      if (reader) {
-        const chunks: Uint8Array[] = [];
-        let total = 0;
-        for (;;) {
-          const { value, done } = await reader.read();
-          if (done || !value) break;
-          chunks.push(value);
-          total += value.length;
-          if (total > 300_000) break;
-        }
-        await reader.cancel().catch(() => undefined);
-        html = Buffer.concat(chunks).toString('utf8');
-      }
+      html = await res.text(300_000);
     } catch {
       continue;
     } finally {
@@ -194,7 +240,10 @@ async function lookup(email: string): Promise<AvatarResult> {
   const file = path.join(dir, k);
   const domain = email.split('@')[1] || '';
   const tries: { name: string; run: () => Promise<{ bytes: Buffer; contentType: string } | null> }[] = [{ name: 'gravatar', run: () => fromGravatar(email) }];
-  if (domain && !freemail.test(domain) && /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(domain)) {
+  // Fetching a stranger's web site would tell them the address is live (per-recipient
+  // subdomains are a known trick), so logos are looked up only for people you already deal with.
+  const known = (db.prepare('SELECT count FROM contacts WHERE email = ?').get(email) as { count: number } | undefined)?.count ?? 0;
+  if (known >= 3 && domain && !freemail.test(domain) && /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(domain)) {
     tries.push({ name: 'bimi', run: () => fromBimi(domain) });
     tries.push({ name: 'site', run: () => fromSiteIcon(domain) });
   }

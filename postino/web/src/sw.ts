@@ -16,10 +16,11 @@ precacheAndRoute(self.__WB_MANIFEST);
 registerRoute(new NavigationRoute(createHandlerBoundToURL('/index.html'), { denylist: [/^\/api\//] }));
 
 // Session state is never served from cache: after signing out, nothing must look signed in.
-const NEVER_CACHE = ['/api/me', '/api/setup', '/api/login', '/api/logout', '/api/events', '/api/attachments', '/api/passkeys', '/api/google'];
+const NEVER_CACHE = ['/api/me/', '/api/setup', '/api/login', '/api/logout', '/api/events', '/api/attachments', '/api/passkeys', '/api/google'];
+const neverCache = (p: string) => p === '/api/me' || NEVER_CACHE.some((x) => p.startsWith(x));
 // Reads are network-first with a bounded cache so the app opens offline with the last state.
 registerRoute(
-  ({ url, request }) => request.method === 'GET' && url.pathname.startsWith('/api/') && !NEVER_CACHE.some((p) => url.pathname.startsWith(p)),
+  ({ url, request }) => request.method === 'GET' && url.pathname.startsWith('/api/') && !neverCache(url.pathname),
   new NetworkFirst({ cacheName: 'postino-api', networkTimeoutSeconds: 8, plugins: [new ExpirationPlugin({ maxEntries: 300, maxAgeSeconds: 3 * 86400 })] }),
 );
 // The app asks the worker to forget everything on sign-out.

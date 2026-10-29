@@ -40,7 +40,8 @@ export type ParsedBody = {
 };
 
 export function normalizeSubject(subject: string): string {
-  let s = (subject || '').trim();
+  // Collapse whitespace first: it keeps the prefix regex linear on a hostile subject.
+  let s = (subject || '').replace(/\s+/g, ' ').trim().slice(0, 998);
   // Strip reply/forward prefixes in several languages, repeatedly.
   const prefix = /^((re|r|aw|wg|fw|fwd|tr|rif|i|vs|sv|ref|res)\s*(\[\d+\])?\s*:\s*|\[[^\]]{1,40}\]\s*)+/i;
   s = s.replace(prefix, '');
@@ -48,7 +49,7 @@ export function normalizeSubject(subject: string): string {
 }
 
 export function hasReplyPrefix(subject: string): boolean {
-  return /^\s*(re|r|aw|wg|fw|fwd|tr|rif|i|vs|sv|ref|res)\s*(\[\d+\])?\s*:/i.test(subject || '');
+  return /^(re|r|aw|wg|fw|fwd|tr|rif|i|vs|sv|ref|res) ?(\[\d+\])? ?:/i.test((subject || '').replace(/\s+/g, ' ').trim().slice(0, 998));
 }
 
 export function normalizeMsgId(id: string | undefined | null): string {

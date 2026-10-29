@@ -52,6 +52,9 @@ type UIState = {
   toasts: Toast[];
   toast: (t: Omit<Toast, 'id'>) => number;
   dismissToast: (id: number) => void;
+  /** An inline reply box is open (so an app update must not reload the page). */
+  replyOpen: boolean;
+  setReplyOpen: (v: boolean) => void;
   shortcutsOpen: boolean;
   setShortcuts: (v: boolean) => void;
   viewer: { attachments: Attachment[]; index: number } | null;
@@ -97,6 +100,8 @@ export const useUI = create<UIState>((set, get) => ({
   toggleBundle: (k) => set((s) => ({ bundlesOpen: { ...s.bundlesOpen, [k]: !s.bundlesOpen[k] } })),
   compose: null,
   composeSeq: 0,
+  replyOpen: false,
+  setReplyOpen: (v) => set({ replyOpen: v }),
   openCompose: (c) => set((s) => ({ compose: c, composeSeq: s.composeSeq + 1 })),
   closeCompose: () => set({ compose: null }),
   toasts: [],

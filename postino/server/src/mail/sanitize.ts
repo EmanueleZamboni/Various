@@ -92,14 +92,54 @@ export function textToHtml(text: string): string {
 }
 
 /** Rough HTML → text used for snippets and search when there is no text part. */
+/** Remove `<tag …>…</tag>` blocks in one linear pass (a regex here is quadratic on hostile input). */
+export function stripBlocks(html: string, tag: string): string {
+  const open = `<${tag}`;
+  const close = `</${tag}`;
+  let out = '';
+  let i = 0;
+  const lower = html.toLowerCase();
+  for (;;) {
+    const a = lower.indexOf(open, i);
+    if (a < 0 || !/[\s>/]/.test(lower[a + open.length] || '>')) {
+      if (a < 0) break;
+      out += html.slice(i, a + open.length);
+      i = a + open.length;
+      continue;
+    }
+    out += html.slice(i, a) + ' ';
+    const b = lower.indexOf(close, a + open.length);
+    if (b < 0) return out; // unterminated: everything after is dropped
+    const gt = lower.indexOf('>', b);
+    i = gt < 0 ? lower.length : gt + 1;
+  }
+  return out + html.slice(i);
+}
+
+/** Replace every tag in one linear pass: <br> and block closers become newlines, the rest a space. */
+function stripTags(html: string): string {
+  let out = '';
+  let i = 0;
+  const lastGt = html.lastIndexOf('>');
+  for (;;) {
+    const a = html.indexOf('<', i);
+    if (a < 0 || a > lastGt) {
+      out += html.slice(i);
+      break;
+    }
+    const b = html.indexOf('>', a); // exists: a <= lastGt
+    out += html.slice(i, a);
+    const tag = html.slice(a + 1, Math.min(b, a + 12)).toLowerCase();
+    out += /^br\b/.test(tag) || /^\/(p|div|tr|li|h[1-6]|blockquote|table)\b/.test(tag) ? '\n' : ' ';
+    i = b + 1;
+  }
+  return out;
+}
+
 export function htmlToText(html: string): string {
-  return html
-    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<head[\s\S]*?<\/head>/gi, ' ')
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/(p|div|tr|li|h[1-6]|blockquote|table)>/gi, '\n')
-    .replace(/<[^>]+>/g, ' ')
+  let h = html.length > 400_000 ? html.slice(0, 400_000) : html;
+  for (const tag of ['style', 'script', 'head']) h = stripBlocks(h, tag);
+  return stripTags(h)
     .replace(/&nbsp;/gi, ' ')
     .replace(/&amp;/gi, '&')
     .replace(/&lt;/gi, '<')

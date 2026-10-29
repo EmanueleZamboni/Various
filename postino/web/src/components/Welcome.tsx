@@ -172,29 +172,38 @@ function MailboxForm({ index, onAdded, onCancel }: { index: number; onAdded: () 
   const [found, setFound] = useState<string>('');
   const [err, setErr] = useState('');
   const lookedUp = useRef('');
+  const pending = useRef<Promise<{ host: string } | null> | null>(null);
   const provider = providerFor(email);
 
-  const lookup = async () => {
+  /** Resolves with the detected incoming host (or null). Repeated calls for the same address share one request. */
+  const lookup = (): Promise<{ host: string } | null> => {
     const e = email.trim().toLowerCase();
-    if (!e.includes('@') || lookedUp.current === e) return;
+    if (!e.includes('@')) return Promise.resolve(null);
+    if (lookedUp.current === e && pending.current) return pending.current;
     lookedUp.current = e;
     setLooking(true);
-    try {
-      const p = await api.accounts.presets(e);
-      if (p) {
-        setImap(p.imap);
-        setSmtp(p.smtp);
-        setUsername(p.username);
-        setFound(`Server: ${p.imap.host}`);
-      } else {
+    const p = (async () => {
+      try {
+        const r = await api.accounts.presets(e);
+        if (r) {
+          setImap(r.imap);
+          setSmtp(r.smtp);
+          setUsername(r.username);
+          setFound(`Server: ${r.imap.host}`);
+          return { host: r.imap.host };
+        }
         setFound('');
         setAdvanced(true);
+        return null;
+      } catch {
+        setAdvanced(true);
+        return null;
+      } finally {
+        setLooking(false);
       }
-    } catch {
-      setAdvanced(true);
-    } finally {
-      setLooking(false);
-    }
+    })();
+    pending.current = p;
+    return p;
   };
   useEffect(() => {
     if (!email.includes('@') || !/\.[a-z]{2,}$/i.test(email)) return;
@@ -229,8 +238,8 @@ function MailboxForm({ index, onAdded, onCancel }: { index: number; onAdded: () 
     setErr('');
     if (!email.includes('@')) return setErr('Enter the email address first.');
     if (!password) return setErr('Enter the mailbox password.');
-    if (looking) await lookup();
-    if (!imap.host || !smtp.host) {
+    const detected = pending.current ? await pending.current : null;
+    if (!(imap.host || detected?.host) || !(smtp.host || detected?.host)) {
       setAdvanced(true);
       return setErr('No server settings found for this address: fill them in below (your provider lists them as IMAP and SMTP).');
     }
@@ -257,20 +266,36 @@ function MailboxForm({ index, onAdded, onCancel }: { index: number; onAdded: () 
         <span className="label">Colour for this address</span>
         <ColorPicker value={color} onChange={setColor} />
       </div>
-      <button type="button" className="btn btn-quiet btn-sm" style={{ alignSelf: 'flex-start' }} onClick={() => setAdvanced((v) => !v)} aria-expanded={advanced}>
-        <Icon name={advanced ? 'chevronDown' : 'chevronRight'} size={14} />
-        Server settings
-      </button>
-      {advanced && (
-        <>
-          <div className="field">
-            <label htmlFor="w-user">User name (usually the full address)</label>
-            <input id="w-user" className="input" value={username} onChange={(e) => setUsername(e.target.value)} placeholder={email} autoCapitalize="none" />
+      <div className="wizard-servers">
+        {!advanced ? (
+          <div className="ws-row">
+            <Icon name="settings" size={15} />
+            <span className="ws-text">
+              {imap.host ? (
+                <>Mail server: <b>{imap.host}</b>{smtp.host && smtp.host !== imap.host ? <> / <b>{smtp.host}</b></> : null}</>
+              ) : (
+                'Server settings: found automatically for most providers'
+              )}
+            </span>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setAdvanced(true)}>{imap.host ? 'Change' : 'Enter them yourself'}</button>
           </div>
-          <ServerFields label="Incoming (IMAP)" value={imap} onChange={setImap} idp="w-imap" />
-          <ServerFields label="Outgoing (SMTP)" value={smtp} onChange={setSmtp} idp="w-smtp" />
-        </>
-      )}
+        ) : (
+          <>
+            <div className="ws-row">
+              <Icon name="settings" size={15} />
+              <span className="ws-text">Server settings (your provider lists them as IMAP and SMTP)</span>
+              <button type="button" className="btn btn-quiet btn-sm" onClick={() => setAdvanced(false)}>Hide</button>
+            </div>
+            <div className="field">
+              <label htmlFor="w-user">User name (usually the full address)</label>
+              <input id="w-user" className="input" value={username} onChange={(e) => setUsername(e.target.value)} placeholder={email || 'name@yourdomain.it'} autoCapitalize="none" />
+            </div>
+            <ServerFields label="Incoming (IMAP)" value={imap} onChange={setImap} idp="w-imap" />
+            <ServerFields label="Outgoing (SMTP)" value={smtp} onChange={setSmtp} idp="w-smtp" />
+            <span className="help">Typical values: IMAP port 993 with TLS, SMTP port 465 with TLS (or 587 without).</span>
+          </>
+        )}
+      </div>
       {err && <p className="error-text" role="alert">{err}</p>}
       <div className="wizard-actions">
         {onCancel && <button type="button" className="btn btn-ghost" onClick={onCancel}>Cancel</button>}

@@ -32,8 +32,8 @@ function sweep(): void {
 
 /** The relying party is whatever host the app is served from (e.g. mail.example.com). */
 export function relyingParty(req: FastifyRequest): { rpID: string; origin: string } {
-  const host = String(req.headers['x-forwarded-host'] || req.headers.host || 'localhost').split(',')[0].trim();
-  const proto = String(req.headers['x-forwarded-proto'] || req.protocol || 'http').split(',')[0].trim();
+  const host = String(req.host || 'localhost').split(',')[0].trim(); // trustProxy decides whether X-Forwarded-Host counts
+  const proto = String(req.protocol || 'http');
   const rpID = host.replace(/:\d+$/, '');
   return { rpID, origin: `${proto}://${host}` };
 }

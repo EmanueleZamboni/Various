@@ -18,7 +18,14 @@ async function imageToDataUrl(file: File, maxWidth = 480): Promise<string> {
     canvas.height = Math.round(img.height * scale);
     canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height);
     const png = file.type === 'image/png' || file.type === 'image/gif' || file.type === 'image/svg+xml';
-    return canvas.toDataURL(png ? 'image/png' : 'image/jpeg', 0.88);
+    let out = canvas.toDataURL(png ? 'image/png' : 'image/jpeg', 0.88);
+    // Signatures travel in every email: keep a logo under ~200 KB.
+    for (const q of [0.75, 0.6, 0.45]) {
+      if (out.length < 200_000) break;
+      out = canvas.toDataURL('image/jpeg', q);
+    }
+    if (out.length >= 300_000) throw new Error('That image is too large for a signature; use a smaller logo.');
+    return out;
   } finally {
     URL.revokeObjectURL(url);
   }
@@ -92,7 +99,13 @@ export function SignatureEditor({ value, onChange }: { value: string; onChange: 
         aria-label="Signature"
         onInput={() => onChange(ref.current?.innerHTML ?? '')}
         onPaste={(e) => {
-          // Paste as plain text so foreign styles do not sneak in.
+          // A pasted image is resized like a picked one; text is pasted plain so foreign styles do not sneak in.
+          const file = Array.from(e.clipboardData.files).find((f) => f.type.startsWith('image/'));
+          if (file) {
+            e.preventDefault();
+            void addImage(file);
+            return;
+          }
           const text = e.clipboardData.getData('text/plain');
           if (text) {
             e.preventDefault();

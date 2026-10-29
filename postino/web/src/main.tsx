@@ -18,9 +18,10 @@ async function boot() {
     const { useUI } = await import('./store');
     // A new version is applied with a reload, but never while an email is being written.
     const reloadWhenIdle = () => {
-      if (!useUI.getState().compose) return window.location.reload();
+      const writing = (s: { compose: unknown; replyOpen: boolean }) => Boolean(s.compose) || s.replyOpen;
+      if (!writing(useUI.getState())) return window.location.reload();
       const unsub = useUI.subscribe((s) => {
-        if (!s.compose) {
+        if (!writing(s)) {
           unsub();
           window.setTimeout(() => window.location.reload(), 300);
         }

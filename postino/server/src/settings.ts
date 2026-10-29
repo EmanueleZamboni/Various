@@ -64,9 +64,26 @@ function merge<T>(base: T, patch: unknown): T {
   return out as T;
 }
 
+/** Enum and range checks on top of the type-preserving merge. */
+function clampSettings(s: UiSettings): UiSettings {
+  const pick = <T extends string>(v: unknown, allowed: readonly T[], fallback: T): T => (allowed.includes(v as T) ? (v as T) : fallback);
+  const num = (v: unknown, min: number, max: number, fallback: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(max, Math.max(min, Math.round(v))) : fallback);
+  s.inbox.previewLines = num(s.inbox.previewLines, 0, 2, 1) as 0 | 1 | 2;
+  s.reading.markRead = pick(s.reading.markRead, ['open', 'delay', 'manual'] as const, 'open');
+  s.reading.markReadDelay = num(s.reading.markReadDelay, 0, 60, 2);
+  s.reading.remoteImages = pick(s.reading.remoteImages, ['ask', 'always', 'contacts'] as const, 'ask');
+  s.reading.afterAction = pick(s.reading.afterAction, ['next', 'previous', 'list'] as const, 'next');
+  s.compose.undoSendSec = ([0, 5, 10, 20, 30] as const).find((n) => n === s.compose.undoSendSec) ?? 10;
+  s.compose.defaultReply = pick(s.compose.defaultReply, ['reply', 'replyAll'] as const, 'reply');
+  s.notifications.categories = s.notifications.categories.filter((c) => ['person', 'notification', 'newsletter'].includes(c));
+  s.appearance.density = pick(s.appearance.density, ['comfortable', 'compact'] as const, 'comfortable');
+  s.appearance.textSize = pick(s.appearance.textSize, ['normal', 'large'] as const, 'normal');
+  return s;
+}
+
 export function uiSettings(): UiSettings {
   const stored = getSetting<Partial<UiSettings>>('ui2', {});
-  const s = merge(defaults, stored);
+  const s = clampSettings(merge(defaults, stored));
   // Older single-key settings still win if the new ones were never saved.
   const legacyN = getSetting<{ enabled: boolean; categories: string[] } | null>('notifications', null);
   if (legacyN && !stored.notifications) s.notifications = { ...s.notifications, enabled: legacyN.enabled, categories: legacyN.categories as never };
@@ -76,7 +93,7 @@ export function uiSettings(): UiSettings {
 
 export function updateUiSettings(patch: unknown): UiSettings {
   const current = uiSettings();
-  const next = merge(current, patch);
+  const next = clampSettings(merge(current, patch));
   if (isObj(patch) && typeof patch.smartInbox === 'boolean') next.inbox.smart = patch.smartInbox;
   next.smartInbox = next.inbox.smart;
   setSetting('ui2', next);

@@ -146,9 +146,12 @@ export function Compose() {
     return () => {
       window.removeEventListener('popstate', onPop);
       // Closed with a button: drop the extra history entry so back goes where it should.
+      // (Not when another composer replaced this one: it pushes its own entry.)
       if (backEntry.current && (window.history.state as { postinoSheet?: string } | null)?.postinoSheet === token) {
         backEntry.current = false;
-        window.history.back();
+        window.setTimeout(() => {
+          if (!useUI.getState().compose && (window.history.state as { postinoSheet?: string } | null)?.postinoSheet === token) window.history.back();
+        }, 0);
       }
     };
   }, []);
@@ -294,7 +297,7 @@ export function Compose() {
         {showBcc && <AddressInput id="c-bcc" label="Bcc" value={bcc} onChange={setBcc} />}
         <div className="cfield">
           <label htmlFor="c-subject">Subject</label>
-          <input id="c-subject" type="text" value={subject} onChange={(e) => setSubject(e.target.value)} autoComplete="off" />
+          <input id="c-subject" type="text" value={subject} onChange={(e) => setSubject(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); document.getElementById('c-text')?.focus(); } }} autoComplete="off" />
         </div>
         <label htmlFor="c-body" className="sr-only">Message</label>
         <textarea id="c-body" className="compose-body" value={text} onChange={(e) => setText(e.target.value)} placeholder="Write your message" autoFocus={!!c.to} />

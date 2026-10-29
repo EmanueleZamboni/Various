@@ -68,7 +68,22 @@ At your DNS provider (vhosting's panel for your domains), add an **A record**:
 
 ### 3. Install
 
-SSH in (`ssh -i key.pem ubuntu@<public IP>`) and run:
+SSH in (`ssh -i key.pem ubuntu@<public IP>`) and run the installer. It asks for
+the domain, installs Docker, opens the firewall, writes `.env` with a random
+secret, schedules nightly backups and automatic security updates, and starts
+everything behind Caddy (automatic HTTPS):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/emanuelezamboni/various/main/postino/scripts/install.sh | bash
+```
+
+It ends by printing a **setup code**. Open `https://mail.yourdomain.it`, enter the
+code together with your new password (so nobody who stumbles on the address can
+claim the server before you), and the wizard takes it from there: mailboxes,
+phone, notifications, fingerprint sign-in.
+
+<details>
+<summary>What the installer does, step by step (if you prefer to do it by hand)</summary>
 
 ```bash
 # Oracle's Ubuntu image also has its own firewall: open 80/443 there too.
@@ -88,8 +103,19 @@ nano .env     # set POSTINO_DOMAIN, POSTINO_BASE_URL and a random POSTINO_SECRET
 docker compose up -d --build
 ```
 
-Caddy gets a Let's Encrypt certificate automatically. Open
-`https://mail.yourdomain.it`, create your password, add your accounts.
+Caddy gets a Let's Encrypt certificate automatically. The setup code is in
+`docker compose logs postino`. Open `https://mail.yourdomain.it`, create your
+password, add your accounts.
+
+</details>
+
+### Giving it to a colleague
+
+Postino is one person's mail: one password, their mailboxes. A colleague gets
+their own copy, not an account on yours. Send them this page: with a free
+Oracle VM (or any small Linux server) and a subdomain, the installer above plus
+the in-app wizard take about 20 minutes and no technical knowledge beyond
+copying two commands.
 
 ### 4. Phone
 
@@ -126,6 +152,7 @@ is needed to read the stored account passwords.
 
 ## If something goes wrong
 
+- **Lost the setup code** (first start only): `docker compose logs postino | grep -i "setup code"`, or `cat data/setup-code.txt`.
 - **Forgot the Postino password**: `docker compose exec postino node scripts/reset-password.mjs` (signs every device out and turns 2FA off; passkeys keep working).
 - **An account shows "Login refused"**: open Settings → Accounts → Edit, re-enter the mailbox password. For Gmail/iCloud use an *app password*.
 - **"Certificate problem"** on a provider with a bad TLS certificate: add `POSTINO_TLS_INSECURE=1` to `.env` (only if you trust the network) and `docker compose up -d`.
@@ -139,7 +166,8 @@ is needed to read the stored account passwords.
 ## Security notes
 
 - All API calls need the session cookie; login is rate-limited; 2FA is optional.
-- Account passwords are encrypted with AES-256-GCM using a key derived from `POSTINO_SECRET`.
+- A fresh install needs a one-time setup code (printed by the installer and in the log) before a password can be created.
+- Account passwords are encrypted with AES-256-GCM using a key derived from `POSTINO_SECRET`. A placeholder or weak secret refuses to start.
 - Email HTML is sanitized on the server (no scripts, no forms, no event handlers) and shown
   in a sandboxed iframe; remote images are blocked until you ask to load them.
 - Put the app behind HTTPS (the compose file does) and use a long password.

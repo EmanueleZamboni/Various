@@ -39,7 +39,10 @@ export function SettingsPage({ me, onLogout }: { me?: Me; onLogout: () => void }
   return (
     <section className="settings" aria-label="Settings">
       <nav className="settings-nav">
-        <h1>Settings</h1>
+        <div className="settings-head">
+          <Link to="/inbox" className="ib back" aria-label="Back to inbox"><Icon name="back" /></Link>
+          <h1>Settings</h1>
+        </div>
         {NAV.map((n) => {
           const on = loc.pathname === n.to || (loc.pathname === '/settings' && n.to === '/settings/accounts');
           return (
@@ -482,9 +485,9 @@ function NotificationSettings({ me }: { me?: Me }) {
     setBusy(true);
     try {
       if (subscribed) {
+        // Only this device stops; other phones/computers keep their notifications.
         await disablePush();
         setSubscribed(false);
-        await update.mutateAsync({ notifications: { enabled: false, categories: s?.notifications.categories ?? ['person'] } });
       } else {
         const r = await enablePush(me.vapidPublicKey);
         if (r === 'denied') toast({ text: 'Notifications are blocked for this site in your browser settings.', kind: 'error' });
@@ -828,7 +831,7 @@ function GoogleSettings() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [result]);
   const saveCreds = useMutation({
-    mutationFn: () => api.google.credentials(clientId, secret),
+    mutationFn: () => api.google.credentials(clientId || data?.clientId || '', secret),
     onSuccess: () => { setSecret(''); qc.invalidateQueries({ queryKey: ['google'] }); toast({ text: 'Saved. Now connect your Google account.', kind: 'success' }); },
     onError: (e) => setErr((e as Error).message),
   });

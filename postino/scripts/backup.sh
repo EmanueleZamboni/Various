@@ -7,6 +7,7 @@
 #   crontab -e
 #   30 3 * * * /home/ubuntu/various/postino/scripts/backup.sh >> /home/ubuntu/postino-backup.log 2>&1
 set -euo pipefail
+umask 077   # backups hold the key that unlocks the mailbox passwords: owner-only
 DIR="$(cd "$(dirname "$0")/.." && pwd)"
 DATA="${POSTINO_DATA_DIR:-$DIR/data}"
 DEST="${POSTINO_BACKUP_DIR:-$HOME/postino-backups}"
@@ -23,6 +24,7 @@ fi
 [ -f "$DATA/secret.key" ] && cp "$DATA/secret.key" "$TMP/"
 [ -f "$DIR/.env" ] && cp "$DIR/.env" "$TMP/env"
 tar -czf "$DEST/postino-$STAMP.tar.gz" -C "$TMP" .
+chmod 600 "$DEST/postino-$STAMP.tar.gz"
 rm -rf "$TMP"
 find "$DEST" -name 'postino-*.tar.gz' -mtime +14 -delete
 echo "backup written: $DEST/postino-$STAMP.tar.gz"

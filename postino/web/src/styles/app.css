@@ -616,6 +616,8 @@ textarea:focus-visible {
   position: relative;
   overflow: hidden;
 }
+.swipe-bg.tone-red { background: #c62828; }
+.swipe-bg.tone-blue { background: #2f5bd7; }
 .swipe-bg {
   position: absolute;
   inset: 0;
@@ -1825,6 +1827,22 @@ textarea:focus-visible {
   font-size: 18px;
   padding: 2px 10px 12px;
 }
+.settings-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.settings-head .back {
+  display: none;
+}
+@media (max-width: 760px) {
+  .settings-head .back {
+    display: inline-flex;
+    width: 40px;
+    height: 40px;
+    margin-bottom: 10px;
+  }
+}
 .settings-main {
   flex: 1;
   min-width: 0;
@@ -2993,4 +3011,42 @@ textarea:focus-visible {
   .ws-label {
     font-size: 11px;
   }
+}
+
+.wizard-servers {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--sheet-2);
+  border: 1px solid var(--line);
+}
+.ws-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--mute);
+  font-size: 13.5px;
+}
+.ws-row .ws-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ws-row b {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* Phone: everything tappable at least 40px tall */
+@media (max-width: 760px) {
+  .switch { width: 46px; height: 28px; }
+  .switch::after { width: 22px; height: 22px; }
+  .switch.on::after { transform: translateX(18px); }
+  .color-swatch { width: 36px; height: 36px; }
+  .search-box .ib { width: 40px; height: 40px; }
+  .op { padding: 9px 12px; font-size: 13px; }
+  .sig-toolbar button, .sig-tool { min-width: 40px; height: 40px; }
 }

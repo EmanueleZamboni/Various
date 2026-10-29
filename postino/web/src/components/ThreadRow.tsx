@@ -1,6 +1,6 @@
 import { useRef, useState, type PointerEvent } from 'react';
-import type { Account, ThreadAction, ThreadSummary } from '../api/types';
-import { Icon } from '../icons';
+import type { Account, ThreadAction, ThreadSummary, SwipeAction } from '../api/types';
+import { Icon, type IconName } from '../icons';
 import { displayName, formatListDate, participantsLabel } from '../util/format';
 import { Avatar } from './Avatar';
 
@@ -18,13 +18,25 @@ type Props = {
   accountLabel: string;
   onOpen: () => void;
   onSwipe: (dir: 'left' | 'right') => void;
+  /** What each swipe does (from settings), for the label and whether the row leaves the list. */
+  swipeActions?: { left: SwipeAction; right: SwipeAction };
   onAction: (a: ThreadAction) => void;
   onPrefetch: () => void;
 };
 
 const THRESHOLD = 88;
 
-export function ThreadRow({ thread: t, account, myEmails, selected, focused, highlight, compact, previewLines = 1, showAvatar = true, showAccount, accountLabel, onOpen, onSwipe, onAction, onPrefetch }: Props) {
+const SWIPE_META: Record<SwipeAction, { label: (t: ThreadSummary) => string; icon: IconName; removes: boolean; tone: 'green' | 'red' | 'blue' }> = {
+  archive: { label: () => 'Archive', icon: 'archive', removes: true, tone: 'green' },
+  trash: { label: () => 'Delete', icon: 'trash', removes: true, tone: 'red' },
+  junk: { label: () => 'Spam', icon: 'spam', removes: true, tone: 'red' },
+  pin: { label: (t) => (t.pinned ? 'Unpin' : 'Pin'), icon: 'pin', removes: false, tone: 'blue' },
+  read: { label: (t) => (t.unread ? 'Mark read' : 'Mark unread'), icon: 'mailOpen', removes: false, tone: 'blue' },
+};
+
+export function ThreadRow({ thread: t, account, myEmails, selected, focused, highlight, compact, previewLines = 1, showAvatar = true, showAccount, accountLabel, onOpen, onSwipe, onAction, onPrefetch, swipeActions }: Props) {
+  const leftMeta = SWIPE_META[swipeActions?.left ?? 'archive'];
+  const rightMeta = SWIPE_META[swipeActions?.right ?? 'pin'];
   const [dx, setDx] = useState(0);
   const [dir, setDir] = useState<'left' | 'right' | null>(null);
   const start = useRef<{ x: number; y: number; active: boolean; id: number } | null>(null);
@@ -58,8 +70,9 @@ export function ThreadRow({ thread: t, account, myEmails, selected, focused, hig
     suppress.current = Date.now() + 350;
     if (Math.abs(dx) > THRESHOLD) {
       const d = dx > 0 ? 'right' : 'left';
-      if (d === 'left') {
-        setDx(-window.innerWidth);
+      const meta = d === 'left' ? leftMeta : rightMeta;
+      if (meta.removes) {
+        setDx(d === 'left' ? -window.innerWidth : window.innerWidth);
         window.setTimeout(() => {
           onSwipe(d);
           setDx(0);
@@ -84,17 +97,17 @@ export function ThreadRow({ thread: t, account, myEmails, selected, focused, hig
   return (
     <div className="row-wrap" role="listitem">
       {dir && (
-        <div className={`swipe-bg ${dir}`} aria-hidden="true">
+        <div className={`swipe-bg ${dir} tone-${(dir === 'right' ? rightMeta : leftMeta).tone}`} aria-hidden="true">
           <span style={{ transform: armed ? 'scale(1.08)' : undefined }}>
             {dir === 'right' ? (
               <>
-                <Icon name="pin" size={18} />
-                {t.pinned ? 'Unpin' : 'Pin'}
+                <Icon name={rightMeta.icon} size={18} />
+                {rightMeta.label(t)}
               </>
             ) : (
               <>
-                Archive
-                <Icon name="archive" size={18} />
+                {leftMeta.label(t)}
+                <Icon name={leftMeta.icon} size={18} />
               </>
             )}
           </span>

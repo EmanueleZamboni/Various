@@ -67,7 +67,7 @@ const qs = (params: Record<string, string | number | undefined | null>) => {
 export const api = {
   setup: {
     status: () => get<{ needsSetup: boolean }>('/api/setup'),
-    create: (password: string) => post<void>('/api/setup', { password }),
+    create: (password: string, code?: string) => post<void>('/api/setup', { password, code }),
   },
   auth: {
     login: (password: string, totp?: string) => post<void>('/api/login', { password, totp }),

@@ -75,20 +75,43 @@ export function participantsLabel(list: Address[], me: Set<string>, max = 3): st
   return `${uniq.slice(0, max).join(', ')} +${uniq.length - max}`;
 }
 
+/** Split on commas/semicolons that are outside quotes and angle brackets (same rule as the server). */
+export function splitAddresses(s: string): string[] {
+  const parts: string[] = [];
+  let cur = '';
+  let inQ = false;
+  let depth = 0;
+  for (const ch of s) {
+    if (ch === '"') inQ = !inQ;
+    else if (!inQ && ch === '<') depth++;
+    else if (!inQ && ch === '>') depth = Math.max(0, depth - 1);
+    if (!inQ && depth === 0 && (ch === ',' || ch === ';')) {
+      if (cur.trim()) parts.push(cur.trim());
+      cur = '';
+    } else cur += ch;
+  }
+  if (cur.trim()) parts.push(cur.trim());
+  return parts;
+}
+
 export function parseAddressList(s: string): Address[] {
   const out: Address[] = [];
-  const re = /\s*(?:"?([^"<,]*?)"?\s*<([^>]+)>|([^\s,<>]+@[^\s,<>]+))\s*(?:,|$)/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(s))) {
-    if (m[2]) out.push({ name: (m[1] ?? '').trim(), email: m[2].trim() });
-    else if (m[3]) out.push({ name: '', email: m[3].trim() });
-    if (m.index === re.lastIndex) re.lastIndex++;
+  for (const part of splitAddresses(s)) {
+    const m = /^(?:"([^"]*)"|([^<]*?))\s*<([^>]+)>$/.exec(part);
+    if (m) out.push({ name: (m[1] ?? m[2] ?? '').trim(), email: m[3].trim() });
+    else if (/^[^\s<>]+@[^\s<>]+$/.test(part)) out.push({ name: '', email: part });
+    else {
+      const e = /[^\s<>"]+@[^\s<>"]+/.exec(part);
+      if (e) out.push({ name: part.replace(e[0], '').replace(/["<>]/g, '').trim(), email: e[0] });
+    }
   }
   return out;
 }
 
 export function formatAddress(a: Address): string {
-  return a.name && a.name !== a.email ? `${a.name} <${a.email}>` : a.email;
+  if (!a.name || a.name === a.email) return a.email;
+  const safe = a.name.replace(/"/g, '');
+  return /[,;<>@]/.test(safe) ? `"${safe}" <${a.email}>` : `${safe} <${a.email}>`;
 }
 
 export function isValidEmail(s: string): boolean {

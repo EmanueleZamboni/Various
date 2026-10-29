@@ -2,6 +2,9 @@ import path from 'node:path';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 
+// Files we create (database, attachments, backups made from them) are for this user only.
+process.umask(0o077);
+
 function env(name: string, fallback?: string): string {
   const v = process.env[name];
   if (v === undefined || v === '') {
@@ -20,7 +23,11 @@ fs.mkdirSync(path.join(dataDir, 'uploads'), { recursive: true });
 // generated once and kept next to the database so restarts keep working.
 function loadSecret(): string {
   const fromEnv = process.env.POSTINO_SECRET;
-  if (fromEnv && fromEnv.length >= 16) return fromEnv;
+  if (fromEnv) {
+    const weak = /change-me|example|secret|password|12345/i.test(fromEnv) || fromEnv.length < 24 || new Set(fromEnv).size < 10;
+    if (weak) throw new Error('POSTINO_SECRET is a placeholder or too weak. Generate one with: openssl rand -base64 32');
+    return fromEnv;
+  }
   const file = path.join(dataDir, 'secret.key');
   if (fs.existsSync(file)) return fs.readFileSync(file, 'utf8').trim();
   const generated = crypto.randomBytes(32).toString('base64url');

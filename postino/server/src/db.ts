@@ -275,6 +275,7 @@ addColumn('accounts', 'folder_overrides', "TEXT NOT NULL DEFAULT '{}'");
 addColumn('bodies', 'calendar_json', 'TEXT');
 addColumn('accounts', 'notify', "TEXT NOT NULL DEFAULT 'default'");
 addColumn('drafts', 'from_address', "TEXT NOT NULL DEFAULT ''");
+addColumn('auth', 'totp_last_step', 'INTEGER NOT NULL DEFAULT 0');
 
 // Plain-text signatures from the first release become rich signatures.
 {

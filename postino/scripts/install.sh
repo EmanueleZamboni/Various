@@ -25,10 +25,10 @@ if [ -f "$APP/.env" ]; then
   DOMAIN="$(grep -E '^POSTINO_DOMAIN=' "$APP/.env" | cut -d= -f2- || true)"
 fi
 if [ -z "${DOMAIN:-}" ]; then
-  if [ -t 0 ]; then
-    read -r -p "Domain that points at this server (e.g. mail.example.com): " DOMAIN </dev/tty
-  else
-    DOMAIN="${POSTINO_DOMAIN:-}"
+  DOMAIN="${POSTINO_DOMAIN:-}"
+  # Under `curl | bash` stdin is the pipe, so ask on the terminal itself.
+  if [ -z "$DOMAIN" ] && [ -r /dev/tty ] && [ -c /dev/tty ]; then
+    read -r -p "Domain that points at this server (e.g. mail.example.com): " DOMAIN </dev/tty || true
   fi
 fi
 [ -n "${DOMAIN:-}" ] || die "a domain name is needed (set POSTINO_DOMAIN=... when running non-interactively)"
@@ -46,9 +46,16 @@ fi
 # ---- 2. Firewall (Oracle's Ubuntu image blocks everything but SSH) -----------------
 if command -v iptables >/dev/null && sudo iptables -S INPUT 2>/dev/null | grep -q -- '--dport 22'; then
   say "Opening ports 80 and 443 in the local firewall"
+  # Insert just before the first REJECT/DROP rule (Oracle's image has one at the end), else append.
+  POS="$(sudo iptables -S INPUT | grep -n -m1 -E -- '-j (REJECT|DROP)' | cut -d: -f1 || true)"
   for p in 80 443; do
-    sudo iptables -C INPUT -m state --state NEW -p tcp --dport "$p" -j ACCEPT 2>/dev/null ||
-      sudo iptables -I INPUT 6 -m state --state NEW -p tcp --dport "$p" -j ACCEPT
+    if ! sudo iptables -C INPUT -m state --state NEW -p tcp --dport "$p" -j ACCEPT 2>/dev/null; then
+      if [ -n "$POS" ] && [ "$POS" -gt 1 ]; then
+        sudo iptables -I INPUT "$((POS - 1))" -m state --state NEW -p tcp --dport "$p" -j ACCEPT
+      else
+        sudo iptables -A INPUT -m state --state NEW -p tcp --dport "$p" -j ACCEPT
+      fi
+    fi
   done
   command -v netfilter-persistent >/dev/null && sudo netfilter-persistent save >/dev/null 2>&1 || true
 fi
@@ -66,6 +73,10 @@ if ! id -nG "$USER" | grep -qw docker; then
 fi
 DOCKER="docker"
 docker info >/dev/null 2>&1 || DOCKER="sudo docker"
+if ! $DOCKER compose version >/dev/null 2>&1; then
+  say "Installing the Docker Compose plugin"
+  sudo apt-get install -y -q docker-compose-plugin >/dev/null 2>&1 || curl -fsSL https://get.docker.com | sudo sh
+fi
 
 # ---- 4. Code ----------------------------------------------------------------------
 if [ -d "$DIR/.git" ]; then
@@ -112,10 +123,24 @@ cd "$APP"
 $DOCKER compose up -d --build
 
 say "Done"
+CODE=""
+for _ in $(seq 1 60); do
+  [ -f "$APP/data/setup-code.txt" ] && CODE="$(cat "$APP/data/setup-code.txt" 2>/dev/null || sudo cat "$APP/data/setup-code.txt" 2>/dev/null || true)"
+  [ -n "$CODE" ] && break
+  sleep 2
+done
 cat <<EOF
 
 Open  https://$DOMAIN  and follow the setup: choose a password, add your
 mailboxes, put it on your phone.
+
+EOF
+if [ -n "$CODE" ]; then
+  printf '  Your setup code (the first screen asks for it):  \033[1m%s\033[0m\n\n' "$CODE"
+else
+  echo "  The setup code appears in:  docker compose logs postino | grep -i 'setup code'"
+fi
+cat <<EOF
 
 Useful later (from $APP):
   docker compose logs -f postino      live log

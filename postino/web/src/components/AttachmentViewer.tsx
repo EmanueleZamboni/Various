@@ -6,6 +6,8 @@ import { formatBytes } from '../util/format';
 import { DriveActions } from './DriveActions';
 
 export type PreviewKind = 'image' | 'pdf' | 'text' | 'none';
+// Chrome on Android (and iOS Safari in an iframe) has no inline PDF viewer.
+const pdfInline = typeof navigator === 'undefined' ? true : (navigator as Navigator & { pdfViewerEnabled?: boolean }).pdfViewerEnabled !== false && !/Android|iPhone|iPad/i.test(navigator.userAgent);
 
 export function previewKind(a: Attachment): PreviewKind {
   const t = a.contentType.toLowerCase();
@@ -72,14 +74,15 @@ export function AttachmentViewer() {
       <div className="viewer-body">
         {many && <button className="viewer-nav prev" aria-label="Previous file" disabled={viewer.index === 0} onClick={() => setIndex(viewer.index - 1)}><Icon name="chevronRight" size={22} style={{ transform: 'rotate(180deg)' }} /></button>}
         {kind === 'image' && <img className="viewer-img" src={`${a.url}?inline=1`} alt={a.filename} />}
-        {kind === 'pdf' && <iframe className="viewer-frame" src={`${a.url}?inline=1#toolbar=1`} title={a.filename} />}
+        {kind === 'pdf' && pdfInline && <iframe className="viewer-frame" src={`${a.url}?inline=1#toolbar=1`} title={a.filename} />}
         {kind === 'text' && <pre className="viewer-text">{text ?? 'Loading'}</pre>}
-        {kind === 'none' && (
+        {(kind === 'none' || (kind === 'pdf' && !pdfInline)) && (
           <div className="viewer-none">
             <span className="att-ico big">{(a.filename.split('.').pop() ?? 'file').slice(0, 4).toUpperCase()}</span>
-            <p>No preview for this type of file.</p>
+            <p>{kind === 'pdf' ? 'This phone opens PDFs in its own viewer.' : 'No preview for this type of file.'}</p>
             <div className="row-inline" style={{ justifyContent: 'center' }}>
-              <a className="btn btn-primary" href={a.url} download={a.filename}><Icon name="download" size={15} />Download</a>
+              {kind === 'pdf' && <a className="btn btn-primary" href={`${a.url}?inline=1`} target="_blank" rel="noopener"><Icon name="external" size={15} />Open</a>}
+              <a className={`btn ${kind === 'pdf' ? 'btn-ghost' : 'btn-primary'}`} href={a.url} download={a.filename}><Icon name="download" size={15} />Download</a>
               <DriveActions attachment={a} />
             </div>
           </div>

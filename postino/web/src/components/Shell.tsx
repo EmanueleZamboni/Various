@@ -40,6 +40,7 @@ export function Shell({ me, forcedView, onLogout }: { me?: Me; forcedView?: stri
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
       const typing = !!target?.closest('input, textarea, select, [contenteditable="true"]');
+      if (ui.viewer) return; // the attachment viewer owns the keyboard while open
       if (e.key === 'Escape') {
         if (ui.shortcutsOpen) return ui.setShortcuts(false);
         if (ui.pendingBlock) return ui.setPendingBlock(null);

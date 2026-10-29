@@ -32,6 +32,11 @@ export function Reader({ view }: { view: string }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [replyMode, setReplyMode] = useState<ReplyMode | null>(null);
+  const setReplyOpen = useUI((s) => s.setReplyOpen);
+  useEffect(() => {
+    setReplyOpen(replyMode !== null);
+    return () => setReplyOpen(false);
+  }, [replyMode, setReplyOpen]);
   const [replyFor, setReplyFor] = useState<string | null>(null);
 
   const thread = data?.thread;

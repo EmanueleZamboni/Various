@@ -57,6 +57,8 @@ export function smtpTransport(account: AccountRow) {
     auth: { user: account.username, pass: decrypt(account.password_enc) },
     tls: { rejectUnauthorized: process.env.POSTINO_TLS_INSECURE !== '1' },
     connectionTimeout: 20_000,
+    // Plain ports (587/25) must upgrade to TLS before the login is sent.
+    requireTLS: !account.smtp_secure && process.env.POSTINO_TLS_INSECURE !== '1',
   });
 }
 

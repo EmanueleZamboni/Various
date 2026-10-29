@@ -188,7 +188,7 @@ export function SearchBar() {
               <div className="sec">Narrow it down</div>
               <div className="ops">
                 {OPERATORS.map((o) => (
-                  <button key={o.op} className="op" title={o.hint} onMouseDown={(e) => e.preventDefault()} onClick={() => replaceToken(value && !value.endsWith(' ') ? ` ${o.op}` : o.op)}>
+                  <button key={o.op} className="op" title={o.hint} onMouseDown={(e) => e.preventDefault()} onClick={() => { setValue((v) => (v.trim() ? v.trimEnd() + ' ' : '') + o.op); inputRef.current?.focus(); setActive(-1); }}>
                     {o.op}
                   </button>
                 ))}

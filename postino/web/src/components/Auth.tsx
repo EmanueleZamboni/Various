@@ -17,6 +17,7 @@ function Brand() {
 export function Setup({ onDone }: { onDone: () => void }) {
   const [pw, setPw] = useState('');
   const [pw2, setPw2] = useState('');
+  const [code, setCode] = useState('');
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
   const submit = async (e: FormEvent) => {
@@ -26,7 +27,7 @@ export function Setup({ onDone }: { onDone: () => void }) {
     if (pw !== pw2) return setErr('The two passwords do not match.');
     setBusy(true);
     try {
-      await api.setup.create(pw);
+      await api.setup.create(pw, code.trim());
       onDone();
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : 'Could not save the password.');
@@ -50,6 +51,11 @@ export function Setup({ onDone }: { onDone: () => void }) {
           <div className="field">
             <label htmlFor="setup-pw2">Repeat it</label>
             <input id="setup-pw2" className="input" type="password" autoComplete="new-password" value={pw2} onChange={(e) => setPw2(e.target.value)} />
+          </div>
+          <div className="field">
+            <label htmlFor="setup-code">Setup code</label>
+            <input id="setup-code" className="input" inputMode="numeric" autoComplete="off" placeholder="123456-123456" value={code} onChange={(e) => setCode(e.target.value)} />
+            <span className="help">Shown by the installer when it finished (later: <code>docker compose logs postino</code>). It proves this server is yours.</span>
           </div>
           {err && <p className="error-text" role="alert">{err}</p>}
           <button className="btn btn-primary btn-lg" type="submit" disabled={busy}>
@@ -89,9 +95,14 @@ export function Login({ onDone }: { onDone: () => void }) {
       }
       onDone();
     } catch (e) {
-      if (e instanceof ApiError && e.code === 'no_passkeys') {
+      if (e instanceof ApiError && (e.code === 'no_passkeys' || e.code === 'unknown_passkey' || e.code === 'verification_failed')) {
         setPasskeyHint(false);
-        setErr('No fingerprint login set up yet. Sign in with your password, then add it in Settings → Security.');
+        try {
+          localStorage.removeItem('postino.passkey');
+        } catch {
+          /* ignore */
+        }
+        setErr(e.code === 'no_passkeys' ? 'No fingerprint login set up yet. Sign in with your password, then add it in Settings → Security.' : 'This device is no longer registered for fingerprint sign-in. Use your password, then add it again in Settings → Security.');
       } else if ((e as Error).name === 'NotAllowedError') setErr('Fingerprint sign-in was cancelled.');
       else setErr(e instanceof ApiError ? e.message : 'Fingerprint sign-in did not work. Use your password.');
     } finally {

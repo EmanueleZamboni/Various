@@ -46,8 +46,12 @@ export function useNav() {
   );
 
   const go = useCallback((v: string, opts?: { account?: string | null }) => navigate(build(v, null, opts)), [build, navigate]);
-  const openThread = useCallback((tid: string) => navigate(build(view === 'settings' ? 'inbox' : view, tid)), [build, navigate, view]);
-  const closeThread = useCallback(() => navigate(build(view, null)), [build, navigate, view]);
+  const openThread = useCallback((tid: string) => navigate(build(view === 'settings' ? 'inbox' : view, tid), { state: { fromList: true } }), [build, navigate, view]);
+  // Opened from the list: go back so the phone's history does not pile up; otherwise (deep link, notification) replace.
+  const closeThread = useCallback(() => {
+    if ((window.history.state as { usr?: { fromList?: boolean } } | null)?.usr?.fromList) navigate(-1);
+    else navigate(build(view, null), { replace: true });
+  }, [build, navigate, view]);
   const setAccount = useCallback(
     (acc: string | null) => navigate(build(view === 'blocked' ? 'inbox' : view, null, { account: acc })),
     [build, navigate, view],

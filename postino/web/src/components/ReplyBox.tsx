@@ -47,13 +47,16 @@ export function ReplyBox({ message: m, mode, onModeChange, onClose, onSent }: {
   useEffect(() => {
     if (seeded.current || !drafts) return;
     seeded.current = true;
-    const d = drafts.find((x) => x.threadId === m.threadId && (x.inReplyTo === m.id || x.forwardOf === m.id || (!x.inReplyTo && !x.forwardOf)));
+    // Never replace what the user already typed, or a draft this box already created.
+    if (text.trim() || draft.current) return;
+    const d = drafts.find((x) => x.threadId === m.threadId && (x.inReplyTo === m.id || x.forwardOf === m.id));
     if (!d) return;
     draft.current = d;
     if (d.text) setText(d.text);
     if (d.to) setTo(d.to);
     if (d.cc) setCc(d.cc);
     setSaved(new Date(d.updatedAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [drafts, m.threadId, m.id]);
   const { data: signatures } = useSignatures();
   const [signatureId, setSignatureId] = useState<string>('');
@@ -72,8 +75,11 @@ export function ReplyBox({ message: m, mode, onModeChange, onClose, onSent }: {
       .then((p) => {
         if (!alive) return;
         setPrefill(p);
-        setTo(p.to);
-        setCc(p.cc);
+        // A reopened draft keeps its own recipients; a fresh reply takes the server's.
+        if (!draft.current) {
+          setTo(p.to);
+          setCc(p.cc);
+        }
         window.setTimeout(() => document.getElementById(mode === 'forward' && !p.to ? 'reply-to' : 'reply-text')?.focus(), 30);
       })
       .catch((e) => alive && setErr((e as Error).message));

@@ -68,6 +68,15 @@ export function AddressInput({ id, label, value, onChange, autoFocus, compact }:
         onFocus={() => setOpen(true)}
         onBlur={() => window.setTimeout(() => setOpen(false), 120)}
         onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            // Enter confirms the address being typed; it must never send the email.
+            e.preventDefault();
+            if (sugs.length && active >= 0) return pick(sugs[active]);
+            const v = value.trim();
+            if (v && !v.endsWith(',')) onChange(v + ', ');
+            setSugs([]);
+            return;
+          }
           if (!sugs.length) return;
           if (e.key === 'ArrowDown') {
             e.preventDefault();
@@ -75,7 +84,7 @@ export function AddressInput({ id, label, value, onChange, autoFocus, compact }:
           } else if (e.key === 'ArrowUp') {
             e.preventDefault();
             setActive((a) => Math.max(a - 1, -1));
-          } else if ((e.key === 'Enter' || e.key === 'Tab') && active >= 0) {
+          } else if (e.key === 'Tab' && active >= 0) {
             e.preventDefault();
             pick(sugs[active]);
           } else if (e.key === 'Escape') {

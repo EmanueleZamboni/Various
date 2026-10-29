@@ -174,6 +174,7 @@ export function ThreadList({ view }: { view: string }) {
       accountLabel={accountMap.get(t.accountId) ? accountLabel(accountMap.get(t.accountId)!.email, accounts ?? []) : ''}
       onOpen={() => open(t)}
       onSwipe={(dir) => swipe(t, dir)}
+      swipeActions={{ left: settings?.swipe.left ?? 'archive', right: settings?.swipe.right ?? 'pin' }}
       onAction={(action) => void act({ threadIds: [t.id], action, view })}
       onPrefetch={() => void qc.prefetchQuery({ queryKey: ['thread', t.id], queryFn: () => api.threads.get(t.id), staleTime: 10_000 })}
     />

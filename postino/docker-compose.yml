@@ -16,6 +16,13 @@ services:
       - POSTINO_TRUST_PROXY=true
     volumes:
       - ./data:/data
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     expose:
       - "8025"
     healthcheck:
@@ -28,7 +35,11 @@ services:
     image: caddy:2
     restart: unless-stopped
     logging: *logging
-    env_file: .env
+    security_opt:
+      - no-new-privileges:true
+    # Caddy only needs the host name, never the secret.
+    environment:
+      - POSTINO_DOMAIN=${POSTINO_DOMAIN}
     ports:
       - "80:80"
       - "443:443"

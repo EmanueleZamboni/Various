@@ -30,7 +30,7 @@ export async function sendPush(payload: { title: string; body: string; threadId?
         await webpush.sendNotification(JSON.parse(s.subscription_json), JSON.stringify(payload), { TTL: 3600, urgency: 'high' });
       } catch (err) {
         const code = (err as { statusCode?: number }).statusCode;
-        if (code === 404 || code === 410) {
+        if (code === 404 || code === 410 || code === 400 || code === 401 || code === 403 || code === 413 || /keys|p256dh|auth/i.test((err as Error).message || '')) {
           db.prepare('DELETE FROM push_subscriptions WHERE id = ?').run(s.id);
         } else {
           log.warn({ err: (err as Error).message }, 'push failed');
