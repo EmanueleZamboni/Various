@@ -346,6 +346,7 @@ textarea:focus-visible {
   gap: 9px;
   padding: 4px 8px 2px;
   color: var(--ink);
+  text-decoration: none;
 }
 .brand-mark {
   width: 26px;
@@ -446,6 +447,12 @@ textarea:focus-visible {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.acct .email {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 13px;
 }
 .acct-status {
   width: 8px;
@@ -996,6 +1003,12 @@ textarea:focus-visible {
 .back {
   display: none;
 }
+.desk {
+  display: contents;
+}
+.t-short {
+  display: none;
+}
 .r-scroll {
   flex: 1;
   min-height: 0;
@@ -1074,6 +1087,9 @@ textarea:focus-visible {
 }
 .msg-who b {
   font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .msg-who small,
 .msg-snip {
@@ -1387,6 +1403,12 @@ textarea:focus-visible {
 .search-box input::placeholder {
   color: var(--faint);
 }
+.search-box input::-webkit-search-cancel-button,
+.search-box input::-webkit-search-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+  display: none;
+}
 .search-box .ib {
   width: 28px;
   height: 28px;
@@ -1580,6 +1602,12 @@ textarea:focus-visible {
   background: none;
   outline: none;
   height: 44px;
+}
+.cfield select {
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .cfield select {
   cursor: pointer;
@@ -2009,6 +2037,18 @@ textarea:focus-visible {
   }
   .r-bar .desk {
     display: none;
+  }
+  .t-long {
+    display: none;
+  }
+  .t-short {
+    display: inline;
+  }
+  .block-label {
+    display: none;
+  }
+  .msg-time {
+    padding-top: 3px;
   }
   .r-bar {
     padding: 8px 10px;

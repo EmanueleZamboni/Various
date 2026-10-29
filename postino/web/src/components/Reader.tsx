@@ -161,7 +161,7 @@ export function Reader({ view }: { view: string }) {
     <section className="reader" aria-label="Conversation">
       <div className="r-bar">
         {backBtn}
-        <span className="desk" style={{ display: 'contents' }}>
+        <span className="desk">
           {!isDraft && (
             <>
               <button className="ib" onClick={() => doAct('archive')} title="Archive (e)" aria-label="Archive"><Icon name="archive" /></button>
@@ -181,7 +181,7 @@ export function Reader({ view }: { view: string }) {
         {canBlock && !isDraft && (
           <button className="btn btn-quiet btn-sm" onClick={() => ui.setPendingBlock({ email: lastIncoming!.from.email, name: displayName(lastIncoming!.from), threadId: thread.id })}>
             <Icon name="block" size={16} />
-            Block sender
+            <span className="block-label">Block sender</span>
           </button>
         )}
       </div>
@@ -317,7 +317,7 @@ function MessageCard({ message: m, thread, accountColor, myEmails, expanded, sin
             </button>
           </small>
         </div>
-        <span className="msg-time">{formatFullDate(m.date)}</span>
+        <span className="msg-time"><span className="t-long">{formatFullDate(m.date)}</span><span className="t-short">{formatListDate(m.date)}</span></span>
         <div className="msg-tools" onClick={(e) => e.stopPropagation()}>
           {m.draft ? (
             <button className="btn btn-ghost btn-sm" onClick={onEditDraft}>Edit draft</button>

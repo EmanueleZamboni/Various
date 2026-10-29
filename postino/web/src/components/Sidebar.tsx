@@ -87,8 +87,7 @@ export function Sidebar() {
           <button key={a.id} className={`nav-item${nav.accountId === a.id ? ' on' : ''}`} onClick={() => { nav.setAccount(a.id); setDrawer(false); }} title={a.error ?? a.email}>
             <i className="dot" style={{ ['--c' as string]: a.color }} />
             <span className="acct">
-              <span>{a.email.split('@')[0]}</span>
-              <small>{a.email}</small>
+              <span className="email">{a.email}</span>
             </span>
             {a.status === 'error' && <i className="acct-status err" aria-label="Connection problem" />}
             {a.status === 'syncing' && <i className="acct-status sync" aria-label="Syncing" />}

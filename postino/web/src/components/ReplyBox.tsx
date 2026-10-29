@@ -43,6 +43,7 @@ export function ReplyBox({ message: m, mode, onModeChange, onClose, onSent }: {
         setPrefill(p);
         setTo(p.to);
         setCc(p.cc);
+        window.setTimeout(() => document.getElementById(mode === 'forward' && !p.to ? 'reply-to' : 'reply-text')?.focus(), 30);
       })
       .catch((e) => alive && setErr((e as Error).message));
     return () => {
@@ -50,20 +51,25 @@ export function ReplyBox({ message: m, mode, onModeChange, onClose, onSent }: {
     };
   }, [m.id, mode]);
 
+  const saveDraft = async () => {
+    if (!text.trim()) return;
+    try {
+      const body = { accountId: m.accountId, to, cc, bcc: '', subject: prefill?.subject ?? '', text, inReplyTo: mode === 'forward' ? null : m.id, threadId: m.threadId };
+      draft.current = draft.current ? await api.drafts.update(draft.current.id, body) : await api.drafts.create(body);
+      setSaved(new Date().toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }));
+      qc.invalidateQueries({ queryKey: ['drafts'] });
+    } catch {
+      /* keep typing; the server may be briefly away */
+    }
+  };
+
   // Autosave as a draft after a pause in typing.
   useEffect(() => {
     if (!text.trim()) return;
     window.clearTimeout(saveTimer.current);
-    saveTimer.current = window.setTimeout(async () => {
-      try {
-        const body = { accountId: m.accountId, to, cc, bcc: '', subject: prefill?.subject ?? '', text, inReplyTo: mode === 'forward' ? null : m.id, threadId: m.threadId };
-        draft.current = draft.current ? await api.drafts.update(draft.current.id, body) : await api.drafts.create(body);
-        setSaved(new Date().toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }));
-      } catch {
-        /* keep typing; the server may be briefly away */
-      }
-    }, 1500);
+    saveTimer.current = window.setTimeout(() => void saveDraft(), 1500);
     return () => window.clearTimeout(saveTimer.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [text, to, cc, m, mode, prefill]);
 
   const send = async () => {
@@ -124,6 +130,14 @@ export function ReplyBox({ message: m, mode, onModeChange, onClose, onSent }: {
       }}
       onKeyDown={(e) => {
         if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') void send();
+        if (e.key === 'Escape') {
+          e.stopPropagation();
+          if (text.trim()) {
+            window.clearTimeout(saveTimer.current);
+            void saveDraft().then(() => toast({ text: 'Draft saved' }));
+            onClose();
+          } else void discard();
+        }
       }}
     >
       <div className="reply-from">

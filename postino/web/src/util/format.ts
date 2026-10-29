@@ -35,10 +35,22 @@ export function displayName(a: Address | undefined | null): string {
   return a.email;
 }
 
+const TITLES = new Set(['avv', 'dott', 'dr', 'ing', 'sig', 'sig.ra', 'prof', 'arch', 'geom', 'rag', 'mr', 'mrs', 'ms', 'miss', 'studio']);
+
 export function firstName(a: Address | undefined | null): string {
   const n = displayName(a);
-  const m = n.match(/^([^\s(,|·]+)/);
-  return m ? m[1] : n;
+  if (n.includes('@') && !n.includes(' ')) return n.split('@')[0];
+  const tokens = n.split(/[\s(,|·]+/).filter(Boolean);
+  const first = tokens.find((t) => !TITLES.has(t.replace(/\.$/, '').toLowerCase()));
+  return first ?? tokens[0] ?? n;
+}
+
+/** Short, unambiguous label for an account among its siblings: "collab", or "info@stostudio" when the local part repeats. */
+export function accountLabel(email: string, all: { email: string }[]): string {
+  const [local, domain = ''] = email.split('@');
+  const dupes = all.filter((x) => x.email.split('@')[0] === local).length;
+  if (dupes <= 1) return local;
+  return `${local}@${domain.replace(/\.[^.]+$/, '')}`;
 }
 
 export function initials(a: Address | string): string {

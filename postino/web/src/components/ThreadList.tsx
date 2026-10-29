@@ -6,7 +6,7 @@ import type { ThreadSummary, ThreadsResponse } from '../api/types';
 import { Icon, type IconName } from '../icons';
 import { useNav, VIEW_LABEL } from '../nav';
 import { useUI } from '../store';
-import { dayGroup, pluralize } from '../util/format';
+import { accountLabel, dayGroup, pluralize } from '../util/format';
 import { ThreadRow } from './ThreadRow';
 import { SearchBar } from './SearchBar';
 import { BlockedList } from './BlockedList';
@@ -70,7 +70,7 @@ export function ThreadList({ view }: { view: string }) {
   }, [main]);
 
   const counts = main.data?.pages[0]?.counts;
-  const title = isSearch ? 'Search' : view === 'inbox' && account ? account.email.split('@')[0] : view.startsWith('folder:') ? 'Folder' : VIEW_LABEL[view] ?? 'Mail';
+  const title = isSearch ? 'Search' : view === 'inbox' && account ? accountLabel(account.email, accounts ?? []) : view.startsWith('folder:') ? 'Folder' : VIEW_LABEL[view] ?? 'Mail';
   const subtitle = isSearch
     ? nav.q
       ? counts
@@ -105,6 +105,7 @@ export function ThreadList({ view }: { view: string }) {
       highlight={highlights[t.id]}
       compact={compact}
       showAccount={!nav.accountId}
+      accountLabel={accountMap.get(t.accountId) ? accountLabel(accountMap.get(t.accountId)!.email, accounts ?? []) : ''}
       onOpen={() => open(t)}
       onSwipe={(dir) => swipe(t, dir)}
       onAction={(action) => void act({ threadIds: [t.id], action, view })}
@@ -196,7 +197,7 @@ export function ThreadList({ view }: { view: string }) {
             {accounts!.map((a) => (
               <button key={a.id} className={`chip${nav.accountId === a.id ? ' on' : ''}`} onClick={() => nav.setAccount(a.id)}>
                 <i className="dot" style={{ ['--c' as string]: a.color }} />
-                {a.email.split('@')[0]}
+                {accountLabel(a.email, accounts!)}
               </button>
             ))}
           </div>

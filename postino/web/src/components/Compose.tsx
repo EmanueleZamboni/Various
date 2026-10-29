@@ -39,6 +39,7 @@ export function Compose() {
   }, [accounts, accountId]);
 
   const account = accounts?.find((a) => a.id === accountId);
+  const narrow = typeof window !== 'undefined' && window.matchMedia('(max-width: 760px)').matches;
 
   // Signature on first pick of account for a new message.
   useEffect(() => {
@@ -181,7 +182,7 @@ export function Compose() {
             <i className="dot" style={{ ['--c' as string]: account?.color }} />
             <select id="c-from" value={accountId} onChange={(e) => setAccountId(e.target.value)}>
               {(accounts ?? []).map((a) => (
-                <option key={a.id} value={a.id}>{a.name ? `${a.name} <${a.email}>` : a.email}</option>
+                <option key={a.id} value={a.id}>{a.name && !narrow ? `${a.name} <${a.email}>` : a.email}</option>
               ))}
             </select>
           </div>

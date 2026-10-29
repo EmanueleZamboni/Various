@@ -12,6 +12,7 @@ type Props = {
   highlight?: string;
   compact?: boolean;
   showAccount: boolean;
+  accountLabel: string;
   onOpen: () => void;
   onSwipe: (dir: 'left' | 'right') => void;
   onAction: (a: ThreadAction) => void;
@@ -20,7 +21,7 @@ type Props = {
 
 const THRESHOLD = 88;
 
-export function ThreadRow({ thread: t, account, myEmails, selected, focused, highlight, compact, showAccount, onOpen, onSwipe, onAction, onPrefetch }: Props) {
+export function ThreadRow({ thread: t, account, myEmails, selected, focused, highlight, compact, showAccount, accountLabel, onOpen, onSwipe, onAction, onPrefetch }: Props) {
   const [dx, setDx] = useState(0);
   const [dir, setDir] = useState<'left' | 'right' | null>(null);
   const start = useRef<{ x: number; y: number; active: boolean; id: number } | null>(null);
@@ -140,7 +141,7 @@ export function ThreadRow({ thread: t, account, myEmails, selected, focused, hig
               {showAccount && account && (
                 <span className="tag">
                   <i className="dot" style={{ ['--c' as string]: account.color }} />
-                  {account.email.split('@')[0]}
+                  {accountLabel}
                 </span>
               )}
               {t.hasAttachments && (
