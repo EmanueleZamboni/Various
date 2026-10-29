@@ -123,6 +123,8 @@ export const api = {
     add: (pattern: string, note?: string) => post<BlockedSender>('/api/blocked', { pattern, note }),
     remove: (id: string) => del<void>(`/api/blocked/${id}`),
     restore: (id: string) => post<{ moved: number }>(`/api/blocked/${id}/restore`),
+    importCandidates: () => get<{ candidates: { email: string; count: number }[] }>('/api/blocked/import'),
+    importRun: () => post<{ added: number }>('/api/blocked/import'),
   },
   search: {
     run: (params: { q: string; account?: string; limit?: number; before?: string }) =>

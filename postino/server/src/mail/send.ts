@@ -103,9 +103,10 @@ export async function sendMail(msg: Outgoing): Promise<{ messageId: string; raw:
   } finally {
     transport.close();
   }
-  // Keep a copy in Sent (vhosting's SMTP does not do it for us).
+  // Keep a copy in Sent (vhosting's SMTP does not do it for us). Gmail stores sent mail by itself.
   const sync = manager.get(msg.account.id);
-  if (sync) {
+  const providerSavesSent = /gmail\.com$|googlemail\.com$|google\.com$/i.test(msg.account.smtp_host);
+  if (sync && !providerSavesSent) {
     try {
       await sync.appendMessage('sent', raw, ['\\Seen']);
     } catch (err) {

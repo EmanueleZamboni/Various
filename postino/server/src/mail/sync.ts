@@ -30,7 +30,7 @@ export function detectRole(f: { path: string; name: string; specialUse?: string 
   if (su === '\\drafts') return 'drafts';
   if (su === '\\junk') return 'junk';
   if (su === '\\trash') return 'trash';
-  if (su === '\\archive') return 'archive';
+  if (su === '\\archive' || su === '\\all') return 'archive'; // Gmail's "All Mail": moving there = archiving
   const n = f.name.toLowerCase();
   const p = f.path.toLowerCase();
   if (/^(blocked|bloccati|blocked senders)$/.test(n)) return 'blocked';

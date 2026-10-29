@@ -294,3 +294,9 @@ When the message is held (undo delay or schedule) the response is `{ ok, queued:
 
 ### Threads
 `category` on `GET /api/threads` accepts a comma list (`person,notification`). `Message.knownSender` is true for people you have written to.
+
+### Google Drive
+`GET /api/google/status`, `POST /api/google/credentials { clientId, clientSecret }`, `GET /api/google/redirect-uri`, `POST /api/google/connect → { url }`, `GET /api/google/callback` (OAuth return), `POST /api/google/disconnect`, `POST /api/google/save { attachmentId, convertTo?: "document"|"spreadsheet"|"presentation" } → { webViewLink }`.
+
+### Calendar invitations
+`Message.calendar` (when a text/calendar part is present): `{ method, summary, description, location, start, end, allDay, organizer, attendees, googleLink }`.

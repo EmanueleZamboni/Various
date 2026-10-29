@@ -84,6 +84,31 @@ export function registerBlockedRoutes(app: FastifyInstance): void {
     return { moved };
   });
 
+  // Spark kept blocked mail in a "Blocked" folder; turn its senders into rules so new mail is caught too.
+  app.get('/api/blocked/import', async () => {
+    const rows = db
+      .prepare(`SELECT m.from_email AS email, COUNT(*) AS n FROM messages m JOIN folders f ON f.id = m.folder_id
+                WHERE f.role = 'blocked' AND m.from_email <> '' AND m.from_email NOT IN (SELECT pattern FROM blocked_senders)
+                GROUP BY m.from_email ORDER BY n DESC`)
+      .all() as { email: string; n: number }[];
+    return { candidates: rows.map((r) => ({ email: r.email, count: r.n })) };
+  });
+  app.post('/api/blocked/import', async () => {
+    const rows = db
+      .prepare(`SELECT DISTINCT m.from_email AS email FROM messages m JOIN folders f ON f.id = m.folder_id
+                WHERE f.role = 'blocked' AND m.from_email <> '' AND m.from_email NOT IN (SELECT pattern FROM blocked_senders)`)
+      .all() as { email: string }[];
+    const ins = db.prepare("INSERT OR IGNORE INTO blocked_senders(pattern, note) VALUES (?, 'Imported from the Blocked folder')");
+    let added = 0;
+    for (const r of rows) {
+      const mine = db.prepare('SELECT 1 FROM accounts WHERE lower(email) = ?').get(r.email);
+      if (mine) continue;
+      ins.run(r.email);
+      added++;
+    }
+    return { added };
+  });
+
   app.post<{ Body: { email?: string; category?: string } }>('/api/senders/category', async (req, reply) => {
     const email = String(req.body?.email || '').trim().toLowerCase();
     const category = String(req.body?.category || '');

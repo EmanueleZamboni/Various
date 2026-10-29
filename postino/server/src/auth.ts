@@ -41,7 +41,13 @@ export function isAuthenticated(req: FastifyRequest): boolean {
     db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(row.token_hash);
     return false;
   }
-  db.prepare("UPDATE sessions SET last_seen_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE token_hash = ?").run(row.token_hash);
+  const remaining = new Date(row.expires_at).getTime() - Date.now();
+  if (remaining < (config.sessionDays / 2) * 86400_000) {
+    // Sliding expiry: a device in regular use never gets logged out by surprise.
+    db.prepare("UPDATE sessions SET last_seen_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'), expires_at = ? WHERE token_hash = ?").run(new Date(Date.now() + config.sessionDays * 86400_000).toISOString(), row.token_hash);
+  } else {
+    db.prepare("UPDATE sessions SET last_seen_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE token_hash = ?").run(row.token_hash);
+  }
   return true;
 }
 

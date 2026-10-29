@@ -402,7 +402,7 @@ function MessageCard({ message: m, thread, accountColor, myEmails, expanded, sin
         )}
         {m.attachments.filter((a) => !a.inline).length > 0 && (
           <div className="atts">
-            {m.attachments.filter((a) => !a.inline).map((a) => <AttachmentChip key={a.id} a={a} all={m.attachments.filter((x) => !x.inline)} />)}
+            {m.attachments.filter((a) => !a.inline && !(m.calendar && /calendar|\/ics$/i.test(a.contentType))).map((a, _i, list) => <AttachmentChip key={a.id} a={a} all={list} />)}
           </div>
         )}
         {m.listUnsubscribe && !me && (
