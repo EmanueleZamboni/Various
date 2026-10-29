@@ -1,0 +1,830 @@
+<title>Postino Mail</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: Spark-style placement. Desktop = mailboxes | smart inbox | reader with actions on top and reply underneath.
+   Phone = one pane at a time, compose button bottom-right, reader actions in a bottom bar. */
+:root{
+  --bg:#E8EBF0; --surface:#FFFFFF; --surface-2:#F4F6F9; --line:#DCE1E8;
+  --fg:#14171C; --muted:#5D6571; --faint:#8A929E;
+  --accent:#F2B51A; --accent-ink:#1C1704; --sel:#FFF3CC;
+  --danger:#D2433A; --ok:#1E9C69; --on-solid:#FFFFFF;
+  --toast-bg:#1B1F27; --toast-fg:#F2F4F7;
+  --scrim:rgba(12,15,20,.42);
+  --shadow:0 1px 2px rgba(20,24,32,.06),0 10px 28px rgba(20,24,32,.10);
+  --a1:#3E7BFA; --a2:#E0567B; --a3:#16A37A; --a4:#9466E0; --a5:#E8792B; --a6:#13A1B5; --a7:#8C9A1F;
+  --f-display:"Bricolage Grotesque","Avenir Next",system-ui,sans-serif;
+  --f-body:"Geist",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --f-mono:"Geist Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0D1015; --surface:#151920; --surface-2:#1C212A; --line:#29303B;
+    --fg:#E7EAF0; --muted:#9BA3AF; --faint:#6C7480;
+    --accent:#F5C134; --accent-ink:#1C1704; --sel:#2C2818;
+    --danger:#F06A60; --ok:#3CC48C; --on-solid:#FFFFFF;
+    --toast-bg:#2A303B; --toast-fg:#F2F4F7;
+    --scrim:rgba(0,0,0,.55);
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 14px 34px rgba(0,0,0,.5);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0D1015; --surface:#151920; --surface-2:#1C212A; --line:#29303B;
+  --fg:#E7EAF0; --muted:#9BA3AF; --faint:#6C7480;
+  --accent:#F5C134; --accent-ink:#1C1704; --sel:#2C2818;
+  --danger:#F06A60; --ok:#3CC48C; --on-solid:#FFFFFF;
+  --toast-bg:#2A303B; --toast-fg:#F2F4F7;
+  --scrim:rgba(0,0,0,.55);
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 14px 34px rgba(0,0,0,.5);
+  color-scheme:dark;
+}
+
+*,*::before,*::after{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 var(--f-body);-webkit-font-smoothing:antialiased;overflow:hidden}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+input,textarea,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+p{margin:0}
+.i{fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+
+.app{height:100%;display:grid;grid-template-columns:256px minmax(340px,420px) minmax(0,1fr)}
+
+/* ---------- Sidebar ---------- */
+.sidebar{display:flex;flex-direction:column;gap:18px;padding:16px 12px 14px;overflow-y:auto;background:var(--bg)}
+.brand{display:flex;align-items:center;gap:10px;padding:2px 8px}
+.brand-mark{width:30px;height:30px;border-radius:9px;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;font:700 19px/1 var(--f-display)}
+.brand-name{font:700 21px/1 var(--f-display);letter-spacing:-.02em}
+.compose-btn{display:flex;align-items:center;justify-content:center;gap:8px;height:42px;border-radius:12px;background:var(--accent);color:var(--accent-ink);font-weight:600;box-shadow:0 1px 0 rgba(0,0,0,.08)}
+.compose-btn:hover{filter:brightness(1.04)}
+.nav{display:flex;flex-direction:column;gap:2px}
+.nav-label{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);padding:0 10px 6px}
+.nav-item{display:flex;align-items:center;gap:10px;width:100%;padding:7px 10px;border-radius:9px;color:var(--muted);text-align:left}
+.nav-item:hover{background:color-mix(in srgb,var(--fg) 6%,transparent);color:var(--fg)}
+.nav-item.on{background:var(--surface);color:var(--fg);box-shadow:0 1px 2px rgba(0,0,0,.06)}
+.n{margin-left:auto;font:500 12px var(--f-mono);color:var(--muted);font-variant-numeric:tabular-nums}
+.nav-item.on .n{color:var(--fg)}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--c);flex:none;display:inline-block}
+.acct-text{display:flex;flex-direction:column;min-width:0;line-height:1.3}
+.acct-text small{font-size:11.5px;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.side-foot{margin-top:auto;display:flex;flex-direction:column;gap:6px;padding:12px 10px 0;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
+.side-foot .line{display:flex;align-items:center;gap:8px}
+.side-foot .ok{color:var(--ok)}
+.theme-btn{display:flex;align-items:center;gap:8px;padding:6px 0;color:var(--muted)}
+.theme-btn:hover{color:var(--fg)}
+.preview-tag{font:500 11px var(--f-mono);color:var(--faint);letter-spacing:.02em}
+
+/* ---------- List ---------- */
+.list-pane{display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--surface);border-left:1px solid var(--line);border-right:1px solid var(--line)}
+.list-head{padding:14px 16px 12px;display:flex;flex-direction:column;gap:12px;border-bottom:1px solid var(--line)}
+.lh-row{display:flex;align-items:center;gap:8px}
+.lh-titles{min-width:0;flex:1}
+.lh-title{font:700 24px/1.1 var(--f-display);letter-spacing:-.02em;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lh-sub{font-size:12.5px;color:var(--muted);margin-top:3px}
+.seg{display:inline-flex;padding:2px;border-radius:9px;background:var(--surface-2);border:1px solid var(--line);flex:none}
+.seg button{height:28px;padding:0 10px;border-radius:7px;font-size:12.5px;color:var(--muted);font-weight:500}
+.seg button.on{background:var(--surface);color:var(--fg);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.search{display:flex;align-items:center;gap:8px;height:38px;padding:0 12px;border-radius:10px;background:var(--surface-2);border:1px solid var(--line);color:var(--muted)}
+.search:focus-within{border-color:var(--accent)}
+.search input{flex:1;min-width:0;border:0;background:none;outline:none;color:var(--fg)}
+.search input::placeholder{color:var(--faint)}
+.chips{display:none;gap:6px;overflow-x:auto;scrollbar-width:none;margin:0 -16px;padding:0 16px}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:none;display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 11px;border-radius:999px;border:1px solid var(--line);font-size:12.5px;color:var(--muted)}
+.chip.on{background:var(--fg);color:var(--surface);border-color:var(--fg)}
+.list{flex:1;min-height:0;overflow-y:auto;padding:2px 8px 110px}
+.sec{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);padding:16px 10px 6px;display:flex;align-items:center;gap:6px}
+
+.row-wrap{position:relative;border-radius:12px;overflow:hidden}
+.swipe-bg{position:absolute;inset:0;display:flex;align-items:center;justify-content:space-between;padding:0 22px;font-weight:600;font-size:13px;background:var(--surface-2)}
+.swipe-bg span{display:none;align-items:center;gap:8px}
+.row-wrap[data-dir="r"] .swipe-bg{background:var(--accent);color:var(--accent-ink)}
+.row-wrap[data-dir="l"] .swipe-bg{background:var(--ok);color:var(--on-solid);justify-content:flex-end}
+.row-wrap[data-dir="r"] .sw-l,.row-wrap[data-dir="l"] .sw-r{display:inline-flex}
+.row-wrap.armed .swipe-bg span{transform:scale(1.08)}
+.row{position:relative;display:flex;gap:12px;padding:11px 10px;border-radius:12px;background:var(--surface);cursor:pointer;touch-action:pan-y;transition:transform .2s ease,background .12s}
+.row:hover{background:var(--surface-2)}
+.row.sel{background:var(--sel)}
+.av{width:38px;height:38px;border-radius:50%;flex:none;display:grid;place-items:center;font:600 13px var(--f-body);background:color-mix(in srgb,var(--c) 22%,var(--surface));color:var(--fg)}
+.av.sm{width:32px;height:32px;font-size:12px}
+.row-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.row-top{display:flex;align-items:center;gap:6px;min-width:0}
+.who{font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.unread .who{font-weight:650}
+.cnt{font:500 11.5px var(--f-mono);color:var(--faint)}
+.when{margin-left:auto;padding-left:8px;font:400 12px var(--f-mono);color:var(--faint);white-space:nowrap;font-variant-numeric:tabular-nums}
+.unread .when{color:var(--fg)}
+.udot{width:8px;height:8px;border-radius:50%;background:var(--accent);flex:none}
+.subj{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.unread .subj{font-weight:600}
+.snip{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted);font-size:13px}
+.meta{display:flex;align-items:center;gap:10px;margin-top:4px;font-size:11.5px;color:var(--faint)}
+.tag{display:inline-flex;align-items:center;gap:5px}
+.tag .dot{width:7px;height:7px}
+.tag.pinned{color:var(--fg)}
+.tag.draft{color:var(--danger);font-weight:600}
+.row-actions{position:absolute;right:8px;bottom:7px;display:none;gap:2px;background:var(--surface);padding:2px;border-radius:9px;box-shadow:var(--shadow);border:1px solid var(--line)}
+@media (hover:hover){.row:hover .row-actions{display:flex}}
+.ib{width:32px;height:32px;display:grid;place-items:center;border-radius:8px;color:var(--muted);flex:none}
+.ib:hover{background:color-mix(in srgb,var(--fg) 8%,transparent);color:var(--fg)}
+.ib.on{color:var(--fg)}
+
+.card{margin:10px 2px 4px;border:1px solid var(--line);border-radius:14px;background:var(--surface);overflow:hidden}
+.card-head{display:flex;align-items:center;gap:10px;width:100%;padding:11px 12px;text-align:left}
+.card-ico{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:var(--surface-2);color:var(--muted);flex:none}
+.card-head b{font-weight:600}
+.pill{font:500 11px var(--f-mono);padding:2px 7px;border-radius:999px;background:var(--accent);color:var(--accent-ink)}
+.card-more{margin-left:auto;font-size:12.5px;color:var(--muted);display:inline-flex;align-items:center;gap:4px}
+.card-head:hover .card-more{color:var(--fg)}
+.mini{display:flex;align-items:center;gap:10px;padding:8px 12px;border-top:1px solid var(--line);cursor:pointer}
+.mini:hover{background:var(--surface-2)}
+.mini.sel{background:var(--sel)}
+.mini .who{flex:0 1 auto;max-width:42%;font-size:13px}
+.mini .subj{flex:1;min-width:0;font-size:13px;color:var(--muted)}
+.mini.unread .subj{color:var(--fg)}
+.mini .when{padding-left:4px}
+.mini .udot{visibility:hidden}
+.mini.unread .udot{visibility:visible}
+
+.brow{display:flex;align-items:center;gap:12px;padding:12px 10px;border-bottom:1px solid var(--line)}
+.brow .row-main small{color:var(--faint);font-size:11.5px}
+.note{padding:14px 10px 6px;color:var(--muted);font-size:13px;max-width:52ch}
+
+/* ---------- Reader ---------- */
+.reader{display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--surface)}
+.r-bar{display:flex;align-items:center;gap:2px;padding:10px 14px;border-bottom:1px solid var(--line);min-height:57px}
+.r-bar .sp{flex:1}
+.r-bar .div{width:1px;height:20px;background:var(--line);margin:0 6px}
+.back{display:none}
+.desk{display:contents}
+.r-scroll{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column}
+.r-inner{width:100%;max-width:780px;margin:0 auto;padding:26px 32px 40px;display:flex;flex-direction:column;gap:12px}
+.acct-chip{align-self:flex-start;display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);padding:4px 10px 4px 9px;border-radius:999px;background:color-mix(in srgb,var(--c) 13%,var(--surface))}
+.r-subj{font:700 clamp(22px,2.3vw,29px)/1.15 var(--f-display);letter-spacing:-.02em;margin:0 0 6px;text-wrap:balance}
+.msg{border:1px solid var(--line);border-radius:14px;background:var(--surface)}
+.msg-head{display:flex;gap:12px;align-items:center;padding:13px 16px}
+.msg.collapsed{cursor:pointer;background:var(--surface-2)}
+.msg.collapsed:hover{border-color:color-mix(in srgb,var(--fg) 22%,var(--line))}
+.msg-who{display:flex;flex-direction:column;min-width:0;line-height:1.35}
+.msg-who b{font-weight:600}
+.msg-who small,.msg-snip{color:var(--muted);font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.msg-time{margin-left:auto;padding-left:10px;font:12px var(--f-mono);color:var(--faint);white-space:nowrap;align-self:flex-start;margin-top:3px}
+.msg-body{padding:0 20px 18px 60px;display:flex;flex-direction:column;gap:11px;line-height:1.62;max-width:72ch}
+.atts{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
+.att{display:flex;align-items:center;gap:10px;padding:7px 12px 7px 7px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2);max-width:100%;text-align:left}
+.att:hover{border-color:color-mix(in srgb,var(--fg) 25%,var(--line))}
+.att-ico{width:30px;height:34px;border-radius:6px;display:grid;place-items:center;font:600 9px var(--f-mono);letter-spacing:.04em;background:var(--fg);color:var(--surface);flex:none}
+.att-name{display:flex;flex-direction:column;min-width:0;line-height:1.3;font-size:13px}
+.att-name span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.att-name small{color:var(--faint);font:11.5px var(--f-mono)}
+.reply{margin-top:6px;border:1px solid var(--line);border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:8px;background:var(--surface-2)}
+.reply:focus-within{border-color:var(--accent)}
+.reply-from{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--muted)}
+.reply-from b{color:var(--fg);font-weight:500}
+.reply textarea{border:0;background:none;resize:vertical;outline:none;min-height:66px;line-height:1.5;width:100%}
+.reply textarea::placeholder{color:var(--faint)}
+.reply-actions{display:flex;align-items:center;gap:6px}
+.reply-actions .sp{flex:1}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:36px;padding:0 14px;border-radius:10px;font-weight:600;white-space:nowrap}
+.btn.sm{height:32px;padding:0 11px;font-size:13px}
+.btn-accent{background:var(--accent);color:var(--accent-ink)}
+.btn-ghost{border:1px solid var(--line);color:var(--fg);background:var(--surface)}
+.btn-ghost:hover{background:var(--surface-2)}
+.btn-danger{background:var(--danger);color:var(--on-solid)}
+.btn-block{color:var(--danger)}
+.empty{margin:auto;text-align:center;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:10px;padding:40px 24px;max-width:360px}
+.empty h2{font:700 20px/1.2 var(--f-display);color:var(--fg);margin:0;letter-spacing:-.01em}
+.empty .big{width:56px;height:56px;border-radius:16px;display:grid;place-items:center;background:var(--surface-2);color:var(--muted);margin-bottom:4px}
+.keys{display:flex;flex-wrap:wrap;justify-content:center;gap:6px 12px;font-size:12px;margin-top:8px}
+.kbd{font:11.5px var(--f-mono);padding:1px 6px;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;color:var(--fg);background:var(--surface)}
+.r-actions{display:none}
+
+/* ---------- Overlays ---------- */
+.drawer-scrim{display:none}
+.fab{display:none}
+.scrim{position:fixed;inset:0;background:var(--scrim);display:grid;place-items:center;padding:16px;z-index:50}
+.sheet{width:min(600px,100%);background:var(--surface);border-radius:16px;box-shadow:var(--shadow);border:1px solid var(--line);display:flex;flex-direction:column;max-height:calc(100% - 32px);overflow:hidden}
+.sheet.small{width:min(420px,100%);padding:22px;gap:12px}
+.sheet.small h2{font:700 20px/1.2 var(--f-display);margin:0;letter-spacing:-.01em}
+.sheet.small p{color:var(--muted);line-height:1.55}
+.sheet.small b{color:var(--fg);font-weight:600;word-break:break-all}
+.sheet-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:6px}
+.compose-top{display:flex;align-items:center;gap:8px;padding:12px 10px 12px 18px;border-bottom:1px solid var(--line)}
+.compose-top h2{font:700 18px/1 var(--f-display);margin:0;flex:1}
+.field{display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--line);padding:0 18px;min-height:46px}
+.field label{font-size:13px;color:var(--faint);width:52px;flex:none}
+.field input,.field select{flex:1;min-width:0;border:0;background:none;outline:none;height:44px}
+.field select{cursor:pointer}
+.field select option{background:var(--surface);color:var(--fg)}
+.compose textarea{flex:1;min-height:220px;border:0;padding:16px 18px;resize:none;outline:none;background:none;line-height:1.55;width:100%}
+.compose-foot{display:flex;align-items:center;gap:8px;padding:12px 14px;border-top:1px solid var(--line)}
+.compose-foot .err{color:var(--danger);font-size:13px;flex:1}
+.toast{position:fixed;left:50%;bottom:calc(22px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);display:flex;gap:14px;align-items:center;padding:10px 10px 10px 16px;border-radius:12px;background:var(--toast-bg);color:var(--toast-fg);box-shadow:var(--shadow);z-index:70;font-size:13.5px;max-width:calc(100% - 32px)}
+.toast span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.toast button{color:#F5C134;font-weight:600;padding:6px 10px;border-radius:8px;flex:none}
+.toast button:hover{background:rgba(255,255,255,.08)}
+
+/* ---------- Tablet: mailboxes become a drawer ---------- */
+@media (max-width:1100px){
+  .app{grid-template-columns:minmax(320px,380px) minmax(0,1fr)}
+  .sidebar{position:fixed;top:0;bottom:0;left:0;width:min(300px,86vw);z-index:40;transform:translateX(-102%);transition:transform .25s ease;box-shadow:var(--shadow);
+    padding-top:calc(16px + env(safe-area-inset-top,0px));padding-bottom:calc(14px + env(safe-area-inset-bottom,0px));padding-left:calc(12px + env(safe-area-inset-left,0px))}
+  .app[data-drawer="open"] .sidebar{transform:none}
+  .app[data-drawer="open"] .drawer-scrim{display:block;position:fixed;inset:0;background:var(--scrim);z-index:39}
+  .sidebar .compose-btn{display:none}
+  .menu-btn{display:grid}
+  .chips{display:flex}
+  .list-pane{border-left:0}
+  .fab{display:flex;align-items:center;gap:8px;position:fixed;z-index:30;right:calc(18px + env(safe-area-inset-right,0px));bottom:calc(18px + env(safe-area-inset-bottom,0px));height:54px;padding:0 20px 0 18px;border-radius:18px;background:var(--accent);color:var(--accent-ink);font-weight:600;box-shadow:var(--shadow)}
+}
+@media (min-width:1101px){.menu-btn{display:none}}
+
+/* ---------- Phone: one pane at a time ---------- */
+@media (max-width:760px){
+  .app{grid-template-columns:minmax(0,1fr)}
+  .list-pane{border:0}
+  .reader{display:none}
+  .app[data-view="reader"] .reader{display:flex}
+  .app[data-view="reader"] .list-pane,.app[data-view="reader"] .fab{display:none}
+  .back{display:grid}
+  .r-bar .desk{display:none}
+  .r-inner{padding:18px 16px 28px}
+  .msg-head{padding:12px 14px}
+  .msg-body{padding:0 14px 16px}
+  .r-actions{display:flex;justify-content:space-around;border-top:1px solid var(--line);background:var(--surface);padding:6px 8px calc(6px + env(safe-area-inset-bottom,0px))}
+  .r-actions button{display:flex;flex-direction:column;align-items:center;gap:2px;font-size:11px;color:var(--muted);padding:6px 8px;border-radius:10px;min-width:56px}
+  .r-actions button:hover{color:var(--fg)}
+  .lh-title{font-size:22px}
+  .scrim.full{padding:0;place-items:stretch}
+  .scrim.full .sheet{width:100%;max-height:none;height:100%;border-radius:0;border:0;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+  .toast{bottom:calc(84px + env(safe-area-inset-bottom,0px))}
+}
+@media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+<div class="app" id="app" data-view="list" data-drawer="closed">
+  <aside class="sidebar" id="sidebar" aria-label="Mailboxes"></aside>
+  <div class="drawer-scrim" data-act="close-drawer"></div>
+
+  <section class="list-pane" aria-label="Conversations">
+    <header class="list-head">
+      <div class="lh-row">
+        <button class="ib menu-btn" data-act="menu" aria-label="Open mailboxes" title="Mailboxes"></button>
+        <div class="lh-titles">
+          <h1 class="lh-title" id="list-title">Inbox</h1>
+          <div class="lh-sub" id="list-sub"></div>
+        </div>
+        <div class="seg" id="seg" role="group" aria-label="Inbox view">
+          <button data-act="smart-on" id="seg-smart">Smart</button>
+          <button data-act="smart-off" id="seg-all">All</button>
+        </div>
+      </div>
+      <label class="search" for="q"><span id="search-ico"></span><input id="q" type="search" placeholder="Search all 7 accounts" autocomplete="off"></label>
+      <div class="chips" id="chips" role="group" aria-label="Filter by account"></div>
+    </header>
+    <div class="list" id="list"></div>
+  </section>
+
+  <section class="reader" aria-label="Conversation">
+    <div class="r-bar" id="reader-bar"></div>
+    <div class="r-scroll" id="reader-scroll"></div>
+    <nav class="r-actions" id="reader-actions" aria-label="Conversation actions"></nav>
+  </section>
+
+  <button class="fab" data-act="compose" id="fab" aria-label="Write an email"></button>
+</div>
+
+<div class="scrim full" id="compose" hidden>
+  <form class="sheet compose" id="compose-form" novalidate>
+    <div class="compose-top">
+      <h2>New email</h2>
+      <button type="button" class="ib" data-act="close-compose" aria-label="Close" id="compose-x"></button>
+    </div>
+    <div class="field"><label for="c-from">From</label><span class="dot" id="c-dot"></span><select id="c-from"></select></div>
+    <div class="field"><label for="c-to">To</label><input id="c-to" type="email" placeholder="name@example.com" autocomplete="off"></div>
+    <div class="field"><label for="c-subj">Subject</label><input id="c-subj" type="text" autocomplete="off"></div>
+    <textarea id="c-body" placeholder="Write your message"></textarea>
+    <div class="compose-foot">
+      <span class="err" id="c-err" role="alert"></span>
+      <button type="button" class="ib" title="Attach a file" aria-label="Attach a file" id="c-clip"></button>
+      <button type="submit" class="btn btn-accent" id="c-send">Send</button>
+    </div>
+  </form>
+</div>
+
+<div class="scrim" id="confirm" hidden>
+  <div class="sheet small" role="dialog" aria-modal="true" aria-labelledby="cf-title">
+    <h2 id="cf-title"></h2>
+    <p id="cf-body"></p>
+    <div class="sheet-actions">
+      <button class="btn btn-ghost" data-act="cf-cancel" id="cf-cancel">Cancel</button>
+      <button class="btn btn-danger" data-act="cf-ok" id="cf-ok">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script>
+/* ---------- Icons ---------- */
+const I={
+  inbox:'<path d="M3 13h5l1.5 3h5L16 13h5"/><path d="M5.5 5h13L21 13v6H3v-6z"/>',
+  pin:'<path d="M9 3h6l-1 6 4 4H6l4-4z"/><path d="M12 13v8"/>',
+  send:'<path d="M21 3 10 14"/><path d="M21 3l-7 18-4-7-7-4z"/>',
+  draft:'<path d="M14 3H6v18h12V7z"/><path d="M14 3v4h4"/>',
+  archive:'<path d="M3 4h18v4H3z"/><path d="M5 8v12h14V8"/><path d="M10 12h4"/>',
+  spam:'<path d="M8 3h8l5 5v8l-5 5H8l-5-5V8z"/><path d="M12 8v5"/><path d="M12 16.5v.5"/>',
+  trash:'<path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/>',
+  block:'<circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/>',
+  back:'<path d="M15 5l-7 7 7 7"/>',
+  reply:'<path d="M10 6L4 12l6 6"/><path d="M4 12h10a6 6 0 0 1 6 6v1"/>',
+  clip:'<path d="M20 11l-8 8a5 5 0 0 1-7-7l9-9a3.5 3.5 0 0 1 5 5l-9 9a2 2 0 0 1-3-3l8-8"/>',
+  search:'<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>',
+  menu:'<path d="M4 7h16M4 12h16M4 17h16"/>',
+  pen:'<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13 7l4 4"/>',
+  x:'<path d="M6 6l12 12M18 6L6 18"/>',
+  sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+  moon:'<path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/>',
+  auto:'<circle cx="12" cy="12" r="9"/><path d="M12 3v18" /><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/>',
+  sync:'<path d="M4 12a8 8 0 0 1 14-5.3L20 9"/><path d="M20 4v5h-5"/><path d="M20 12a8 8 0 0 1-14 5.3L4 15"/><path d="M4 20v-5h5"/>',
+  chev:'<path d="M9 6l6 6-6 6"/>',
+  down:'<path d="M6 9l6 6 6-6"/>',
+  up:'<path d="M6 15l6-6 6 6"/>',
+  bell:'<path d="M6 16v-5a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>',
+  news:'<path d="M4 5h13v14H6a2 2 0 0 1-2-2z"/><path d="M17 9h3v8a2 2 0 0 1-2 2"/><path d="M7 9h7M7 12h7M7 15h4"/>',
+  mail:'<path d="M3 6h18v12H3z"/><path d="M3 7l9 6 9-6"/>',
+  unread:'<path d="M3 6h12"/><path d="M3 6v12h18v-7"/><path d="M3 7l9 6 4-2.7"/><circle cx="19.5" cy="5.5" r="2.5"/>',
+  devices:'<rect x="2" y="5" width="14" height="10" rx="1.5"/><path d="M1 18h16"/><rect x="18" y="8" width="5" height="11" rx="1"/>'
+};
+const ico=(n,s=18)=>`<svg class="i" width="${s}" height="${s}" viewBox="0 0 24 24" aria-hidden="true">${I[n]}</svg>`;
+
+/* ---------- Example data ---------- */
+const ACCOUNTS=[
+  {id:'personal',label:'Personal',addr:'yourname@gmail.com',c:'--a1'},
+  {id:'studio',  label:'Studio',  addr:'info@yourdomain.it',c:'--a2'},
+  {id:'shop',    label:'Shop',    addr:'shop@yourdomain.it',c:'--a3'},
+  {id:'billing', label:'Billing', addr:'billing@yourdomain.it',c:'--a4'},
+  {id:'press',   label:'Press',   addr:'press@yourdomain.it',c:'--a5'},
+  {id:'projects',label:'Projects',addr:'projects@yourdomain.it',c:'--a6'},
+  {id:'support', label:'Support', addr:'support@yourdomain.it',c:'--a7'}
+];
+const ME='me';
+const ago=m=>new Date(Date.now()-m*60000);
+const dayAt=(d,h,m)=>{const x=new Date();x.setDate(x.getDate()-d);x.setHours(h,m,0,0);return x};
+let uid=0;
+const T=o=>Object.assign({id:'t'+(++uid),folder:'inbox',kind:'person',unread:false,pinned:false},o);
+const P=(name,email)=>({name,email});
+
+const giulia=P('Giulia Bassi','giulia@studiobassi.it'), marco=P('Marco Ferri','marco@ferricostruzioni.it');
+const THREADS=[
+  T({acct:'studio',unread:true,subject:'Revised floor plans for Via Solferino',from:giulia,msgs:[
+    {from:ME,t:dayAt(2,17,40),body:['Hi Giulia, thanks for the site visit. Could you move the kitchen island 40 cm toward the window and send an updated plan? We would like to show the client on Friday.']},
+    {from:giulia,t:ago(18),body:['Ciao! Here is revision 3 with the island moved 40 cm and the pantry door flipped so it no longer hits the fridge.','I also added the lighting points you asked about. Let me know if the client wants the extra outlet by the sofa. It is an easy change now and a hard one after plastering.','Giulia'],att:[{name:'Pianta_rev3.pdf',size:'2.4 MB'},{name:'Illuminazione.pdf',size:'860 KB'}]}
+  ]}),
+  T({acct:'shop',kind:'notif',unread:true,subject:'New order #1048 · 2 items · €86.00',from:P('Shop orders','orders@yourdomain.it'),msgs:[
+    {from:P('Shop orders','orders@yourdomain.it'),t:ago(41),body:['You have a new order from Chiara M., shipping to Bologna.','Linen tote, natural × 1. Ceramic mug set × 1. Total €86.00.','Mark the order as shipped once the label is printed.']}]}),
+  T({acct:'shop',kind:'notif',unread:true,subject:'Your parcel is out for delivery',from:P('Corriere Rapido','tracking@corriererapido.example'),msgs:[
+    {from:P('Corriere Rapido','tracking@corriererapido.example'),t:ago(96),body:['Parcel CR-55120943 left the Milano depot this morning and will arrive between 14:00 and 18:00.']}]}),
+  T({acct:'billing',unread:true,subject:'Fattura n. 214 · ottobre',from:P('Studio Rinaldi','contabilita@studiorinaldi.it'),msgs:[
+    {from:P('Studio Rinaldi','contabilita@studiorinaldi.it'),t:ago(132),body:['Buongiorno,','in allegato la fattura n. 214 relativa al mese di ottobre. Il pagamento è da effettuare entro il 15 novembre tramite bonifico.','Restiamo a disposizione per qualsiasi chiarimento.','Cordiali saluti,\nStudio Rinaldi'],att:[{name:'Fattura_214.pdf',size:'120 KB'}]}]}),
+  T({acct:'personal',unread:true,subject:'Saturday dinner?',from:P('Luca Marchetti','luca.marchetti@gmail.com'),msgs:[
+    {from:P('Luca Marchetti','luca.marchetti@gmail.com'),t:ago(190),body:['Hey! A few of us are doing pizza at Da Gino on Saturday around 8. You in?','Bring Sara if she is free.']}]}),
+  T({acct:'personal',kind:'news',unread:true,subject:'Issue 112: Grids that breathe',from:P('Weekly Design Digest','digest@designweekly.example'),msgs:[
+    {from:P('Weekly Design Digest','digest@designweekly.example'),t:ago(300),body:['This week: why generous gutters make dense layouts easier to read, three studios that print their own catalogues, and a short guide to choosing paper weight.']}]}),
+  T({acct:'support',unread:true,subject:'Congratulations! You have been selected for a €500 gift card',from:P('Prize Department','winner@claim-prize-now.biz'),msgs:[
+    {from:P('Prize Department','winner@claim-prize-now.biz'),t:ago(352),body:['Dear customer, you have been selected! Confirm your details within 24 hours to claim your reward.','This is the kind of email the Block sender button is for.']}]}),
+  T({acct:'press',unread:true,subject:'Interview request: 20 minutes next week?',from:P('Sofia Lentini','s.lentini@abitareoggi.it'),msgs:[
+    {from:P('Sofia Lentini','s.lentini@abitareoggi.it'),t:dayAt(1,16,5),body:['Hello,','I am writing a piece on small studios that run their own product lines and would love to include you. Could we do a 20-minute call next week? Tuesday or Thursday afternoon works best for me.','Sofia Lentini\nAbitare Oggi']}]}),
+  T({acct:'projects',pinned:true,subject:'Timeline for phase 2',from:marco,msgs:[
+    {from:marco,t:dayAt(3,9,12),body:['Ciao, attached is the draft timeline for phase 2. The main risk is the window delivery: the supplier says week 48 at the earliest.'],att:[{name:'Timeline_fase2.xlsx',size:'44 KB'}]},
+    {from:ME,t:dayAt(3,10,3),body:['Thanks Marco. If the windows slip to week 48, can the plasterers start on the north rooms first?']},
+    {from:marco,t:dayAt(1,11,20),body:['Yes, that works. I have moved plastering in the north rooms to week 46 and the rest to week 49.','Updated timeline attached. If you are happy with it I will confirm with the crew on Monday.','Marco'],att:[{name:'Timeline_fase2_v2.xlsx',size:'48 KB'}]}
+  ]}),
+  T({acct:'support',subject:'Package arrived damaged (order #1031)',from:P('Anna Riva','anna.riva@libero.it'),msgs:[
+    {from:P('Anna Riva','anna.riva@libero.it'),t:dayAt(1,9,40),body:['Hi, my order arrived today but one of the mugs is chipped. I have attached a photo. Could you send a replacement?','Thanks, Anna'],att:[{name:'IMG_2281.jpg',size:'1.8 MB'}]}]}),
+  T({acct:'studio',subject:'Photos from the site visit',from:P('Elena Moro','elena@morofoto.it'),msgs:[
+    {from:P('Elena Moro','elena@morofoto.it'),t:dayAt(2,15,30),body:['Here are the best shots from Tuesday. Full resolution files are in the shared folder.'],att:[{name:'Solferino_01.jpg',size:'3.1 MB'},{name:'Solferino_02.jpg',size:'2.9 MB'},{name:'Solferino_03.jpg',size:'3.4 MB'}]}]}),
+  T({acct:'personal',subject:'Pranzo domenica',from:P('Mamma','mamma.family@gmail.com'),msgs:[
+    {from:P('Mamma','mamma.family@gmail.com'),t:dayAt(3,19,2),body:['Domenica vieni a pranzo? Faccio le lasagne.','Porta il vino buono, non quello dell\'altra volta.']}]}),
+  T({acct:'projects',subject:'Contract draft v2',from:P('Davide Costa','d.costa@costalegale.it'),msgs:[
+    {from:P('Davide Costa','d.costa@costalegale.it'),t:dayAt(4,12,15),body:['Attached is version 2 of the contract with your comments on payment terms. Clause 7 now caps late fees at 2% per month.'],att:[{name:'Contratto_v2.docx',size:'96 KB'}]}]}),
+  T({acct:'billing',kind:'notif',subject:'Your domain yourdomain.it renews in 30 days',from:P('NetHost','billing@nethost.example'),msgs:[
+    {from:P('NetHost','billing@nethost.example'),t:dayAt(5,8,0),body:['Your domain and the 6 mailboxes on it renew automatically on 28 November. No action is needed.']}]}),
+  T({acct:'press',kind:'news',subject:'This week: variable fonts in print',from:P('Typeset','hello@typeset.example'),msgs:[
+    {from:P('Typeset','hello@typeset.example'),t:dayAt(6,7,30),body:['Printers finally handle variable fonts well. We tested five of them and compared the results.']}]}),
+  T({acct:'personal',kind:'news',subject:'Morning brief: Thursday',from:P('Morning Brief','brief@morningbrief.example'),msgs:[
+    {from:P('Morning Brief','brief@morningbrief.example'),t:dayAt(1,6,45),body:['Five stories to start your day, in four minutes.']}]}),
+
+  T({acct:'studio',folder:'sent',sent:true,subject:'Re: Quote for the Monti apartment',from:P('Paolo Monti','paolo.monti@gmail.com'),msgs:[
+    {from:ME,t:dayAt(1,18,10),body:['Hi Paolo, attached is the quote we discussed. It covers design, permits and site supervision. Happy to walk you through it on a call.'],att:[{name:'Preventivo_Monti.pdf',size:'210 KB'}]}]}),
+  T({acct:'billing',folder:'sent',sent:true,subject:'Invoice 2026-041',from:P('Ferri Costruzioni','amministrazione@ferricostruzioni.it'),msgs:[
+    {from:ME,t:dayAt(4,10,0),body:['Good morning, please find invoice 2026-041 attached. Payment within 30 days, bank details on the invoice.']}]}),
+  T({acct:'shop',folder:'drafts',sent:true,subject:'Proposal for the spring collection',from:P('Laura Pini','laura@pinistudio.it'),msgs:[
+    {from:ME,t:dayAt(2,21,30),body:['Hi Laura, here are my first ideas for the spring collection: three glazes, two sizes, and a limited run of 200 pieces.']}]}),
+  T({acct:'support',folder:'spam',subject:'Your account will be suspended',from:P('Security Team','alert@acc0unt-verify.biz'),msgs:[
+    {from:P('Security Team','alert@acc0unt-verify.biz'),t:dayAt(2,3,12),body:['Verify your password now or lose access.']}]}),
+  T({acct:'shop',folder:'archive',subject:'Packaging samples shipped',from:P('Cartotecnica Sala','ordini@cartotecnicasala.it'),msgs:[
+    {from:P('Cartotecnica Sala','ordini@cartotecnicasala.it'),t:dayAt(9,11,0),body:['The kraft box samples left our warehouse today.']}]})
+];
+const BLOCKED=[{name:'Flash Deals',email:'offers@flashdeals.biz',date:dayAt(12,9,0)}];
+
+/* ---------- State and helpers ---------- */
+const FOLDERS=[
+  {id:'inbox',label:'Inbox',icon:'inbox'},
+  {id:'pinned',label:'Pinned',icon:'pin'},
+  {id:'sent',label:'Sent',icon:'send'},
+  {id:'drafts',label:'Drafts',icon:'draft'},
+  {id:'archive',label:'Archive',icon:'archive'},
+  {id:'spam',label:'Spam',icon:'spam'},
+  {id:'trash',label:'Trash',icon:'trash'},
+  {id:'blocked',label:'Blocked senders',icon:'block'}
+];
+const S={folder:'inbox',acct:'all',q:'',sel:null,smart:true,open:{notif:false,news:false},view:'list',drawer:false,order:[],expanded:new Set(),drafts:{}};
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const para=s=>esc(s).replace(/\n/g,'<br>');
+const acct=id=>ACCOUNTS.find(a=>a.id===id);
+const byId=id=>THREADS.find(t=>t.id===id);
+const initials=n=>n.split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase();
+const last=t=>t.msgs[t.msgs.length-1];
+const tTime=t=>last(t).t;
+const isNarrow=()=>matchMedia('(max-width:760px)').matches;
+const sameDay=(a,b)=>a.toDateString()===b.toDateString();
+function fmtWhen(d){
+  const n=new Date(),y=new Date(n);y.setDate(n.getDate()-1);
+  if(sameDay(d,n))return d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+  if(sameDay(d,y))return 'Yesterday';
+  if(n-d<6*864e5)return d.toLocaleDateString('en-GB',{weekday:'short'});
+  return d.toLocaleDateString('en-GB',{day:'numeric',month:'short'});
+}
+const fullWhen=d=>d.toLocaleString('en-GB',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
+function dayGroup(d){
+  const n=new Date(),y=new Date(n);y.setDate(n.getDate()-1);
+  if(sameDay(d,n))return 'Today';
+  if(sameDay(d,y))return 'Yesterday';
+  return n-d<7*864e5?'Earlier this week':'Older';
+}
+const inFolder=(t,f)=>f==='pinned'?t.pinned&&!['trash','spam'].includes(t.folder):t.folder===f;
+const hay=t=>[t.subject,t.from.name,t.from.email,...t.msgs.flatMap(m=>m.body)].join(' ').toLowerCase();
+function visible(){
+  const q=S.q.trim().toLowerCase();
+  return THREADS.filter(t=>inFolder(t,S.folder)&&(S.acct==='all'||t.acct===S.acct)&&(!q||hay(t).includes(q)))
+    .sort((a,b)=>tTime(b)-tTime(a));
+}
+
+/* ---------- Sidebar ---------- */
+const THEMES={system:{label:'Match system',icon:'auto'},light:{label:'Light',icon:'sun'},dark:{label:'Dark',icon:'moon'}};
+let theme=document.documentElement.dataset.theme||'system';
+function renderSidebar(){
+  const unread=(f,a)=>THREADS.filter(t=>inFolder(t,f)&&t.unread&&(!a||t.acct===a)).length;
+  const count=f=>f==='blocked'?BLOCKED.length:f==='drafts'?THREADS.filter(t=>t.folder==='drafts').length:unread(f);
+  const nav=FOLDERS.map(f=>{const n=count(f.id);return `<button class="nav-item${S.folder===f.id?' on':''}" data-folder="${f.id}">${ico(f.icon)}<span>${f.label}</span>${n?`<span class="n">${n}</span>`:''}</button>`}).join('');
+  const all=unread('inbox');
+  const accts=[`<button class="nav-item${S.acct==='all'?' on':''}" data-acct="all">${ico('mail')}<span>All accounts</span>${all?`<span class="n">${all}</span>`:''}</button>`]
+    .concat(ACCOUNTS.map(a=>{const n=unread('inbox',a.id);return `<button class="nav-item${S.acct===a.id?' on':''}" data-acct="${a.id}"><i class="dot" style="--c:var(${a.c})"></i><span class="acct-text"><span>${a.label}</span><small>${a.addr}</small></span>${n?`<span class="n">${n}</span>`:''}</button>`})).join('');
+  const th=THEMES[theme];
+  $('#sidebar').innerHTML=`
+    <div class="brand"><span class="brand-mark">p</span><span class="brand-name">postino</span></div>
+    <button class="compose-btn" data-act="compose">${ico('pen')} New email</button>
+    <nav class="nav" aria-label="Folders">${nav}</nav>
+    <nav class="nav" aria-label="Accounts"><div class="nav-label">Accounts</div>${accts}</nav>
+    <div class="side-foot">
+      <div class="line"><span class="ok">${ico('sync',15)}</span>Synced on phone and computer</div>
+      <button class="theme-btn" data-act="theme">${ico(th.icon,15)}Theme: ${th.label}</button>
+      <div class="preview-tag">Design preview · example mail</div>
+    </div>`;
+}
+
+/* ---------- List ---------- */
+function rowHTML(t){
+  const a=acct(t.acct),m=last(t),outgoing=t.sent;
+  const att=t.msgs.some(x=>x.att&&x.att.length);
+  S.order.push(t.id);
+  return `<div class="row-wrap" data-wrap="${t.id}">
+    <div class="swipe-bg"><span class="sw-l">${ico('pin')} ${t.pinned?'Unpin':'Pin'}</span><span class="sw-r">Archive ${ico('archive')}</span></div>
+    <div class="row${t.unread?' unread':''}${S.sel===t.id?' sel':''}" role="button" tabindex="0" data-id="${t.id}">
+      <div class="av" style="--c:var(${a.c})">${esc(initials(t.from.name))}</div>
+      <div class="row-main">
+        <div class="row-top">${t.unread?'<i class="udot" title="Unread"></i>':''}<span class="who">${outgoing?'To: ':''}${esc(t.from.name)}</span>${t.msgs.length>1?`<span class="cnt">${t.msgs.length}</span>`:''}<span class="when">${fmtWhen(tTime(t))}</span></div>
+        <div class="subj">${esc(t.subject)}</div>
+        <div class="snip">${esc(m.body[0])}</div>
+        <div class="meta"><span class="tag"><i class="dot" style="--c:var(${a.c})"></i>${a.label}</span>${att?`<span class="tag" title="Has attachments">${ico('clip',13)}</span>`:''}${t.pinned?`<span class="tag pinned">${ico('pin',13)}Pinned</span>`:''}${t.folder==='drafts'?'<span class="tag draft">Draft</span>':''}</div>
+      </div>
+      <div class="row-actions">
+        <button class="ib${t.pinned?' on':''}" data-act="pin" data-tid="${t.id}" title="${t.pinned?'Unpin':'Pin'}" aria-label="${t.pinned?'Unpin':'Pin'}">${ico('pin',16)}</button>
+        <button class="ib" data-act="archive" data-tid="${t.id}" title="Archive" aria-label="Archive">${ico('archive',16)}</button>
+        <button class="ib" data-act="trash" data-tid="${t.id}" title="Delete" aria-label="Delete">${ico('trash',16)}</button>
+      </div>
+    </div>
+  </div>`;
+}
+function cardHTML(key,label,icon,items){
+  if(!items.length)return '';
+  const open=S.open[key],shown=open?items:items.slice(0,3),newN=items.filter(t=>t.unread).length;
+  return `<section class="card" aria-label="${label}">
+    <button class="card-head" data-card="${key}" aria-expanded="${open}"><span class="card-ico">${ico(icon,16)}</span><b>${label}</b>${newN?`<span class="pill">${newN} new</span>`:''}
+      <span class="card-more">${items.length>3?(open?'Show less':`See all ${items.length}`):''}${items.length>3?ico(open?'up':'down',14):''}</span></button>
+    ${shown.map(t=>{S.order.push(t.id);return `<div class="mini${t.unread?' unread':''}${S.sel===t.id?' sel':''}" role="button" tabindex="0" data-id="${t.id}"><i class="udot"></i><span class="who">${esc(t.from.name)}</span><span class="subj">${esc(t.subject)}</span><span class="when">${fmtWhen(tTime(t))}</span></div>`}).join('')}
+  </section>`;
+}
+function renderList(){
+  const f=FOLDERS.find(x=>x.id===S.folder),a=S.acct==='all'?null:acct(S.acct);
+  $('#list-title').textContent=f.id==='inbox'&&a?a.label:f.label;
+  $('#seg').hidden=S.folder!=='inbox';
+  $('#seg-smart').classList.toggle('on',S.smart);
+  $('#seg-all').classList.toggle('on',!S.smart);
+  $('#chips').innerHTML=[`<button class="chip${S.acct==='all'?' on':''}" data-acct="all">All</button>`]
+    .concat(ACCOUNTS.map(x=>`<button class="chip${S.acct===x.id?' on':''}" data-acct="${x.id}"><i class="dot" style="--c:var(${x.c})"></i>${x.label}</button>`)).join('');
+  S.order=[];
+  const list=$('#list');
+  if(S.folder==='blocked'){
+    $('#list-sub').textContent=`${BLOCKED.length} blocked · applies on every device`;
+    list.innerHTML=`<p class="note">Mail from these senders skips your inbox and goes straight to Spam, on your phone and on your computer.</p>`+
+      (BLOCKED.length?BLOCKED.map(b=>`<div class="brow"><div class="av" style="--c:var(--danger)">${esc(initials(b.name))}</div><div class="row-main"><span class="who">${esc(b.name)}</span><span class="snip">${esc(b.email)}</span><small>Blocked ${fmtWhen(b.date)}</small></div><button class="btn btn-ghost sm" data-unblock="${esc(b.email)}">Unblock</button></div>`).join('')
+      :`<div class="empty"><h2>No blocked senders</h2><p>Open an email and choose Block sender to add one.</p></div>`);
+    return;
+  }
+  const items=visible(),unreadN=items.filter(t=>t.unread).length;
+  $('#list-sub').textContent=a&&f.id==='inbox'?`${a.addr} · ${unreadN} unread`:`${unreadN?unreadN+' unread · ':''}${items.length} conversation${items.length===1?'':'s'}`;
+  if(!items.length){
+    list.innerHTML=S.q?`<div class="empty"><h2>No results</h2><p>Nothing matches “${esc(S.q)}” in ${f.label}.</p></div>`
+      :`<div class="empty"><div class="big">${ico(f.icon,26)}</div><h2>${f.id==='inbox'?'All caught up':'Nothing here'}</h2><p>${f.id==='inbox'?'No new mail across your accounts.':`${f.label} is empty.`}</p></div>`;
+    return;
+  }
+  let html='';
+  if(S.folder==='inbox'&&S.smart&&!S.q){
+    const pins=items.filter(t=>t.pinned),rest=items.filter(t=>!t.pinned);
+    const people=rest.filter(t=>t.kind==='person');
+    if(pins.length)html+=`<div class="sec">${ico('pin',13)}Pinned</div>`+pins.map(rowHTML).join('');
+    if(people.length)html+=`<div class="sec">People</div>`+people.map(rowHTML).join('');
+    html+=cardHTML('notif','Notifications','bell',rest.filter(t=>t.kind==='notif'));
+    html+=cardHTML('news','Newsletters','news',rest.filter(t=>t.kind==='news'));
+  }else{
+    let g='';
+    for(const t of items){const d=dayGroup(tTime(t));if(d!==g){g=d;html+=`<div class="sec">${d}</div>`}html+=rowHTML(t)}
+  }
+  list.innerHTML=html;
+}
+
+/* ---------- Reader ---------- */
+function msgHTML(t,m,i){
+  const a=acct(t.acct),me=m.from===ME,p=me?{name:'You',email:a.addr}:m.from;
+  const avc=me?'--accent':a.c;
+  if(!S.expanded.has(i))return `<div class="msg collapsed" role="button" tabindex="0" data-expand="${i}"><div class="msg-head"><div class="av sm" style="--c:var(${avc})">${esc(initials(p.name))}</div><div class="msg-who"><b>${esc(p.name)}</b><span class="msg-snip">${esc(m.body[0])}</span></div><span class="msg-time">${fmtWhen(m.t)}</span></div></div>`;
+  const atts=(m.att||[]).map(x=>`<button class="att" data-act="attachment" title="Open ${esc(x.name)}"><span class="att-ico">${esc(x.name.split('.').pop().toUpperCase().slice(0,4))}</span><span class="att-name"><span>${esc(x.name)}</span><small>${x.size}</small></span></button>`).join('');
+  return `<article class="msg"><header class="msg-head"${S.expanded.size>1||t.msgs.length>1?` data-expand="${i}" style="cursor:pointer"`:''}><div class="av sm" style="--c:var(${avc})">${esc(initials(p.name))}</div><div class="msg-who"><b>${esc(p.name)}</b><small>${esc(p.email)} · to ${esc(me?t.from.email:a.addr)}</small></div><time class="msg-time">${fullWhen(m.t)}</time></header>
+    <div class="msg-body">${m.body.map(x=>`<p>${para(x)}</p>`).join('')}${atts?`<div class="atts">${atts}</div>`:''}</div></article>`;
+}
+function renderReader(){
+  const bar=$('#reader-bar'),body=$('#reader-scroll'),acts=$('#reader-actions');
+  const t=byId(S.sel);
+  const backBtn=`<button class="ib back" data-act="back" aria-label="Back to list">${ico('back',20)}</button>`;
+  if(!t||S.folder==='blocked'){
+    bar.innerHTML=backBtn;acts.innerHTML='';
+    body.innerHTML=S.folder==='blocked'
+      ?`<div class="empty"><div class="big">${ico('block',26)}</div><h2>Blocked senders</h2><p>Your block list is kept on the server, so a sender you block on your phone is blocked on your computer too.</p></div>`
+      :`<div class="empty"><div class="big">${ico('mail',26)}</div><h2>No conversation selected</h2><p>Pick an email from the list to read it here.</p>
+        <div class="keys"><span><span class="kbd">j</span> <span class="kbd">k</span> move</span><span><span class="kbd">e</span> archive</span><span><span class="kbd">p</span> pin</span><span><span class="kbd">c</span> new email</span><span><span class="kbd">/</span> search</span></div></div>`;
+    return;
+  }
+  const a=acct(t.acct),inSpam=t.folder==='spam',inTrash=t.folder==='trash',canBlock=!t.sent;
+  const spamBtn=inSpam?['restore','inbox','Not spam']:['spam','spam','Spam'];
+  bar.innerHTML=`${backBtn}
+    <span class="desk">
+      <button class="ib" data-act="archive" title="Archive (e)" aria-label="Archive">${ico('archive')}</button>
+      <button class="ib" data-act="${inTrash?'restore':'trash'}" title="${inTrash?'Restore':'Delete (#)'}" aria-label="${inTrash?'Restore':'Delete'}">${ico(inTrash?'inbox':'trash')}</button>
+      <button class="ib" data-act="${spamBtn[0]}" title="${spamBtn[2]}" aria-label="${spamBtn[2]}">${ico(spamBtn[1])}</button>
+      <span class="div"></span>
+      <button class="ib${t.pinned?' on':''}" data-act="pin" title="${t.pinned?'Unpin':'Pin'} (p)" aria-label="${t.pinned?'Unpin':'Pin'}">${ico('pin')}</button>
+      <button class="ib" data-act="unread" title="Mark as unread" aria-label="Mark as unread">${ico('unread')}</button>
+    </span>
+    <span class="sp"></span>
+    ${canBlock?`<button class="btn btn-ghost sm btn-block" data-act="block">${ico('block',16)}Block sender</button>`:''}`;
+  acts.innerHTML=`
+    <button data-act="archive">${ico('archive',20)}Archive</button>
+    <button data-act="${inTrash?'restore':'trash'}">${ico(inTrash?'inbox':'trash',20)}${inTrash?'Restore':'Delete'}</button>
+    <button data-act="pin">${ico('pin',20)}${t.pinned?'Unpin':'Pin'}</button>
+    <button data-act="${spamBtn[0]}">${ico(spamBtn[1],20)}${spamBtn[2]}</button>
+    <button data-act="focus-reply">${ico('reply',20)}Reply</button>`;
+  const replyTo=t.from.name.split(' ')[0];
+  body.innerHTML=`<div class="r-inner">
+    <span class="acct-chip" style="--c:var(${a.c})"><i class="dot"></i>${a.label} · ${a.addr}</span>
+    <h2 class="r-subj">${esc(t.subject)}</h2>
+    ${t.msgs.map((m,i)=>msgHTML(t,m,i)).join('')}
+    ${t.folder==='drafts'?'':`<form class="reply" id="reply-form">
+      <div class="reply-from">${ico('reply',15)}Reply to ${esc(replyTo)} from <i class="dot" style="--c:var(${a.c})"></i><b>${a.addr}</b></div>
+      <label for="reply-text" class="sr" hidden>Reply</label>
+      <textarea id="reply-text" rows="3" placeholder="Write a reply to ${esc(replyTo)}…">${esc(S.drafts[t.id]||'')}</textarea>
+      <div class="reply-actions"><button type="button" class="ib" data-act="attachment" title="Attach a file" aria-label="Attach a file">${ico('clip',17)}</button><span class="sp"></span><button class="btn btn-accent sm" type="submit">Send ${ico('send',15)}</button></div>
+    </form>`}
+  </div>`;
+}
+
+/* ---------- Actions ---------- */
+function render(){
+  const app=$('#app');
+  app.dataset.view=S.view;app.dataset.drawer=S.drawer?'open':'closed';
+  renderSidebar();renderList();renderReader();
+}
+function open(id){
+  const t=byId(id);if(!t)return;
+  const changed=S.sel!==id;
+  S.sel=id;t.unread=false;S.view='reader';
+  if(changed){S.expanded=new Set([t.msgs.length-1]);t.msgs.forEach((m,i)=>{if(i===t.msgs.length-2&&m.from===ME)S.expanded.add(i)})}
+  render();
+  if(changed)$('#reader-scroll').scrollTop=0;
+  const row=document.querySelector(`[data-id="${id}"]`);row&&row.scrollIntoView({block:'nearest'});
+}
+function leaveSelection(ids){
+  if(!ids.includes(S.sel))return;
+  const i=S.order.indexOf(S.sel);
+  const next=S.order.slice(i+1).find(x=>!ids.includes(x))||S.order.slice(0,i).reverse().find(x=>!ids.includes(x))||null;
+  if(isNarrow()||!next){S.sel=null;S.view='list'}
+  else{S.sel=next;const n=byId(next);n.unread=false;S.expanded=new Set([n.msgs.length-1])}
+}
+function move(t,folder,msg){
+  const prev=t.folder;
+  leaveSelection([t.id]);
+  t.folder=folder;render();
+  toast(msg,()=>{t.folder=prev;render()});
+}
+function act(name,id){
+  const t=byId(id||S.sel);if(!t)return;
+  switch(name){
+    case 'archive':return move(t,'archive','Archived');
+    case 'trash':return move(t,'trash','Moved to Trash');
+    case 'spam':return move(t,'spam','Marked as spam');
+    case 'restore':return move(t,'inbox','Moved to Inbox');
+    case 'pin':t.pinned=!t.pinned;render();return toast(t.pinned?'Pinned':'Unpinned');
+    case 'unread':t.unread=true;S.sel=null;S.view='list';render();return toast('Marked as unread');
+    case 'block':return askBlock(t);
+  }
+}
+let confirmOk=null;
+function askBlock(t){
+  $('#cf-title').textContent=`Block ${t.from.name}?`;
+  $('#cf-body').innerHTML=`Emails from <b>${esc(t.from.email)}</b> will skip your inbox and go straight to Spam, on your phone and on your computer. You can unblock them any time from Blocked senders.`;
+  $('#cf-ok').textContent='Block sender';
+  confirmOk=()=>{
+    const email=t.from.email;
+    BLOCKED.unshift({name:t.from.name,email,date:new Date()});
+    const moved=THREADS.filter(x=>x.from.email===email&&x.folder==='inbox');
+    leaveSelection(moved.map(x=>x.id));
+    moved.forEach(x=>x.folder='spam');
+    render();
+    toast(`Blocked ${email}`,()=>{const i=BLOCKED.findIndex(b=>b.email===email);if(i>-1)BLOCKED.splice(i,1);moved.forEach(x=>x.folder='inbox');render()});
+  };
+  $('#confirm').hidden=false;$('#cf-ok').focus();
+}
+function closeConfirm(){$('#confirm').hidden=true;confirmOk=null}
+
+let undoFn=null,toastTimer;
+function toast(msg,undo){
+  const el=$('#toast');undoFn=undo||null;
+  el.innerHTML=`<span>${esc(msg)}</span>${undo?'<button data-act="undo">Undo</button>':''}`;
+  el.hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>{el.hidden=true;undoFn=null},5000);
+}
+
+function openCompose(){
+  const def=S.acct!=='all'?S.acct:(byId(S.sel)?.acct||'studio');
+  $('#c-from').innerHTML=ACCOUNTS.map(a=>`<option value="${a.id}"${a.id===def?' selected':''}>${a.label} · ${a.addr}</option>`).join('');
+  syncDot();$('#c-err').textContent='';
+  $('#compose').hidden=false;$('#c-to').focus();
+}
+const syncDot=()=>$('#c-dot').style.setProperty('--c',`var(${acct($('#c-from').value).c})`);
+function closeCompose(){$('#compose').hidden=true}
+
+function setTheme(){
+  const order=['system','light','dark'];theme=order[(order.indexOf(theme)+1)%3];
+  if(theme==='system')delete document.documentElement.dataset.theme;else document.documentElement.dataset.theme=theme;
+  renderSidebar();
+}
+
+/* ---------- Events ---------- */
+let suppressUntil=0;
+document.addEventListener('click',e=>{
+  if(Date.now()<suppressUntil){e.preventDefault();return}
+  const el=e.target.closest('[data-act],[data-folder],[data-acct],[data-card],[data-id],[data-expand],[data-unblock]');
+  if(!el)return;
+  const d=el.dataset;
+  if(d.act){
+    switch(d.act){
+      case 'compose':return openCompose();
+      case 'close-compose':return closeCompose();
+      case 'menu':S.drawer=true;return render();
+      case 'close-drawer':S.drawer=false;return render();
+      case 'back':S.view='list';return render();
+      case 'theme':return setTheme();
+      case 'smart-on':S.smart=true;return renderList();
+      case 'smart-off':S.smart=false;return renderList();
+      case 'cf-cancel':return closeConfirm();
+      case 'cf-ok':{const f=confirmOk;closeConfirm();return f&&f()}
+      case 'undo':{const f=undoFn;$('#toast').hidden=true;undoFn=null;return f&&f()}
+      case 'attachment':return toast('Attachments open once real accounts are connected');
+      case 'focus-reply':{const r=$('#reply-text');if(r){r.scrollIntoView({block:'center'});r.focus()}return}
+      default:e.stopPropagation();return act(d.act,d.tid);
+    }
+  }
+  if(d.folder){S.folder=d.folder;S.view='list';S.drawer=false;if(!byId(S.sel)||!inFolder(byId(S.sel),S.folder))S.sel=null;render();$('#list').scrollTop=0;return}
+  if(d.acct){S.acct=d.acct;S.drawer=false;S.folder=S.folder==='blocked'?'inbox':S.folder;render();$('#list').scrollTop=0;return}
+  if(d.card){S.open[d.card]=!S.open[d.card];return renderList()}
+  if(d.id)return open(d.id);
+  if(d.expand!==undefined){const i=+d.expand;S.expanded.has(i)&&S.expanded.size>1?S.expanded.delete(i):S.expanded.add(i);return renderReader()}
+  if(d.unblock){const i=BLOCKED.findIndex(b=>b.email===d.unblock);const b=BLOCKED.splice(i,1)[0];render();return toast(`Unblocked ${b.email}`,()=>{BLOCKED.splice(i,0,b);render()})}
+});
+
+document.addEventListener('submit',e=>{
+  e.preventDefault();
+  if(e.target.id==='reply-form'){
+    const t=byId(S.sel),box=$('#reply-text'),txt=box.value.trim();
+    if(!txt){box.focus();return}
+    t.msgs.push({from:ME,t:new Date(),body:txt.split(/\n{2,}/)});
+    S.expanded.add(t.msgs.length-1);S.drafts[t.id]='';
+    render();$('#reader-scroll').scrollTop=1e6;
+    toast(`Reply sent from ${acct(t.acct).addr}`);
+  }
+  if(e.target.id==='compose-form'){
+    const to=$('#c-to').value.trim(),from=$('#c-from').value,subj=$('#c-subj').value.trim(),body=$('#c-body').value.trim();
+    if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)){$('#c-err').textContent='Add a valid email address in To.';$('#c-to').focus();return}
+    const name=to.split('@')[0].replace(/[._-]+/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
+    THREADS.push(T({acct:from,folder:'sent',sent:true,subject:subj||'(no subject)',from:P(name,to),msgs:[{from:ME,t:new Date(),body:body?body.split(/\n{2,}/):['(empty message)']}]}));
+    closeCompose();['#c-to','#c-subj','#c-body'].forEach(s=>$(s).value='');
+    render();toast(`Sent from ${acct(from).addr}`);
+  }
+});
+document.addEventListener('input',e=>{
+  if(e.target.id==='q'){S.q=e.target.value;renderList()}
+  if(e.target.id==='reply-text')S.drafts[S.sel]=e.target.value;
+  if(e.target.id==='c-from')syncDot();
+});
+document.addEventListener('change',e=>{if(e.target.id==='c-from')syncDot()});
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'){
+    if(!$('#confirm').hidden)return closeConfirm();
+    if(!$('#compose').hidden)return closeCompose();
+    if(S.drawer){S.drawer=false;return render()}
+    if(isNarrow()&&S.view==='reader'){S.view='list';return render()}
+    return;
+  }
+  if((e.key==='Enter'||e.key===' ')&&e.target.matches('[role="button"]')){e.preventDefault();return e.target.click()}
+  if(e.target.closest('input,textarea,select')||e.metaKey||e.ctrlKey||e.altKey)return;
+  if(!$('#confirm').hidden||!$('#compose').hidden)return;
+  const k=e.key;
+  if(k==='j'||k==='k'){
+    if(!S.order.length)return;
+    const i=S.order.indexOf(S.sel);
+    const n=i<0?S.order[0]:S.order[k==='j'?Math.min(i+1,S.order.length-1):Math.max(i-1,0)];
+    e.preventDefault();return open(n);
+  }
+  if(k==='e'&&S.sel)return act('archive');
+  if(k==='#'&&S.sel)return act('trash');
+  if(k==='p'&&S.sel)return act('pin');
+  if(k==='c'){e.preventDefault();return openCompose()}
+  if(k==='/'){e.preventDefault();return $('#q').focus()}
+});
+
+/* Swipe on touch: right = pin, left = archive */
+let sw=null;
+const listEl=$('#list');
+listEl.addEventListener('pointerdown',e=>{
+  if(e.pointerType==='mouse')return;
+  const row=e.target.closest('.row');if(!row||e.target.closest('button'))return;
+  sw={row,wrap:row.parentElement,x:e.clientX,y:e.clientY,dx:0,active:false,id:row.dataset.id};
+});
+listEl.addEventListener('pointermove',e=>{
+  if(!sw)return;
+  const dx=e.clientX-sw.x,dy=e.clientY-sw.y;
+  if(!sw.active){
+    if(Math.abs(dx)>12&&Math.abs(dx)>Math.abs(dy)*1.3){sw.active=true;sw.row.style.transition='none'}
+    else{if(Math.abs(dy)>12)sw=null;return}
+  }
+  sw.dx=dx;sw.wrap.dataset.dir=dx>0?'r':'l';
+  sw.row.style.transform=`translateX(${dx}px)`;
+  sw.wrap.classList.toggle('armed',Math.abs(dx)>90);
+});
+function endSwipe(){
+  if(!sw)return;const s=sw;sw=null;if(!s.active)return;
+  suppressUntil=Date.now()+350;
+  s.row.style.transition='';
+  if(s.dx<-90){s.row.style.transform='translateX(-110%)';setTimeout(()=>act('archive',s.id),170)}
+  else{s.row.style.transform='';if(s.dx>90)act('pin',s.id)}
+}
+listEl.addEventListener('pointerup',endSwipe);
+listEl.addEventListener('pointercancel',endSwipe);
+
+/* Static icons */
+document.querySelector('.menu-btn').innerHTML=ico('menu',20);
+$('#search-ico').innerHTML=ico('search',16);
+$('#fab').innerHTML=ico('pen',18)+'New email';
+$('#compose-x').innerHTML=ico('x');
+$('#c-clip').innerHTML=ico('clip',17);
+$('#c-send').innerHTML='Send '+ico('send',15);
+
+/* Open on a realistic working state: the pinned project thread is selected on wide screens */
+const start=THREADS.find(t=>t.subject==='Timeline for phase 2');
+S.sel=start.id;S.expanded=new Set([start.msgs.length-1]);
+render();
+</script>
