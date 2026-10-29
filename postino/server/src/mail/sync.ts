@@ -699,8 +699,9 @@ export class AccountSync {
       const s = sanitizeEmailHtml(html, ids);
       outHtml = s.html;
       hasRemote = s.hasRemoteImages;
-    } else if (text) outHtml = textToHtml(text);
+    }
     const split = text ? splitQuoted(text) : { visible: '', quoted: null };
+    if (!html && text) outHtml = textToHtml(split.quoted ? split.visible : text);
     storeBody(messageRow, {
       text,
       html: outHtml,

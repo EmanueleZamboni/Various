@@ -186,6 +186,7 @@ export function bodyFromParsed(mail: ParsedMail, cidUrl: (contentId: string) => 
   const rawHtml = typeof mail.html === 'string' ? mail.html : null;
   let text = mail.text ? mail.text.replace(/\r\n/g, '\n') : null;
   if (!text && rawHtml) text = htmlToText(rawHtml);
+  const split = text ? splitQuoted(text) : { visible: '', quoted: null };
   let html: string | null = null;
   let hasRemoteImages = false;
   if (rawHtml) {
@@ -193,14 +194,11 @@ export function bodyFromParsed(mail: ParsedMail, cidUrl: (contentId: string) => 
     html = r.html;
     hasRemoteImages = r.hasRemoteImages;
   } else if (text) {
-    html = textToHtml(text);
+    // Plain-text mail: show only the fresh part; the quoted part is available separately.
+    html = textToHtml(split.quoted ? split.visible : text);
   }
-  let quoted: string | null = null;
-  if (text) {
-    const split = splitQuoted(text);
-    quoted = split.quoted;
-  }
-  const snippet = makeSnippet(text ? splitQuoted(text).visible : '');
+  const quoted = split.quoted;
+  const snippet = makeSnippet(split.visible);
   return { text, html, quoted, hasRemoteImages, snippet, attachments };
 }
 

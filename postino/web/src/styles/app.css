@@ -1899,6 +1899,14 @@ textarea:focus-visible {
 .blocked-row .acct {
   flex: 1;
 }
+.blocked-row .acct > span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.blocked-row .acct small {
+  white-space: normal;
+}
 .note {
   padding: 14px 16px 6px;
   color: var(--mute);

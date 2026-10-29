@@ -32,7 +32,18 @@ for (const a of accounts) {
     folders.push({ id: `${a.id}:${path}`, accountId: a.id, path, name: path === 'INBOX' ? 'Inbox' : path === 'INBOX.spam' ? 'Spam (server)' : path, role, unread: 0, total: 0 });
   }
 }
-export const folderByRole = (accountId: string, role: FolderRole) => folders.find((f) => f.accountId === accountId && f.role === role) ?? folders.find((f) => f.accountId === accountId && f.role === 'inbox')!;
+export const folderByRole = (accountId: string, role: FolderRole): Folder => {
+  const found = folders.find((f) => f.accountId === accountId && f.role === role);
+  if (found) return found;
+  // Like the real server: Archive and Blocked are created on the mail server the first time they are needed.
+  if (role === 'archive' || role === 'blocked') {
+    const path = role === 'archive' ? 'Archive' : 'Blocked';
+    const f: Folder = { id: `${accountId}:${path}`, accountId, path, name: path, role, unread: 0, total: 0 };
+    folders.push(f);
+    return f;
+  }
+  return folders.find((f) => f.accountId === accountId && f.role === 'inbox')!;
+};
 
 export type MockMessage = Message & { rawHtml?: string };
 export type MockThread = { id: string; accountId: string; messages: MockMessage[] };

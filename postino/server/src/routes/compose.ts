@@ -120,7 +120,25 @@ export function registerComposeRoutes(app: FastifyInstance): void {
   });
 
   app.post<{ Body: SendFields }>('/api/send', async (req, reply) => {
-    const b = req.body || {};
+    let b: SendFields = req.body || {};
+    // The web app sends multipart/form-data (fields + "attachments" files).
+    if (req.isMultipart()) {
+      const fields: Record<string, string> = {};
+      const uploadIds: string[] = [];
+      for await (const part of req.parts({ limits: { fileSize: 25 * 1024 * 1024, files: 10 } })) {
+        if (part.type === 'file') {
+          const id = randomToken(12);
+          const dest = path.join(config.uploadsDir, id);
+          await fs.promises.writeFile(dest, await part.toBuffer());
+          const size = (await fs.promises.stat(dest)).size;
+          await fs.promises.writeFile(dest + '.json', JSON.stringify({ id, filename: part.filename || 'file', size, contentType: part.mimetype || 'application/octet-stream' }));
+          uploadIds.push(id);
+        } else {
+          fields[part.fieldname] = String(part.value);
+        }
+      }
+      b = { ...fields, uploadIds: [...uploadIds, ...(fields.uploadIds ? fields.uploadIds.split(',') : [])] };
+    }
     const account = db.prepare('SELECT * FROM accounts WHERE id = ?').get(Number(b.accountId)) as AccountRow | undefined;
     if (!account) return reply.code(400).send({ error: 'no_account', message: 'Choose which address to send from.' });
     const to = String(b.to || '').trim();
