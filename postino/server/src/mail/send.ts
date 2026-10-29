@@ -7,7 +7,7 @@ import { manager } from './manager.js';
 import { textToHtml } from './sanitize.js';
 import type { Address } from './parse.js';
 
-export type OutgoingAttachment = { filename: string; contentType: string; path?: string; content?: Buffer };
+export type OutgoingAttachment = { filename: string; contentType: string; path?: string; content?: Buffer; cid?: string };
 
 export type Outgoing = {
   account: AccountRow;
@@ -22,7 +22,8 @@ export type Outgoing = {
   /** Rich signature placed after the message and before any quoted mail. */
   signature?: { html: string; text: string } | null;
   /** The quoted original for replies and forwards, built by the server. */
-  quote?: { html: string | null; text: string } | null;
+  onDelivered?: () => void;
+  quote?: { html: string | null; text: string; inline?: OutgoingAttachment[] } | null;
   /** Send as one of the account's aliases instead of its main address. */
   fromAddress?: string;
 };
@@ -71,7 +72,7 @@ export async function sendMail(msg: Outgoing): Promise<{ messageId: string; raw:
     msg.quote ? `<div style="margin-top:16px">${msg.quote.html || textToHtml(msg.quote.text)}</div>` : '',
   ].filter(Boolean).join('');
   // Inline data: images (signature logos) become cid: attachments; mail clients do not render data URLs.
-  const inline: { filename: string; contentType: string; content: Buffer; cid: string }[] = [];
+  const inline: OutgoingAttachment[] = [];
   let n = 0;
   const htmlWithCids = html.replace(/src=(["'])data:(image\/[a-z0-9.+-]+);base64,([A-Za-z0-9+/=\s]+)\1/gi, (_m, q: string, type: string, b64: string) => {
     const cid = `img${++n}.${Date.now()}@postino`;
@@ -90,7 +91,7 @@ export async function sendMail(msg: Outgoing): Promise<{ messageId: string; raw:
     headers,
     inReplyTo: msg.inReplyTo ? `<${msg.inReplyTo.messageId}>` : undefined,
     references: msg.inReplyTo ? [...msg.inReplyTo.references, msg.inReplyTo.messageId].map((r) => `<${r}>`).join(' ') : undefined,
-    attachments: [...msg.attachments.map((a) => ({ filename: a.filename, contentType: a.contentType, path: a.path, content: a.content })), ...inline],
+    attachments: [...msg.attachments, ...(msg.quote?.inline ?? []), ...inline].map((a) => ({ filename: a.filename, contentType: a.contentType, path: a.path, content: a.content, cid: a.cid })),
     date: new Date(),
   };
   const composer = new MailComposer(mail as never);
@@ -100,6 +101,7 @@ export async function sendMail(msg: Outgoing): Promise<{ messageId: string; raw:
   const transport = smtpTransport(msg.account);
   try {
     await transport.sendMail({ envelope: { from: fromEmail, to: [...parseAddressList(msg.to), ...parseAddressList(msg.cc || ''), ...parseAddressList(msg.bcc || '')].map((a) => a.email) }, raw });
+    msg.onDelivered?.();
   } finally {
     transport.close();
   }

@@ -2,6 +2,7 @@
 import { cleanupOutdatedCaches, createHandlerBoundToURL, precacheAndRoute } from 'workbox-precaching';
 import { NavigationRoute, registerRoute } from 'workbox-routing';
 import { NetworkFirst, NetworkOnly } from 'workbox-strategies';
+import { ExpirationPlugin } from 'workbox-expiration';
 import { clientsClaim } from 'workbox-core';
 
 declare let self: ServiceWorkerGlobalScope;
@@ -14,11 +15,17 @@ precacheAndRoute(self.__WB_MANIFEST);
 // App shell for navigations, except API and attachment URLs.
 registerRoute(new NavigationRoute(createHandlerBoundToURL('/index.html'), { denylist: [/^\/api\//] }));
 
-// Reads are network-first with a short cache so the app opens offline with the last state.
+// Session state is never served from cache: after signing out, nothing must look signed in.
+const NEVER_CACHE = ['/api/me', '/api/setup', '/api/login', '/api/logout', '/api/events', '/api/attachments', '/api/passkeys', '/api/google'];
+// Reads are network-first with a bounded cache so the app opens offline with the last state.
 registerRoute(
-  ({ url, request }) => request.method === 'GET' && url.pathname.startsWith('/api/') && !url.pathname.startsWith('/api/events') && !url.pathname.startsWith('/api/attachments'),
-  new NetworkFirst({ cacheName: 'postino-api', networkTimeoutSeconds: 8 }),
+  ({ url, request }) => request.method === 'GET' && url.pathname.startsWith('/api/') && !NEVER_CACHE.some((p) => url.pathname.startsWith(p)),
+  new NetworkFirst({ cacheName: 'postino-api', networkTimeoutSeconds: 8, plugins: [new ExpirationPlugin({ maxEntries: 300, maxAgeSeconds: 3 * 86400 })] }),
 );
+// The app asks the worker to forget everything on sign-out.
+self.addEventListener('message', (event) => {
+  if ((event.data as { type?: string } | undefined)?.type === 'postino:purge') event.waitUntil(caches.delete('postino-api'));
+});
 registerRoute(({ url }) => url.pathname.startsWith('/api/'), new NetworkOnly());
 
 type PushPayload = { title?: string; body?: string; threadId?: string; accountId?: string; tag?: string };

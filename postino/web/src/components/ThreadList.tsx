@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, type ReactNode } from 'react';
 import type { InfiniteData } from '@tanstack/react-query';
-import { useAccountMap, useAccounts, useBlocked, useMyEmails, useOutbox, useSearch, useSettings, useThreadList, useThreadActions } from '../api/hooks';
+import { useAccountMap, useAccounts, useBlocked, useDrafts, useMyEmails, useOutbox, useSearch, useSettings, useThreadList, useThreadActions } from '../api/hooks';
 import { api } from '../api/client';
 import type { ThreadSummary, ThreadsResponse } from '../api/types';
 import { Icon, type IconName } from '../icons';
@@ -65,9 +65,37 @@ export function ThreadList({ view }: { view: string }) {
   const pinnedRows = smart && pinnedOnTop ? rows.filter((t) => t.pinned) : [];
   const peopleRows = smart && pinnedOnTop ? rows.filter((t) => !t.pinned) : rows;
   const scheduled = view === 'drafts' ? (outbox.data?.items ?? []) : [];
-  const scheduledBlock = scheduled.length > 0 && (
+  // Drafts saved by Postino itself (replies and new mail) live on the server, not in IMAP.
+  const localDrafts = useDrafts(view === 'drafts');
+  const drafts = view === 'drafts' ? (localDrafts.data ?? []) : [];
+  const removeDraft = async (id: string) => {
+    try {
+      await api.drafts.remove(id);
+    } finally {
+      qc.invalidateQueries({ queryKey: ['drafts'] });
+      qc.invalidateQueries({ queryKey: ['threads'] });
+    }
+  };
+  const draftsBlock = drafts.length > 0 && (
     <>
-      <div className="sec">Scheduled <span className="n">{scheduled.length}</span></div>
+      <div className="sec">Drafts <span className="n">{drafts.length}</span></div>
+      {drafts.map((d) => (
+        <div className="outbox-card" key={`d-${d.id}`}>
+          <Icon name="draft" size={16} />
+          <div className="t">
+            <span><b>{d.subject || (d.inReplyTo ? 'Reply' : d.forwardOf ? 'Forward' : '(no subject)')}</b>{d.to ? ` to ${d.to}` : ''}</span>
+            <small>{d.text.replace(/\s+/g, ' ').trim().slice(0, 90) || 'Empty'} · {new Date(d.updatedAt).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</small>
+          </div>
+          <button className="btn btn-ghost btn-sm" onClick={() => ui.openCompose({ mode: 'new', draft: d, accountId: d.accountId })}>Edit</button>
+          <button className="ib" aria-label="Delete draft" onClick={() => void removeDraft(d.id)}><Icon name="trash" size={16} /></button>
+        </div>
+      ))}
+    </>
+  );
+  const scheduledBlock = (scheduled.length > 0 || drafts.length > 0) && (
+    <>
+      {draftsBlock}
+      {scheduled.length > 0 && <div className="sec">Scheduled <span className="n">{scheduled.length}</span></div>}
       {scheduled.map((o) => (
         <div className="outbox-card" key={o.id}>
           <Icon name="send" size={16} />
@@ -163,7 +191,7 @@ export function ThreadList({ view }: { view: string }) {
         <button className="btn btn-ghost" onClick={() => void main.refetch()}>Try again</button>
       </div>
     );
-  else if (!rows.length && !notifRows.length && !newsRows.length) body = scheduled.length ? scheduledBlock : <Empty view={view} q={nav.q} />;
+  else if (!rows.length && !notifRows.length && !newsRows.length) body = scheduled.length || drafts.length ? scheduledBlock : <Empty view={view} q={nav.q} />;
   else if (smart) {
     body = (
       <>

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
-import { useAccountMap, useSettings, useSignatures } from '../api/hooks';
+import { useAccountMap, useDrafts, useSettings, useSignatures } from '../api/hooks';
 import { useSendFeedback, sendLaterOptions } from '../sendFeedback';
 import { SignaturePicker, SignaturePreview, defaultSignatureId } from './SignatureEditor';
 import type { Draft, Message, ReplyPrefill } from '../api/types';
@@ -39,7 +39,22 @@ export function ReplyBox({ message: m, mode, onModeChange, onClose, onSent }: {
   const [err, setErr] = useState('');
   const draft = useRef<Draft | null>(null);
   const saveTimer = useRef<number | undefined>(undefined);
+  const saving = useRef<Promise<boolean> | null>(null);
   const [saved, setSaved] = useState('');
+  // A reply started earlier on this conversation comes back where it was left.
+  const { data: drafts } = useDrafts();
+  const seeded = useRef(false);
+  useEffect(() => {
+    if (seeded.current || !drafts) return;
+    seeded.current = true;
+    const d = drafts.find((x) => x.threadId === m.threadId && (x.inReplyTo === m.id || x.forwardOf === m.id || (!x.inReplyTo && !x.forwardOf)));
+    if (!d) return;
+    draft.current = d;
+    if (d.text) setText(d.text);
+    if (d.to) setTo(d.to);
+    if (d.cc) setCc(d.cc);
+    setSaved(new Date(d.updatedAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }));
+  }, [drafts, m.threadId, m.id]);
   const { data: signatures } = useSignatures();
   const [signatureId, setSignatureId] = useState<string>('');
   const [sendAt, setSendAt] = useState<Date | null>(null);
@@ -67,17 +82,47 @@ export function ReplyBox({ message: m, mode, onModeChange, onClose, onSent }: {
     };
   }, [m.id, mode]);
 
-  const saveDraft = async () => {
-    if (!text.trim()) return;
-    try {
-      const body = { accountId: m.accountId, to, cc, bcc: '', subject: prefill?.subject ?? '', text, inReplyTo: mode === 'forward' ? null : m.id, threadId: m.threadId };
-      draft.current = draft.current ? await api.drafts.update(draft.current.id, body) : await api.drafts.create(body);
-      setSaved(new Date().toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }));
-      qc.invalidateQueries({ queryKey: ['drafts'] });
-    } catch {
-      /* keep typing; the server may be briefly away */
-    }
+  /** Save (or update) the draft. Resolves false when the server could not be reached. */
+  const saveDraft = (): Promise<boolean> => {
+    if (!text.trim()) return Promise.resolve(true);
+    if (saving.current) return saving.current.then(() => saveDraft());
+    const body = {
+      accountId: prefill?.accountId ?? m.accountId,
+      fromAddress: prefill?.fromAddress ?? null,
+      to,
+      cc,
+      bcc: '',
+      subject: prefill?.subject ?? '',
+      text,
+      inReplyTo: mode === 'forward' ? null : m.id,
+      forwardOf: mode === 'forward' ? m.id : null,
+      threadId: m.threadId,
+    };
+    const p = (async () => {
+      try {
+        draft.current = draft.current ? await api.drafts.update(draft.current.id, body) : await api.drafts.create(body);
+        setSaved(new Date().toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }));
+        qc.invalidateQueries({ queryKey: ['drafts'] });
+        return true;
+      } catch {
+        return false; // keep typing; the server may be briefly away
+      } finally {
+        saving.current = null;
+      }
+    })();
+    saving.current = p;
+    return p;
   };
+
+  // Leaving the app (phone back gesture, switching apps) saves what was typed so far.
+  useEffect(() => {
+    const onHide = () => {
+      if (document.visibilityState === 'hidden' && text.trim()) void saveDraft();
+    };
+    document.addEventListener('visibilitychange', onHide);
+    return () => document.removeEventListener('visibilitychange', onHide);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [text, to, cc, mode, prefill]);
 
   // Autosave as a draft after a pause in typing.
   useEffect(() => {
@@ -101,6 +146,8 @@ export function ReplyBox({ message: m, mode, onModeChange, onClose, onSent }: {
     }
     setBusy(true);
     try {
+      window.clearTimeout(saveTimer.current);
+      if (saving.current) await saving.current; // a stray draft would survive the send otherwise
       const fd = new FormData();
       fd.set('accountId', prefill?.accountId ?? m.accountId);
       if (prefill?.fromAddress) fd.set('fromAddress', prefill.fromAddress);
@@ -153,8 +200,12 @@ export function ReplyBox({ message: m, mode, onModeChange, onClose, onSent }: {
           e.stopPropagation();
           if (text.trim()) {
             window.clearTimeout(saveTimer.current);
-            void saveDraft().then(() => toast({ text: 'Draft saved' }));
-            onClose();
+            void saveDraft().then((ok) => {
+              if (ok) {
+                toast({ text: 'Draft saved' });
+                onClose();
+              } else setErr('Could not save the draft: the server is not reachable. Try again in a moment.');
+            });
           } else void discard();
         }
       }}

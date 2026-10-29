@@ -245,7 +245,12 @@ export function storeBody(messageRow: number, body: ParsedBody): void {
   tx();
 }
 
-export function markBodyError(messageRow: number, error: string): void {
+/** Record why a body could not be fetched. With folder/uid given, a message that moved meanwhile is left alone. */
+export function markBodyError(messageRow: number, error: string, folderId?: number, uid?: number): void {
+  if (folderId !== undefined && uid !== undefined) {
+    db.prepare('UPDATE messages SET body_error = ? WHERE id = ? AND folder_id = ? AND uid = ?').run(error.slice(0, 500), messageRow, folderId, uid);
+    return;
+  }
   db.prepare('UPDATE messages SET body_error = ? WHERE id = ?').run(error.slice(0, 500), messageRow);
 }
 

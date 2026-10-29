@@ -41,6 +41,9 @@ export const config = {
   // Where the built web app lives (served as static files in production).
   webDist: path.resolve(env('POSTINO_WEB_DIST', path.join(process.cwd(), '..', 'web', 'dist'))),
   secureCookies: env('POSTINO_SECURE_COOKIES', 'auto'), // "auto" | "true" | "false"
+  // Trust X-Forwarded-* only behind a reverse proxy (docker-compose sets it); otherwise a client
+  // could spoof its address past the login rate limit.
+  trustProxy: env('POSTINO_TRUST_PROXY', '') === '' ? env('POSTINO_SECURE_COOKIES', 'auto') === 'true' : /^(1|true|yes)$/i.test(env('POSTINO_TRUST_PROXY', '')),
   sessionDays: 30,
   // Messages larger than this are fetched part by part instead of as one blob.
   maxSourceFetchBytes: 1_500_000,

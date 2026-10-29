@@ -43,6 +43,8 @@ type UIState = {
   bundlesOpen: Record<string, boolean>;
   toggleBundle: (k: string) => void;
   compose: ComposeState;
+  /** Bumped on every openCompose so the composer remounts with the new content. */
+  composeSeq: number;
   openCompose: (c: NonNullable<ComposeState>) => void;
   closeCompose: () => void;
   toasts: Toast[];
@@ -92,7 +94,8 @@ export const useUI = create<UIState>((set, get) => ({
   bundlesOpen: {},
   toggleBundle: (k) => set((s) => ({ bundlesOpen: { ...s.bundlesOpen, [k]: !s.bundlesOpen[k] } })),
   compose: null,
-  openCompose: (c) => set({ compose: c }),
+  composeSeq: 0,
+  openCompose: (c) => set((s) => ({ compose: c, composeSeq: s.composeSeq + 1 })),
   closeCompose: () => set({ compose: null }),
   toasts: [],
   toast: (t) => {

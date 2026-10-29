@@ -24,7 +24,7 @@ function viewWhere(view: string, accountId: number | null, category: string | nu
   } else if (view === 'pinned') {
     where.push("t.pinned = 1 AND (t.roles LIKE '%,inbox,%' OR t.roles LIKE '%,archive,%' OR t.roles LIKE '%,sent,%' OR t.roles LIKE '%,other,%' OR t.roles LIKE '%,drafts,%')");
   } else if (view === 'all') {
-    where.push("(t.roles NOT LIKE '%,trash,%' AND t.roles NOT LIKE '%,junk,%' AND t.roles NOT LIKE '%,blocked,%') OR t.roles LIKE '%,inbox,%' OR t.roles LIKE '%,archive,%' OR t.roles LIKE '%,sent,%'");
+    where.push("((t.roles NOT LIKE '%,trash,%' AND t.roles NOT LIKE '%,junk,%' AND t.roles NOT LIKE '%,blocked,%') OR t.roles LIKE '%,inbox,%' OR t.roles LIKE '%,archive,%' OR t.roles LIKE '%,sent,%')");
   } else if (view === 'drafts') {
     where.push("(t.roles LIKE '%,drafts,%' OR EXISTS (SELECT 1 FROM drafts d WHERE d.thread_id = t.id))");
   } else if ((concreteRoles as string[]).includes(view)) {
@@ -190,7 +190,11 @@ export async function runAction(body: ActionBody): Promise<{ affected: number }>
     case 'junk': destRole = 'junk'; break;
     case 'notjunk': destRole = 'inbox'; break;
     case 'inbox': destRole = 'inbox'; break;
-    case 'move': destFolderId = Number(body.folderId); break;
+    case 'move': {
+      destFolderId = Number(body.folderId);
+      if (!destFolderId || !db.prepare('SELECT 1 FROM folders WHERE id = ? AND present = 1').get(destFolderId)) throw Object.assign(new Error('Choose a folder to move to.'), { statusCode: 400 });
+      break;
+    }
     case 'delete': break;
     default:
       throw Object.assign(new Error(`Unknown action ${action}`), { statusCode: 400 });

@@ -1,7 +1,7 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query';
 import { useCallback, useMemo } from 'react';
 import { api } from './client';
-import type { Account, DeepPartial, OutboxItem, Settings, Signature, ThreadAction, ThreadDetail, ThreadSummary, ThreadsResponse } from './types';
+import type { Account, DeepPartial, OutboxItem, Settings, Signature, ThreadAction, ThreadDetail, ThreadSummary, ThreadsResponse, Draft } from './types';
 import { useUI } from '../store';
 
 export const useMe = (enabled = true) =>
@@ -203,6 +203,10 @@ export function useUpdateSettings() {
 
 export function useSignatures() {
   return useQuery<Signature[]>({ queryKey: ['signatures'], queryFn: api.signatures.list, staleTime: 60_000 });
+}
+
+export function useDrafts(enabled = true) {
+  return useQuery<Draft[]>({ queryKey: ['drafts'], queryFn: api.drafts.list, staleTime: 5_000, enabled });
 }
 
 export function useOutbox() {

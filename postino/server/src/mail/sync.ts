@@ -10,7 +10,7 @@ import { log } from '../log.js';
 import type { AccountRow } from '../views.js';
 import { accountView, folderView, syncProgress } from '../views.js';
 import {
-  upsertHeader, updateFlags, storeBody, markBodyError, storeAttachment, registerAttachmentMeta, attachmentPath,
+  upsertHeader, updateFlags, storeBody, markBodyError, recomputeThread, storeAttachment, registerAttachmentMeta, attachmentPath,
   deleteMessagesByIds, deleteFolderMessages, refreshFolderCounts, isBlocked, folderByRole, type FolderRow, type FolderRole, type MessageRow,
 } from './store.js';
 import { bodyFromParsed, normalizeMsgId, parseReferences, pickUnsubscribe, splitQuoted, makeSnippet, parserOptions, defaultFilename, type ParsedHeaders, type Address } from './parse.js';
@@ -216,6 +216,8 @@ export class AccountSync {
         this.client = client;
         this.backoffMs = 2000;
         log.info({ account: this.email }, 'imap connected');
+        // Bodies that failed because the connection dropped (or a message moved mid-batch) get another go.
+        db.prepare('UPDATE messages SET body_error = NULL WHERE account_id = ? AND body_error IS NOT NULL').run(this.id);
         await this.listFolders();
         await this.syncAll();
         this.setStatus('connected');
@@ -307,6 +309,7 @@ export class AccountSync {
     }
     const byPath = new Map<string, FolderRole>();
     for (const [role, pth] of Object.entries(overrides)) if (pth) byPath.set(pth, role as FolderRole);
+    const before = new Map((db.prepare('SELECT path, role FROM folders WHERE account_id = ?').all(this.id) as { path: string; role: string }[]).map((r) => [r.path, r.role]));
     const tx = db.transaction((rows: ListResponse[]) => {
       for (const f of rows) {
         if (f.flags.has('\\Noselect') || f.flags.has('\\NonExistent')) continue;
@@ -330,6 +333,17 @@ export class AccountSync {
       }
     });
     tx(list);
+    // A folder that changed role (user mapping, or a provider rename) must be reflected in the
+    // per-thread role cache the views filter on.
+    const changed = (db.prepare('SELECT id, path, role FROM folders WHERE account_id = ? AND present = 1').all(this.id) as { id: number; path: string; role: string }[]).filter((f) => before.has(f.path) && before.get(f.path) !== f.role);
+    for (const f of changed) {
+      const threads = db.prepare('SELECT DISTINCT thread_id FROM messages WHERE folder_id = ?').all(f.id) as { thread_id: number }[];
+      log.info({ account: this.email, folder: f.path, role: f.role, threads: threads.length }, 'folder role changed');
+      const batch = db.transaction(() => {
+        for (const t of threads) recomputeThread(t.thread_id);
+      });
+      batch();
+    }
     return this.folders();
   }
 
@@ -616,7 +630,7 @@ export class AccountSync {
           } catch (err) {
             log.warn({ account: this.email, folder: folder.path, err: (err as Error).message }, 'body fetch batch failed');
             // Mark the batch so a persistent failure does not loop forever; they are retried on resync.
-            for (const b of group) markBodyError(b.id, (err as Error).message);
+            for (const b of group) markBodyError(b.id, (err as Error).message, folder.id, b.uid);
           }
           for (const b of group) bus.publish({ type: 'message.updated', messageId: String(b.id), threadId: String(b.thread_id) });
           this.publishProgress();
@@ -654,22 +668,22 @@ export class AccountSync {
           if (!target) continue;
           found.add(msg.uid);
           if (!msg.source) {
-            markBodyError(target.id, 'no source');
+            markBodyError(target.id, 'no source', folder.id, target.uid);
             continue;
           }
           try {
             await this.storeFromSource(target.id, msg.source);
           } catch (err) {
-            markBodyError(target.id, (err as Error).message);
+            markBodyError(target.id, (err as Error).message, folder.id, target.uid);
           }
         }
-        for (const s of small) if (!found.has(s.uid)) markBodyError(s.id, 'not on server');
+        for (const s of small) if (!found.has(s.uid)) markBodyError(s.id, 'not on server', folder.id, s.uid);
       }
       for (const l of large) {
         try {
           await this.storeFromParts(client, l.id, l.uid, l.structure_json);
         } catch (err) {
-          markBodyError(l.id, (err as Error).message);
+          markBodyError(l.id, (err as Error).message, folder.id, l.uid);
         }
       }
     });
@@ -820,6 +834,7 @@ export class AccountSync {
     const src = db.prepare('SELECT * FROM folders WHERE id = ?').get(srcFolderId) as FolderRow;
     const dest = destFolderId ? (db.prepare('SELECT * FROM folders WHERE id = ?').get(destFolderId) as FolderRow) : await this.ensureFolder(destRole as FolderRole);
     if (!dest) throw new Error('Destination folder not found');
+    if (dest.account_id !== src.account_id) throw Object.assign(new Error('Mail can only be moved to a folder of the same account.'), { statusCode: 400 });
     if (dest.id === src.id) return;
     await this.withMailbox(src.path, async (client) => {
       const res = await client.messageMove(uids, dest.path, { uid: true });

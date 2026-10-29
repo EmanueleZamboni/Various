@@ -15,6 +15,23 @@ function normalizePattern(raw: string): string | null {
   return null;
 }
 
+/** True for one of the user's own addresses, aliases, or the domain of one of them. */
+function isOwn(pattern: string): boolean {
+  const rows = db.prepare('SELECT lower(email) AS email, aliases FROM accounts').all() as { email: string; aliases: string }[];
+  const own = new Set<string>();
+  for (const r of rows) {
+    own.add(r.email);
+    try {
+      for (const a of JSON.parse(r.aliases || '[]') as string[]) own.add(String(a).toLowerCase());
+    } catch {
+      // ignore
+    }
+  }
+  if (own.has(pattern)) return true;
+  if (pattern.startsWith('@')) return [...own].some((e) => e.endsWith(pattern));
+  return false;
+}
+
 function matchSql(pattern: string): { sql: string; params: unknown[] } {
   if (pattern.startsWith('@')) return { sql: "m.from_email LIKE ?", params: [`%${pattern}`] };
   return { sql: 'm.from_email = ?', params: [pattern] };
@@ -64,8 +81,7 @@ export function registerBlockedRoutes(app: FastifyInstance): void {
   app.post<{ Body: { pattern?: string; note?: string } }>('/api/blocked', async (req, reply) => {
     const pattern = normalizePattern(String(req.body?.pattern || ''));
     if (!pattern) return reply.code(400).send({ error: 'invalid_pattern', message: 'Enter an email address or a domain like @example.com.' });
-    const mine = db.prepare('SELECT 1 FROM accounts WHERE lower(email) = ?').get(pattern);
-    if (mine) return reply.code(400).send({ error: 'own_address', message: 'That is one of your own addresses.' });
+    if (isOwn(pattern)) return reply.code(400).send({ error: 'own_address', message: pattern.startsWith('@') ? 'That is the domain of one of your own addresses.' : 'That is one of your own addresses.' });
     db.prepare('INSERT INTO blocked_senders(pattern, note) VALUES (?, ?) ON CONFLICT(pattern) DO UPDATE SET note = excluded.note').run(pattern, String(req.body?.note || '').slice(0, 200));
     const row = db.prepare('SELECT * FROM blocked_senders WHERE pattern = ?').get(pattern) as BlockedRow;
     void sweep(pattern, 'inbox', 'blocked');
@@ -101,8 +117,7 @@ export function registerBlockedRoutes(app: FastifyInstance): void {
     const ins = db.prepare("INSERT OR IGNORE INTO blocked_senders(pattern, note) VALUES (?, 'Imported from the Blocked folder')");
     let added = 0;
     for (const r of rows) {
-      const mine = db.prepare('SELECT 1 FROM accounts WHERE lower(email) = ?').get(r.email);
-      if (mine) continue;
+      if (isOwn(r.email)) continue;
       ins.run(r.email);
       added++;
     }

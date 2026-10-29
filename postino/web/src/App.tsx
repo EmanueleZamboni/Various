@@ -18,6 +18,16 @@ function wasSignedIn(): boolean {
     return false;
   }
 }
+/** Forget everything this browser cached for the session (query cache + service worker cache). */
+function purgeClientState(qc: { clear: () => void }): void {
+  qc.clear();
+  try {
+    navigator.serviceWorker?.controller?.postMessage({ type: 'postino:purge' });
+    void caches?.delete('postino-api');
+  } catch {
+    // no service worker here
+  }
+}
 function rememberSignedIn(v: boolean): void {
   try {
     if (v) localStorage.setItem(SIGNED_IN_KEY, '1');
@@ -50,6 +60,7 @@ export default function App() {
           if (!alive) return;
           if (e instanceof ApiError && e.status === 401) {
             rememberSignedIn(false);
+            purgeClientState(qc);
             setAuth('login');
           } else {
             // Server unreachable (offline, or the VM restarting): keep showing the last
@@ -73,6 +84,7 @@ export default function App() {
       const err = ev.query.state.error;
       if (err instanceof ApiError && err.status === 401) {
         rememberSignedIn(false);
+        purgeClientState(qc);
         setAuth('login');
       }
     });
@@ -97,12 +109,12 @@ export default function App() {
         {auth === 'in' && (
           <>
             <Route path="/" element={<Navigate to="/inbox" replace />} />
-            <Route path="/t/:threadId" element={<Shell forcedView="inbox" me={me.data} onLogout={() => { rememberSignedIn(false); setAuth('login'); }} />} />
-            <Route path="/search" element={<Shell me={me.data} onLogout={() => { rememberSignedIn(false); setAuth('login'); }} />} />
-            <Route path="/search/t/:threadId" element={<Shell me={me.data} onLogout={() => { rememberSignedIn(false); setAuth('login'); }} />} />
-            <Route path="/settings/*" element={<Shell me={me.data} onLogout={() => { rememberSignedIn(false); setAuth('login'); }} />} />
-            <Route path="/:view" element={<Shell me={me.data} onLogout={() => { rememberSignedIn(false); setAuth('login'); }} />} />
-            <Route path="/:view/t/:threadId" element={<Shell me={me.data} onLogout={() => { rememberSignedIn(false); setAuth('login'); }} />} />
+            <Route path="/t/:threadId" element={<Shell forcedView="inbox" me={me.data} onLogout={() => { rememberSignedIn(false); purgeClientState(qc); setAuth('login'); }} />} />
+            <Route path="/search" element={<Shell me={me.data} onLogout={() => { rememberSignedIn(false); purgeClientState(qc); setAuth('login'); }} />} />
+            <Route path="/search/t/:threadId" element={<Shell me={me.data} onLogout={() => { rememberSignedIn(false); purgeClientState(qc); setAuth('login'); }} />} />
+            <Route path="/settings/*" element={<Shell me={me.data} onLogout={() => { rememberSignedIn(false); purgeClientState(qc); setAuth('login'); }} />} />
+            <Route path="/:view" element={<Shell me={me.data} onLogout={() => { rememberSignedIn(false); purgeClientState(qc); setAuth('login'); }} />} />
+            <Route path="/:view/t/:threadId" element={<Shell me={me.data} onLogout={() => { rememberSignedIn(false); purgeClientState(qc); setAuth('login'); }} />} />
           </>
         )}
         <Route path="*" element={<div className="auth" />} />

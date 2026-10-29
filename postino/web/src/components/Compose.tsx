@@ -32,12 +32,19 @@ export function Compose() {
   const [subject, setSubject] = useState(c.subject ?? c.draft?.subject ?? '');
   const [text, setText] = useState(c.text ?? c.draft?.text ?? '');
   const [files, setFiles] = useState<File[]>([]);
+  // A reopened draft (undo send, Drafts list) keeps its uploaded files, thread and sender alias.
+  const [uploads, setUploads] = useState<{ id: string; filename: string; size: number }[]>(c.draft?.attachments ?? []);
+  const inReplyTo = c.inReplyTo ?? c.draft?.inReplyTo ?? null;
+  const forwardOf = c.forwardOf ?? c.draft?.forwardOf ?? null;
+  const threadId = c.threadId ?? c.draft?.threadId ?? null;
+  const fromAddress = c.fromAddress ?? c.draft?.fromAddress ?? undefined;
   const [drag, setDrag] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [saved, setSaved] = useState('');
   const draft = useRef<Draft | null>(c.draft ?? null);
   const saveTimer = useRef<number | undefined>(undefined);
+  const saving = useRef<Promise<boolean> | null>(null);
   const dirty = useRef(false);
   const sheetRef = useRef<HTMLDivElement>(null);
 
@@ -76,33 +83,62 @@ export function Compose() {
   }, [accountId, signatures]);
   const signature = (signatures ?? []).find((s) => s.id === signatureId);
 
-  const saveDraft = async () => {
-    if (!dirty.current || !accountId) return;
-    const body = { accountId, to, cc, bcc, subject, text, inReplyTo: c.inReplyTo ?? null, threadId: c.threadId ?? null };
-    try {
-      draft.current = draft.current ? await api.drafts.update(draft.current.id, body) : await api.drafts.create(body);
-      setSaved(new Date().toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }));
-      qc.invalidateQueries({ queryKey: ['drafts'] });
-    } catch {
-      /* keep going */
-    }
+  /** Save (or update) the draft. Resolves false when the server could not be reached. */
+  const saveDraft = (): Promise<boolean> => {
+    if (!dirty.current || !accountId) return Promise.resolve(true);
+    if (saving.current) return saving.current.then(() => saveDraft()); // never two creates in flight
+    const body = { accountId, to, cc, bcc, subject, text, inReplyTo, forwardOf, threadId, fromAddress: fromAddress ?? null, attachments: uploads };
+    const p = (async () => {
+      try {
+        draft.current = draft.current ? await api.drafts.update(draft.current.id, body) : await api.drafts.create(body);
+        dirty.current = false;
+        setSaved(new Date().toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }));
+        qc.invalidateQueries({ queryKey: ['drafts'] });
+        return true;
+      } catch {
+        return false;
+      } finally {
+        saving.current = null;
+      }
+    })();
+    saving.current = p;
+    return p;
   };
 
+  const first = useRef(true);
   useEffect(() => {
-    dirty.current = !!(to || cc || bcc || subject || text.trim());
+    if (first.current) {
+      first.current = false; // what the composer opened with is already saved (or empty)
+      return;
+    }
+    dirty.current = !!(to || cc || bcc || subject || text.trim() || uploads.length);
     if (!dirty.current) return;
     window.clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(() => void saveDraft(), 1500);
     return () => window.clearTimeout(saveTimer.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [to, cc, bcc, subject, text, accountId]);
+  }, [to, cc, bcc, subject, text, accountId, uploads]);
 
-  const hasContent = !!(to.trim() || subject.trim() || text.trim() || files.length);
+  // Leaving the app (phone back gesture, switching apps) saves what was typed so far.
+  useEffect(() => {
+    const onHide = () => {
+      if (document.visibilityState === 'hidden' && dirty.current) void saveDraft();
+    };
+    document.addEventListener('visibilitychange', onHide);
+    return () => document.removeEventListener('visibilitychange', onHide);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [to, cc, bcc, subject, text, accountId, uploads]);
+
+  const hasContent = !!(to.trim() || subject.trim() || text.trim() || files.length || uploads.length);
 
   const closeAndKeep = async () => {
     window.clearTimeout(saveTimer.current);
     if (hasContent && dirty.current) {
-      await saveDraft();
+      const ok = await saveDraft();
+      if (!ok) {
+        setErr('Could not save the draft: the server is not reachable. Keep this open and try again in a moment.');
+        return;
+      }
       toast({ text: 'Draft saved' });
     }
     close();
@@ -162,6 +198,9 @@ export function Compose() {
     }
     setBusy(true);
     try {
+      // A save still in flight would create a stray draft after the send; let it finish first.
+      window.clearTimeout(saveTimer.current);
+      if (saving.current) await saving.current;
       const fd = new FormData();
       fd.set('accountId', accountId);
       fd.set('to', to);
@@ -170,18 +209,19 @@ export function Compose() {
       fd.set('subject', subject.trim() || '(no subject)');
       fd.set('text', text);
       fd.set('signatureId', signatureId || 'none');
-      if (c.inReplyTo) fd.set('inReplyTo', c.inReplyTo);
-      if (c.forwardOf) fd.set('forwardOf', c.forwardOf);
-      if (c.quotedText && (c.inReplyTo || c.forwardOf) && (settings?.compose.includeQuote ?? true)) fd.set('quote', '1');
-      if (c.fromAddress) fd.set('fromAddress', c.fromAddress);
+      if (inReplyTo) fd.set('inReplyTo', inReplyTo);
+      if (forwardOf) fd.set('forwardOf', forwardOf);
+      if ((inReplyTo || forwardOf) && (c.quotedText || c.draft) && (settings?.compose.includeQuote ?? true)) fd.set('quote', '1');
+      if (fromAddress) fd.set('fromAddress', fromAddress);
       if (sendAt) fd.set('sendAt', sendAt.toISOString());
       if (draft.current) fd.set('draftId', draft.current.id);
+      if (uploads.length) fd.set('uploadIds', uploads.map((u) => u.id).join(','));
       for (const f of files) fd.append('attachments', f, f.name);
       const res = await api.send(fd);
       window.clearTimeout(saveTimer.current);
       dirty.current = false;
       close();
-      feedback(res, c.fromAddress || account?.email || 'your account');
+      feedback(res, fromAddress || account?.email || 'your account');
     } catch (e) {
       setErr((e as Error).message);
     } finally {
@@ -189,7 +229,7 @@ export function Compose() {
     }
   };
 
-  const title = c.mode === 'forward' ? 'Forward' : c.mode === 'new' ? (c.draft ? 'Draft' : 'New email') : 'Reply';
+  const title = c.mode === 'forward' ? 'Forward' : c.mode === 'new' ? (c.draft ? (forwardOf ? 'Forward (draft)' : inReplyTo ? 'Reply (draft)' : 'Draft') : 'New email') : 'Reply';
 
   return (
     <div className="scrim full" role="dialog" aria-modal="true" aria-labelledby="compose-title" onMouseDown={(e) => { if (e.target === e.currentTarget) void closeAndKeep(); }}>
@@ -234,8 +274,15 @@ export function Compose() {
         <textarea id="c-body" className="compose-body" value={text} onChange={(e) => setText(e.target.value)} placeholder="Write your message" autoFocus={!!c.to} />
         {signature && <div style={{ padding: '0 18px' }}><SignaturePreview signature={signature} /></div>}
         {c.quotedText && <div className="compose-quote">{c.quotedText}</div>}
-        {files.length > 0 && (
+        {(files.length > 0 || uploads.length > 0) && (
           <div className="compose-atts">
+            {uploads.map((u) => (
+              <span className="compose-att" key={`up-${u.id}`}>
+                <span>{u.filename}</span>
+                <small>{formatBytes(u.size)}</small>
+                <button type="button" className="ib" aria-label={`Remove ${u.filename}`} onClick={() => setUploads((us) => us.filter((x) => x.id !== u.id))}><Icon name="x" size={14} /></button>
+              </span>
+            ))}
             {files.map((f, i) => (
               <span className="compose-att" key={`${f.name}-${i}`}>
                 <span>{f.name}</span>

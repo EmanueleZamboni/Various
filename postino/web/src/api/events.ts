@@ -13,6 +13,7 @@ const EVENT_NAMES = [
   'sync.progress',
   'action.failed',
   'new.mail',
+  'outbox.updated',
 ] as const;
 
 /** Keeps react-query caches fresh from the server's SSE stream. */
@@ -93,6 +94,11 @@ export function useServerEvents(enabled: boolean) {
             case 'sync.progress':
               qc.invalidateQueries({ queryKey: ['accounts'] });
               if (data.done) invalidateLists();
+              break;
+            case 'outbox.updated':
+              qc.invalidateQueries({ queryKey: ['outbox'] });
+              qc.invalidateQueries({ queryKey: ['drafts'] });
+              invalidateLists();
               break;
             case 'action.failed':
               toast({ text: data.message ?? 'An action could not be completed.', kind: 'error' });

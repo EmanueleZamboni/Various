@@ -15,7 +15,18 @@ async function boot() {
   }
   if ('serviceWorker' in navigator && import.meta.env.PROD && import.meta.env.VITE_MOCK !== '1') {
     const { registerSW } = await import('virtual:pwa-register');
-    registerSW({ immediate: true });
+    const { useUI } = await import('./store');
+    // A new version is applied with a reload, but never while an email is being written.
+    const reloadWhenIdle = () => {
+      if (!useUI.getState().compose) return window.location.reload();
+      const unsub = useUI.subscribe((s) => {
+        if (!s.compose) {
+          unsub();
+          window.setTimeout(() => window.location.reload(), 300);
+        }
+      });
+    };
+    registerSW({ immediate: true, onNeedReload: reloadWhenIdle } as Parameters<typeof registerSW>[0] & { onNeedReload: () => void });
   }
   const qc = new QueryClient({
     defaultOptions: {

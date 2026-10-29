@@ -215,6 +215,7 @@ accent-insensitive, ranked (subject and sender hits rank higher).
   → `{ ok: true, messageId: string, threadId: string }`. The sent copy is appended to the account's Sent folder.
 - `GET /api/messages/:id/reply?mode=reply|replyAll|forward` → `{ to, cc, subject, quotedText, quotedHtml, accountId }` prefilled values.
 - `GET /api/drafts` → `Draft[]`; `POST /api/drafts` → `Draft`; `PUT /api/drafts/:id` → `Draft`; `DELETE /api/drafts/:id` → `204`.
+  A `Draft` also carries `forwardOf`, `fromAddress` (alias to send from) and `attachments: [{ id, filename, size }]` (ids from `POST /api/uploads`, sent again as `uploadIds`).
   `Draft = { id, accountId, to, cc, bcc, subject, text, inReplyTo, threadId, updatedAt }`.
 - `GET /api/contacts?q=ann&limit=8` → `Address[]` (people you've exchanged mail with, most frequent first).
 
@@ -276,7 +277,7 @@ Per account (`PATCH /api/accounts/:id`): `aliases: string[]` (other addresses de
 `POST /api/send` extra fields: `signatureId` ("none" or id), `quote` ("1" to quote the original, server-built), `fromAddress` (alias), `sendAt` (ISO time → scheduled), `now` ("1" skips the undo delay).
 When the message is held (undo delay or schedule) the response is `{ ok, queued: true, outboxId, sendAt, threadId }`.
 - `GET /api/outbox` → `{ items: [{ id, accountId, to, cc, subject, text, sendAt, status, error, threadId }] }`
-- `DELETE /api/outbox/:id` → `{ ok, draft }` cancels and returns the message as a draft.
+- `DELETE /api/outbox/:id` → `{ ok, draft }` cancels a queued **or failed** send and returns the message as a draft (thread, alias and attachments kept). After a restart, a send that was mid-flight is marked `failed` with a note to check Sent, never re-sent blindly.
 - SSE `outbox.updated { id, status }`.
 - `GET /api/messages/:id/reply` also returns `fromAddress` (alias to send from) when "reply from the address they wrote to" applies.
 

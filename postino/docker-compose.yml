@@ -13,6 +13,7 @@ services:
     env_file: .env
     environment:
       - POSTINO_SECURE_COOKIES=true
+      - POSTINO_TRUST_PROXY=true
     volumes:
       - ./data:/data
     expose:

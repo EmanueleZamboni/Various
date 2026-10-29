@@ -26,7 +26,7 @@ const safeList = (v: string | null | undefined): string[] => {
 
 const esc = (t: string): string => t.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c] as string));
 
-type DraftRow = { id: number; account_id: number; thread_id: number | null; in_reply_to: number | null; forward_of: number | null; to_text: string; cc_text: string; bcc_text: string; subject: string; text: string; attachments_json: string; updated_at: string };
+type DraftRow = { id: number; account_id: number; thread_id: number | null; in_reply_to: number | null; forward_of: number | null; to_text: string; cc_text: string; bcc_text: string; subject: string; text: string; attachments_json: string; from_address: string; updated_at: string };
 
 const draftView = (d: DraftRow) => ({
   id: String(d.id),
@@ -34,6 +34,7 @@ const draftView = (d: DraftRow) => ({
   threadId: d.thread_id ? String(d.thread_id) : null,
   inReplyTo: d.in_reply_to ? String(d.in_reply_to) : null,
   forwardOf: d.forward_of ? String(d.forward_of) : null,
+  fromAddress: d.from_address || null,
   to: d.to_text,
   cc: d.cc_text,
   bcc: d.bcc_text,
@@ -260,9 +261,18 @@ export function registerComposeRoutes(app: FastifyInstance): void {
   app.delete<{ Params: { id: string } }>('/api/outbox/:id', async (req, reply) => {
     const job = cancel(Number(req.params.id));
     if (!job) return reply.code(404).send({ error: 'gone', message: 'That email was already sent.' });
+    const atts = job.uploadIds.map((id) => {
+      const clean = String(id).replace(/[^A-Za-z0-9_-]/g, '');
+      try {
+        const meta = JSON.parse(fs.readFileSync(path.join(config.uploadsDir, clean + '.json'), 'utf8')) as { filename: string; size: number };
+        return { id: clean, filename: meta.filename, size: meta.size };
+      } catch {
+        return { id: clean, filename: 'attachment', size: 0 };
+      }
+    });
     const info = db
-      .prepare('INSERT INTO drafts(account_id, thread_id, in_reply_to, forward_of, to_text, cc_text, bcc_text, subject, text, attachments_json) VALUES (?,?,?,?,?,?,?,?,?,?)')
-      .run(job.accountId, job.threadId ?? null, job.inReplyTo?.row ?? null, job.forwardOf ?? null, job.to, job.cc, job.bcc, job.subject, job.text, JSON.stringify(job.uploadIds.map((id) => ({ id }))));
+      .prepare('INSERT INTO drafts(account_id, thread_id, in_reply_to, forward_of, to_text, cc_text, bcc_text, subject, text, attachments_json, from_address) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
+      .run(job.accountId, job.threadId ?? null, job.inReplyTo?.row ?? null, job.forwardOf ?? null, job.to, job.cc, job.bcc, job.subject, job.text, JSON.stringify(atts), job.fromAddress || '');
     const d = db.prepare('SELECT * FROM drafts WHERE id = ?').get(info.lastInsertRowid) as DraftRow;
     if (d.thread_id) bus.publish({ type: 'thread.updated', threadId: String(d.thread_id), accountId: String(d.account_id) });
     return { ok: true, draft: draftView(d) };
@@ -273,12 +283,13 @@ export function registerComposeRoutes(app: FastifyInstance): void {
   const saveDraft = (id: number | null, b: Record<string, unknown>) => {
     const accountId = Number(b.accountId);
     if (!db.prepare('SELECT 1 FROM accounts WHERE id = ?').get(accountId)) throw Object.assign(new Error('Unknown account'), { statusCode: 400 });
-    const vals = [accountId, b.threadId ? Number(b.threadId) : null, b.inReplyTo ? Number(b.inReplyTo) : null, b.forwardOf ? Number(b.forwardOf) : null, String(b.to || ''), String(b.cc || ''), String(b.bcc || ''), String(b.subject || ''), String(b.text || ''), JSON.stringify(b.attachments || [])];
+    const atts = Array.isArray(b.attachments) ? (b.attachments as { id?: string; filename?: string; size?: number }[]).filter((a) => a && a.id).map((a) => ({ id: String(a.id).replace(/[^A-Za-z0-9_-]/g, ''), filename: String(a.filename || 'attachment'), size: Number(a.size) || 0 })) : [];
+    const vals = [accountId, b.threadId ? Number(b.threadId) : null, b.inReplyTo ? Number(b.inReplyTo) : null, b.forwardOf ? Number(b.forwardOf) : null, String(b.to || ''), String(b.cc || ''), String(b.bcc || ''), String(b.subject || ''), String(b.text || ''), JSON.stringify(atts), String(b.fromAddress || '').toLowerCase()];
     if (id) {
-      db.prepare("UPDATE drafts SET account_id = ?, thread_id = ?, in_reply_to = ?, forward_of = ?, to_text = ?, cc_text = ?, bcc_text = ?, subject = ?, text = ?, attachments_json = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?").run(...vals, id);
+      db.prepare("UPDATE drafts SET account_id = ?, thread_id = ?, in_reply_to = ?, forward_of = ?, to_text = ?, cc_text = ?, bcc_text = ?, subject = ?, text = ?, attachments_json = ?, from_address = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?").run(...vals, id);
       return db.prepare('SELECT * FROM drafts WHERE id = ?').get(id) as DraftRow;
     }
-    const info = db.prepare('INSERT INTO drafts(account_id, thread_id, in_reply_to, forward_of, to_text, cc_text, bcc_text, subject, text, attachments_json) VALUES (?,?,?,?,?,?,?,?,?,?)').run(...vals);
+    const info = db.prepare('INSERT INTO drafts(account_id, thread_id, in_reply_to, forward_of, to_text, cc_text, bcc_text, subject, text, attachments_json, from_address) VALUES (?,?,?,?,?,?,?,?,?,?,?)').run(...vals);
     return db.prepare('SELECT * FROM drafts WHERE id = ?').get(info.lastInsertRowid) as DraftRow;
   };
 

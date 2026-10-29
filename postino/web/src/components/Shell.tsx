@@ -142,7 +142,7 @@ export function Shell({ me, forcedView, onLogout }: { me?: Me; forcedView?: stri
           New email
         </button>
       )}
-      {ui.compose && !ui.compose.inline && <Compose />}
+      {ui.compose && !ui.compose.inline && <Compose key={ui.composeSeq} />}
       {ui.pendingBlock && <BlockConfirm />}
       {ui.moveTarget && <MovePicker view={view} />}
       {ui.shortcutsOpen && <ShortcutsSheet />}

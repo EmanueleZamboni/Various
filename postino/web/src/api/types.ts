@@ -131,6 +131,9 @@ export type Draft = {
   subject: string;
   text: string;
   inReplyTo: string | null;
+  forwardOf?: string | null;
+  fromAddress?: string | null;
+  attachments?: { id: string; filename: string; size: number }[];
   threadId: string | null;
   updatedAt: string;
 };

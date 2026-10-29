@@ -238,7 +238,7 @@ export function Reader({ view }: { view: string }) {
           {!isDraft && lastIncoming && (
             replyMode && replyFor ? (
               <ReplyBox
-                key={`${replyFor}-${replyMode}`}
+                key={replyFor}
                 message={messages.find((m) => m.id === replyFor) ?? lastIncoming}
                 mode={replyMode}
                 onModeChange={setReplyMode}
@@ -354,7 +354,7 @@ function MessageCard({ message: m, thread, accountColor, myEmails, expanded, sin
                   <div className="search-pop" style={{ left: 'auto', right: 0, width: 200 }} onMouseLeave={() => setMenu(false)}>
                     <button className="sug" onClick={() => { setMenu(false); onReply('replyAll'); }}><Icon name="replyAll" size={16} />Reply all</button>
                     <button className="sug" onClick={() => { setMenu(false); onReply('forward'); }}><Icon name="forward" size={16} />Forward</button>
-                    <button className="sug" onClick={() => { setMenu(false); printMessage(m); }}><Icon name="draft" size={16} />Print</button>
+                    <button className="sug" onClick={() => { setMenu(false); printMessage(m, showImages); }}><Icon name="draft" size={16} />Print</button>
                     <button className="sug" onClick={() => { setMenu(false); void act({ threadIds: [m.threadId], action: m.flagged ? 'unpin' : 'pin', view: 'inbox' }); }}><Icon name="pin" size={16} />{m.flagged ? 'Unpin' : 'Pin'}</button>
                     {!me && (
                       <button className="sug" onClick={() => { setMenu(false); onBlock(); }}><Icon name="block" size={16} />Block {m.from.email}</button>
@@ -434,11 +434,13 @@ export function AttachmentChip({ a, all }: { a: Attachment; all?: Attachment[] }
 }
 
 /** Print one message: its header plus the sanitized body, in a plain page. */
-export function printMessage(m: Message) {
+export function printMessage(m: Message, showImages = false) {
   const esc = (t: string) => t.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string));
-  const body = (m.body.html || '').replace(/\ssrc=""/g, '').replace(/data-remote-src=/g, 'src=');
+  // Remote images only when the reader shows them too; the page gets the same CSP as the viewer and no scripts.
+  const body = showImages ? (m.body.html || '').replace(/\ssrc=""/g, '').replace(/data-remote-src=/g, 'src=') : m.body.html || '';
+  const csp = `default-src 'none'; img-src data: blob: ${showImages ? 'https: http:' : ''} ${location.origin}; style-src 'unsafe-inline'; script-src 'none'`;
   const who = (a: { name: string; email: string }) => (a.name ? `${esc(a.name)} <${esc(a.email)}>` : esc(a.email));
-  const html = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(m.subject || '(no subject)')}</title>
+  const html = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${csp}"><title>${esc(m.subject || '(no subject)')}</title>
     <style>body{font:14px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:#111;margin:32px}h1{font-size:20px;margin:0 0 12px}table.h td{padding:2px 10px 2px 0;color:#555;vertical-align:top}table.h td:first-child{font-weight:600;color:#222}hr{border:0;border-top:1px solid #ddd;margin:16px 0}img{max-width:100%}blockquote{border-left:2px solid #ccc;margin:0;padding-left:1ex;color:#555}</style></head>
     <body><h1>${esc(m.subject || '(no subject)')}</h1>
     <table class="h"><tr><td>From</td><td>${who(m.from)}</td></tr><tr><td>To</td><td>${m.to.map(who).join(', ')}</td></tr>${m.cc.length ? `<tr><td>Cc</td><td>${m.cc.map(who).join(', ')}</td></tr>` : ''}<tr><td>Date</td><td>${esc(new Date(m.date).toLocaleString())}</td></tr>${m.attachments.length ? `<tr><td>Attachments</td><td>${m.attachments.map((a) => esc(a.filename)).join(', ')}</td></tr>` : ''}</table>
@@ -450,6 +452,8 @@ export function printMessage(m: Message) {
   frame.style.width = '0';
   frame.style.height = '0';
   frame.style.border = '0';
+  // Same origin is needed for print(); scripts are blocked by the CSP above and the sandbox.
+  frame.setAttribute('sandbox', 'allow-same-origin allow-modals');
   frame.srcdoc = html;
   frame.onload = () => {
     try {
@@ -494,8 +498,10 @@ export function HtmlBody({ id, html, showImages }: { id: string; html: string; s
   const doc = useMemo(() => {
     let body = html;
     if (showImages) body = body.replace(/\ssrc=""/g, '').replace(/data-remote-src=/g, 'src=');
-    const csp = `default-src 'none'; img-src data: blob: ${showImages ? 'https: http:' : ''} ${location.origin}; style-src 'unsafe-inline'; font-src https://fonts.gstatic.com; script-src 'unsafe-inline'`;
-    return `<!doctype html><html data-id="${id}"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${csp}"><base target="_blank"><style>${FRAME_CSS}</style></head><body>${body}<script>${FRAME_JS}</script></body></html>`;
+    // Only our own resize script may run: a nonce the mail body cannot know.
+    const nonce = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+    const csp = `default-src 'none'; img-src data: blob: ${showImages ? 'https: http:' : ''} ${location.origin}; style-src 'unsafe-inline'; font-src https://fonts.gstatic.com; script-src 'nonce-${nonce}'`;
+    return `<!doctype html><html data-id="${id}"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${csp}"><base target="_blank"><style>${FRAME_CSS}</style></head><body>${body}<script nonce="${nonce}">${FRAME_JS}</script></body></html>`;
   }, [html, id, showImages]);
   return (
     <iframe

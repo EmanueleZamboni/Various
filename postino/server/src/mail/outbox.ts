@@ -49,7 +49,8 @@ export function enqueue(job: SendJob, sendAt: Date): OutboxRow {
 
 /** Cancel a queued send. Returns the job so the composer can reopen it as a draft. */
 export function cancel(id: number): SendJob | null {
-  const row = db.prepare("SELECT * FROM outbox WHERE id = ? AND status = 'queued'").get(id) as OutboxRow | undefined;
+  // Queued mail can be pulled back; a failed one too, so it can be edited and sent again.
+  const row = db.prepare("SELECT * FROM outbox WHERE id = ? AND status IN ('queued', 'failed')").get(id) as OutboxRow | undefined;
   if (!row) return null;
   db.prepare("UPDATE outbox SET status = 'cancelled' WHERE id = ?").run(id);
   return JSON.parse(row.payload) as SendJob;
@@ -88,8 +89,38 @@ async function forwardedAttachments(messageRow: number): Promise<OutgoingAttachm
   return out;
 }
 
+/**
+ * The quoted original is stored as the sanitized viewer HTML: remote images parked in
+ * data-remote-src and inline images pointing at /api/attachments/N. Put them back into a
+ * form other mail clients can show: real src= links and cid: parts.
+ */
+async function inlineQuoteImages(job: SendJob): Promise<{ html: string | null; text: string; inline: OutgoingAttachment[] } | null> {
+  if (!job.quote) return null;
+  if (!job.quote.html) return { ...job.quote, inline: [] };
+  let html = job.quote.html.replace(/\ssrc=""/g, '').replace(/data-remote-src=/g, 'src=');
+  const inline: OutgoingAttachment[] = [];
+  const ids = new Map<number, string>();
+  html = html.replace(/src=(["'])\/api\/attachments\/(\d+)(?:\?[^"']*)?\1/g, (_m, q: string, id: string) => {
+    const n = Number(id);
+    if (!ids.has(n)) ids.set(n, `quote${n}.${Date.now()}@postino`);
+    return `src=${q}cid:${ids.get(n)}${q}`;
+  });
+  for (const [id, cid] of ids) {
+    const a = db.prepare('SELECT a.*, m.account_id FROM attachments a JOIN messages m ON m.id = a.message_row WHERE a.id = ?').get(id) as (AttachmentRow & { account_id: number }) | undefined;
+    if (!a) continue;
+    try {
+      const sync = manager.get(a.account_id);
+      const file = sync ? await sync.cacheAttachment(a.id) : attachmentPath(a.id);
+      inline.push({ filename: a.filename, contentType: a.content_type, path: file, cid });
+    } catch {
+      // the image stays as a cid: link without a part; better than a dead app URL
+    }
+  }
+  return { html, text: job.quote.text, inline };
+}
+
 /** Actually send a job over SMTP (used for immediate sends and by the outbox worker). */
-export async function executeSend(job: SendJob): Promise<{ messageId: string; threadId: number | null }> {
+export async function executeSend(job: SendJob, onDelivered?: () => void): Promise<{ messageId: string; threadId: number | null }> {
   const account = db.prepare('SELECT * FROM accounts WHERE id = ?').get(job.accountId) as AccountRow | undefined;
   if (!account) throw new Error('The sending account no longer exists.');
   const attachments = [...uploadsFor(job.uploadIds), ...(job.forwardOf ? await forwardedAttachments(job.forwardOf) : [])];
@@ -104,8 +135,9 @@ export async function executeSend(job: SendJob): Promise<{ messageId: string; th
     inReplyTo: job.inReplyTo ? { messageId: job.inReplyTo.messageId, references: job.inReplyTo.references } : null,
     attachments,
     signature: job.signature,
-    quote: job.quote,
+    quote: await inlineQuoteImages(job),
     fromAddress: job.fromAddress,
+    onDelivered,
   });
   if (job.inReplyTo?.row) {
     const sync = manager.get(job.accountId);
@@ -139,9 +171,12 @@ async function tick(): Promise<void> {
   try {
     const due = db.prepare("SELECT * FROM outbox WHERE status = 'queued' AND send_at <= ? ORDER BY send_at LIMIT 5").all(new Date().toISOString()) as OutboxRow[];
     for (const row of due) {
-      db.prepare("UPDATE outbox SET status = 'sending' WHERE id = ?").run(row.id);
+      // Claim the row only if nobody cancelled it while an earlier send was on the wire.
+      const claimed = db.prepare("UPDATE outbox SET status = 'sending' WHERE id = ? AND status = 'queued'").run(row.id);
+      if (!claimed.changes) continue;
       try {
-        await executeSend(JSON.parse(row.payload) as SendJob);
+        // SMTP accepted it: remember that before the (slow) copy to Sent, so a restart never sends twice.
+        await executeSend(JSON.parse(row.payload) as SendJob, () => db.prepare("UPDATE outbox SET status = 'delivered' WHERE id = ?").run(row.id));
         db.prepare("UPDATE outbox SET status = 'sent' WHERE id = ?").run(row.id);
         bus.publish({ type: 'outbox.updated', id: String(row.id), status: 'sent' } as never);
       } catch (err) {
@@ -168,7 +203,9 @@ async function tick(): Promise<void> {
 }
 
 export function startOutbox(): void {
-  // Anything stuck in "sending" from a crash goes back to the queue.
-  db.prepare("UPDATE outbox SET status = 'queued' WHERE status = 'sending'").run();
+  // After a restart: mail that SMTP had accepted is sent; mail caught mid-send is not retried
+  // blindly (it may have gone out), the user gets it back as a draft to check and resend.
+  db.prepare("UPDATE outbox SET status = 'sent' WHERE status = 'delivered'").run();
+  db.prepare("UPDATE outbox SET status = 'failed', error = ? WHERE status = 'sending'").run('Postino restarted while this was being sent. Check your Sent folder before sending it again.');
   scheduleTick();
 }

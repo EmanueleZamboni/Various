@@ -23,7 +23,7 @@ import { pruneAttachmentCache, pruneUploads } from './mail/store.js';
 import { db } from './db.js';
 
 export async function buildApp() {
-  const app = Fastify({ logger: false, trustProxy: true, bodyLimit: 2 * 1024 * 1024 });
+  const app = Fastify({ logger: false, trustProxy: config.trustProxy, bodyLimit: 2 * 1024 * 1024 });
   await app.register(cookie);
   await app.register(rateLimit, { global: false });
   await app.register(multipart, { limits: { fileSize: 25 * 1024 * 1024, files: 10 } });
