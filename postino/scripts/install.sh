@@ -100,7 +100,7 @@ if command -v apt-get >/dev/null; then
   echo 'APT::Periodic::Update-Package-Lists "1";
 APT::Periodic::Unattended-Upgrade "1";' | sudo tee /etc/apt/apt.conf.d/20auto-upgrades >/dev/null
 fi
-if ! crontab -l 2>/dev/null | grep -q "postino/scripts/backup.sh"; then
+if command -v crontab >/dev/null && ! crontab -l 2>/dev/null | grep -q "postino/scripts/backup.sh"; then
   say "Scheduling a nightly backup (03:30, kept 14 days, in ~/postino-backups)"
   (crontab -l 2>/dev/null; echo "30 3 * * * $APP/scripts/backup.sh >> $HOME/postino-backup.log 2>&1") | crontab -
 fi
