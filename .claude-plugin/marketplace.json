@@ -1,0 +1,13 @@
+{
+  "name": "various",
+  "owner": { "name": "Emanuele Zamboni" },
+  "description": "Plugins from the EmanueleZamboni/Various repository",
+  "plugins": [
+    {
+      "name": "power-meter",
+      "source": "./claude-power-meter",
+      "description": "Estimates the electricity your Claude Code session is using (watt-hours and watts) from the tokens each model response reports",
+      "version": "0.1.0"
+    }
+  ]
+}
