@@ -13,7 +13,7 @@ import type {
   ThreadAction,
   ThreadDetail,
   ThreadsResponse,
- Signature, Passkey } from './types';
+ Signature, Passkey, DeepPartial, OutboxItem } from './types';
 
 export class ApiError extends Error {
   status: number;
@@ -90,7 +90,7 @@ export const api = {
     list: () => get<Account[]>('/api/accounts'),
     create: (input: AccountInput) => post<Account>('/api/accounts', input),
     test: (input: AccountInput) => post<{ ok: true }>('/api/accounts/test', input),
-    update: (id: string, patchBody: Partial<AccountInput> & { signature?: string; order?: number }) =>
+    update: (id: string, patchBody: Partial<AccountInput> & { signature?: string; order?: number; aliases?: string[]; folders?: Record<string, string>; notify?: string }) =>
       patch<Account>(`/api/accounts/${id}`, patchBody),
     remove: (id: string) => del<void>(`/api/accounts/${id}`),
     resync: (id: string) => post<void>(`/api/accounts/${id}/resync`),
@@ -129,7 +129,7 @@ export const api = {
       get<ThreadsResponse & { highlights: Record<string, string> }>(`/api/search${qs(params)}`),
     suggest: (q: string) => get<{ contacts: Address[]; recent: string[] }>(`/api/search/suggest${qs({ q })}`),
   },
-  send: (form: FormData) => post<{ ok: true; messageId: string; threadId: string }>('/api/send', form),
+  send: (form: FormData) => post<{ ok: true; messageId?: string; threadId: string | null; queued?: boolean; outboxId?: string; sendAt?: string }>('/api/send', form),
   drafts: {
     list: () => get<Draft[]>('/api/drafts'),
     create: (d: Partial<Draft>) => post<Draft>('/api/drafts', d),
@@ -145,7 +145,11 @@ export const api = {
   contacts: (q: string, limit = 8) => get<Address[]>(`/api/contacts${qs({ q, limit })}`),
   settings: {
     get: () => get<Settings>('/api/settings'),
-    update: (s: Partial<Settings>) => put<Settings>('/api/settings', s),
+    update: (s: DeepPartial<Settings>) => put<Settings>('/api/settings', s),
+  },
+  outbox: {
+    list: () => get<{ items: OutboxItem[] }>('/api/outbox'),
+    cancel: (id: string) => del<{ ok: true; draft: Draft }>(`/api/outbox/${id}`),
   },
   push: {
     subscribe: (subscription: PushSubscriptionJSON) => post<void>('/api/push/subscribe', { subscription }),

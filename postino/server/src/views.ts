@@ -21,6 +21,17 @@ export type AccountRow = {
   status: string;
   last_error: string | null;
   initial_sync_done: number;
+  aliases: string;
+  folder_overrides: string;
+  notify: string;
+};
+
+const safeJson = <T,>(v: string | null | undefined, fallback: T): T => {
+  try {
+    return v ? (JSON.parse(v) as T) : fallback;
+  } catch {
+    return fallback;
+  }
 };
 
 export const syncProgress = new Map<number, { fetched: number; total: number; done: boolean }>();
@@ -41,6 +52,9 @@ export function accountView(a: AccountRow) {
     error: a.last_error,
     unread: unread.n,
     initialSync: a.initial_sync_done ? null : { done: false, fetched: p?.fetched ?? 0, total: p?.total ?? 0 },
+    aliases: safeJson<string[]>(a.aliases, []),
+    folders: safeJson<Record<string, string>>(a.folder_overrides, {}),
+    notify: a.notify || 'default',
     imap: { host: a.imap_host, port: a.imap_port, secure: Boolean(a.imap_secure) },
     smtp: { host: a.smtp_host, port: a.smtp_port, secure: Boolean(a.smtp_secure) },
     username: a.username,
@@ -128,6 +142,7 @@ export function messageView(m: MessageRow, folder: FolderRow | undefined, body?:
     snippet: m.snippet,
     attachments: atts.filter((a) => !a.is_inline || !a.content_id).map(attachmentView),
     listUnsubscribe: m.list_unsubscribe,
+    knownSender: Boolean(db.prepare('SELECT 1 FROM contacts WHERE email = ? AND count >= 3').get(m.from_email)),
     body: {
       html: body?.html ?? null,
       text: body?.text ?? null,

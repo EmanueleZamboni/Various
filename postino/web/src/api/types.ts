@@ -15,6 +15,9 @@ export type Account = {
   error: string | null;
   unread: number;
   initialSync: { done: boolean; fetched: number; total: number } | null;
+  aliases?: string[];
+  folders?: Record<string, string>;
+  notify?: 'default' | 'all' | 'people' | 'none';
 };
 
 export type FolderRole = 'inbox' | 'sent' | 'drafts' | 'archive' | 'junk' | 'trash' | 'blocked' | 'other';
@@ -90,6 +93,7 @@ export type Message = {
   snippet: string;
   attachments: Attachment[];
   listUnsubscribe: string | null;
+  knownSender?: boolean;
   body: MessageBody;
 };
 
@@ -141,6 +145,7 @@ export type Signature = {
 };
 
 export type ReplyPrefill = {
+  fromAddress?: string | null;
   to: string;
   cc: string;
   subject: string;
@@ -151,12 +156,20 @@ export type ReplyPrefill = {
 
 export type SwipeAction = 'archive' | 'pin' | 'trash' | 'read' | 'junk';
 
+export type DeepPartial<T> = { [K in keyof T]?: T[K] extends object ? DeepPartial<T[K]> : T[K] };
+
 export type Settings = {
-  notifications: { enabled: boolean; categories: Category[] };
-  smartInbox: boolean;
+  notifications: { enabled: boolean; categories: Category[]; sound: boolean };
+  inbox: { smart: boolean; groupNotifications: boolean; groupNewsletters: boolean; previewLines: 0 | 1 | 2; showAvatars: boolean; showAccountTag: boolean; pinnedOnTop: boolean };
+  reading: { markRead: 'open' | 'delay' | 'manual'; markReadDelay: number; remoteImages: 'ask' | 'always' | 'contacts'; afterAction: 'next' | 'previous' | 'list'; confirmDelete: boolean; showQuoted: boolean };
+  compose: { defaultAccount: string; replyFromRecipient: boolean; defaultReply: 'reply' | 'replyAll'; includeQuote: boolean; undoSendSec: 0 | 5 | 10 | 20 | 30; sendAndArchive: boolean; bccMyself: boolean; confirmNoSubject: boolean };
   swipe: { left: SwipeAction; right: SwipeAction };
+  appearance: { density: 'comfortable' | 'compact'; textSize: 'normal' | 'large' };
+  smartInbox: boolean;
   signaturePerAccount: boolean;
 };
+
+export type OutboxItem = { id: string; accountId: string; to: string; cc: string; subject: string; text: string; sendAt: string; status: string; error: string | null; threadId: string | null; createdAt: string };
 
 export type Me = { ok: true; totpEnabled: boolean; passkeys: number; vapidPublicKey: string };
 

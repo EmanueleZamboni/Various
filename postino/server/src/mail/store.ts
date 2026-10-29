@@ -79,8 +79,17 @@ export type ThreadRow = {
 };
 
 export const myAddresses = (): Set<string> => {
-  const rows = db.prepare('SELECT email FROM accounts').all() as { email: string }[];
-  return new Set(rows.map((r) => r.email.toLowerCase()));
+  const rows = db.prepare('SELECT email, aliases FROM accounts').all() as { email: string; aliases: string }[];
+  const out = new Set<string>();
+  for (const r of rows) {
+    out.add(r.email.toLowerCase());
+    try {
+      for (const a of JSON.parse(r.aliases || '[]') as string[]) if (a) out.add(a.toLowerCase());
+    } catch {
+      // ignore bad json
+    }
+  }
+  return out;
 };
 
 export function senderOverride(email: string): Category | null {

@@ -221,6 +221,17 @@ CREATE TABLE IF NOT EXISTS passkeys (
   last_used_at TEXT
 );
 
+CREATE TABLE IF NOT EXISTS outbox (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  payload TEXT NOT NULL,
+  send_at TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'queued',
+  error TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX IF NOT EXISTS outbox_due ON outbox(status, send_at);
+
 CREATE TABLE IF NOT EXISTS push_subscriptions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   endpoint TEXT NOT NULL UNIQUE,
@@ -251,6 +262,9 @@ function hasColumn(table: string, column: string): boolean {
 if (!hasColumn('accounts', 'initial_sync_done')) {
   db.exec(`ALTER TABLE accounts ADD COLUMN initial_sync_done INTEGER NOT NULL DEFAULT 0`);
 }
+if (!hasColumn('accounts', 'aliases')) db.exec(`ALTER TABLE accounts ADD COLUMN aliases TEXT NOT NULL DEFAULT '[]'`);
+if (!hasColumn('accounts', 'folder_overrides')) db.exec(`ALTER TABLE accounts ADD COLUMN folder_overrides TEXT NOT NULL DEFAULT '{}'`);
+if (!hasColumn('accounts', 'notify')) db.exec(`ALTER TABLE accounts ADD COLUMN notify TEXT NOT NULL DEFAULT 'default'`);
 
 // Plain-text signatures from the first release become rich signatures.
 {

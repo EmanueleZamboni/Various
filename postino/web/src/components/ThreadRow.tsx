@@ -12,6 +12,8 @@ type Props = {
   focused: boolean;
   highlight?: string;
   compact?: boolean;
+  previewLines?: 0 | 1 | 2;
+  showAvatar?: boolean;
   showAccount: boolean;
   accountLabel: string;
   onOpen: () => void;
@@ -22,7 +24,7 @@ type Props = {
 
 const THRESHOLD = 88;
 
-export function ThreadRow({ thread: t, account, myEmails, selected, focused, highlight, compact, showAccount, accountLabel, onOpen, onSwipe, onAction, onPrefetch }: Props) {
+export function ThreadRow({ thread: t, account, myEmails, selected, focused, highlight, compact, previewLines = 1, showAvatar = true, showAccount, accountLabel, onOpen, onSwipe, onAction, onPrefetch }: Props) {
   const [dx, setDx] = useState(0);
   const [dir, setDir] = useState<'left' | 'right' | null>(null);
   const start = useRef<{ x: number; y: number; active: boolean; id: number } | null>(null);
@@ -99,7 +101,7 @@ export function ThreadRow({ thread: t, account, myEmails, selected, focused, hig
         </div>
       )}
       <div
-        className={`row${t.unread ? ' unread' : ''}${selected ? ' sel' : ''}${focused ? ' focus' : ''}${start.current?.active ? ' swiping' : ''}`}
+        className={`row${t.unread ? ' unread' : ''}${selected ? ' sel' : ''}${focused ? ' focus' : ''}${start.current?.active ? ' swiping' : ''}${showAvatar ? '' : ' no-avatar'}`}
         role="button"
         tabIndex={0}
         aria-current={selected ? 'true' : undefined}
@@ -132,9 +134,9 @@ export function ThreadRow({ thread: t, account, myEmails, selected, focused, hig
           <div className="subj">{t.subject || '(no subject)'}</div>
           {highlight ? (
             <div className="snip" dangerouslySetInnerHTML={{ __html: highlight }} />
-          ) : (
-            <div className="snip">{t.snippet}</div>
-          )}
+          ) : previewLines > 0 ? (
+            <div className={`snip${previewLines === 2 ? ' lines-2' : ''}`}>{t.snippet}</div>
+          ) : null}
           {!compact && (
             <div className="row-meta">
               {showAccount && account && (

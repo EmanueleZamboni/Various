@@ -297,11 +297,24 @@ export class AccountSync {
       `INSERT INTO folders(account_id, path, name, delimiter, role, present) VALUES (?, ?, ?, ?, ?, 1)
        ON CONFLICT(account_id, path) DO UPDATE SET name = excluded.name, delimiter = excluded.delimiter, role = excluded.role, present = 1`,
     );
+    // The user can pin a folder to a role (e.g. use "INBOX.Archivio" as Archive).
+    let overrides: Record<string, string> = {};
+    try {
+      overrides = JSON.parse(this.account.folder_overrides || '{}') as Record<string, string>;
+    } catch {
+      overrides = {};
+    }
+    const byPath = new Map<string, FolderRole>();
+    for (const [role, pth] of Object.entries(overrides)) if (pth) byPath.set(pth, role as FolderRole);
     const tx = db.transaction((rows: ListResponse[]) => {
       for (const f of rows) {
         if (f.flags.has('\\Noselect') || f.flags.has('\\NonExistent')) continue;
         seen.add(f.path);
-        upsert.run(this.id, f.path, f.name, f.delimiter || '.', detectRole(f));
+        let role = detectRole(f);
+        const forced = byPath.get(f.path);
+        if (forced) role = forced;
+        else if ([...byPath.values()].includes(role) && role !== 'inbox') role = 'other'; // another folder holds this role now
+        upsert.run(this.id, f.path, f.name, f.delimiter || '.', role);
       }
       const present = db.prepare('SELECT id, path FROM folders WHERE account_id = ?').all(this.id) as { id: number; path: string }[];
       for (const p of present) {
@@ -721,8 +734,28 @@ export class AccountSync {
     const file = attachmentPath(a.id);
     if (a.cached && fs.existsSync(file)) return file;
     const folder = db.prepare('SELECT * FROM folders WHERE id = ?').get(a.folder_id) as FolderRow;
+    if (!a.part) {
+      // Attachments parsed from the whole message have no IMAP part number: download the
+      // message again and restore every attachment of it from the parsed result.
+      await this.withMailbox(folder.path, async (client) => {
+        const msg = await client.fetchOne(String(a.uid), { uid: true, source: true }, { uid: true });
+        if (!msg || !msg.source) throw new Error('Message not found on the server');
+        const mail = await simpleParser(msg.source, parserOptions);
+        const rows = db.prepare('SELECT id, filename, content_id, size FROM attachments WHERE message_row = (SELECT message_row FROM attachments WHERE id = ?) ORDER BY id').all(a.id) as { id: number; filename: string; content_id: string | null; size: number }[];
+        const parsed = (mail.attachments || []).map((x) => ({ filename: x.filename || '', contentId: x.contentId ? normalizeMsgId(x.contentId) : null, size: x.size || x.content?.length || 0, content: x.content as Buffer }));
+        for (const row of rows) {
+          const match = parsed.find((x) => (row.content_id && x.contentId === row.content_id) || (x.filename === row.filename && x.size === row.size)) || parsed.find((x) => x.filename === row.filename);
+          if (match) {
+            fs.writeFileSync(attachmentPath(row.id), match.content);
+            db.prepare('UPDATE attachments SET cached = 1 WHERE id = ?').run(row.id);
+          }
+        }
+      });
+      if (!fs.existsSync(file)) throw new Error('Attachment not found in the message');
+      return file;
+    }
     await this.withMailbox(folder.path, async (client) => {
-      const dl = await client.download(String(a.uid), a.part || undefined, { uid: true });
+      const dl = await client.download(String(a.uid), a.part, { uid: true });
       if (!dl.content) throw new Error('Attachment not found on the server');
       await pipeline(dl.content, fs.createWriteStream(file));
     });

@@ -17,6 +17,7 @@ import { registerSignatureRoutes } from './routes/signatures.js';
 import { registerPasskeyRoutes } from './passkeys.js';
 import { manager } from './mail/manager.js';
 import { startPushBridge, vapidKeys } from './push.js';
+import { startOutbox } from './mail/outbox.js';
 
 export async function buildApp() {
   const app = Fastify({ logger: false, trustProxy: true, bodyLimit: 2 * 1024 * 1024 });
@@ -130,6 +131,7 @@ async function main(): Promise<void> {
   vapidKeys();
   startPushBridge();
   manager.startAll();
+  startOutbox();
   await app.listen({ port: config.port, host: config.host });
   log.info({ port: config.port, data: config.dataDir }, 'postino listening');
   const shutdown = async () => {

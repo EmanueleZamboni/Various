@@ -1,31 +1,15 @@
 import type { FastifyInstance } from 'fastify';
-import { db, getSetting, setSetting } from '../db.js';
+import { db } from '../db.js';
 import { bus, type AppEvent } from '../events.js';
 import { searchThreads, rememberSearch } from '../search.js';
 import { threadView } from '../views.js';
 import type { ThreadRow } from '../mail/store.js';
-import { sendPush, notificationSettings } from '../push.js';
+import { sendPush } from '../push.js';
+import { uiSettings, updateUiSettings } from '../settings.js';
 import type { Address } from '../mail/parse.js';
 import { manager } from '../mail/manager.js';
 import { getAvatar } from '../avatars.js';
 import fs from 'node:fs';
-
-export type UiSettings = {
-  notifications: { enabled: boolean; categories: ('person' | 'notification' | 'newsletter')[] };
-  smartInbox: boolean;
-  swipe: { left: string; right: string };
-  signaturePerAccount: boolean;
-};
-
-export function uiSettings(): UiSettings {
-  const base = getSetting<Partial<UiSettings>>('ui', {});
-  return {
-    notifications: notificationSettings(),
-    smartInbox: base.smartInbox ?? true,
-    swipe: base.swipe ?? { left: 'archive', right: 'pin' },
-    signaturePerAccount: base.signaturePerAccount ?? true,
-  };
-}
 
 export function registerMiscRoutes(app: FastifyInstance): void {
   app.get<{ Querystring: { q?: string; account?: string; limit?: string; before?: string } }>('/api/search', async (req) => {
@@ -61,20 +45,7 @@ export function registerMiscRoutes(app: FastifyInstance): void {
 
   app.get('/api/settings', async () => uiSettings());
 
-  app.put<{ Body: Partial<UiSettings> }>('/api/settings', async (req) => {
-    const b = req.body || {};
-    const cur = getSetting<Partial<UiSettings>>('ui', {});
-    if (b.notifications) {
-      const cats = Array.isArray(b.notifications.categories) ? b.notifications.categories.filter((c) => ['person', 'notification', 'newsletter'].includes(c)) : notificationSettings().categories;
-      setSetting('notifications', { enabled: Boolean(b.notifications.enabled), categories: cats });
-    }
-    const next = { ...cur };
-    if (typeof b.smartInbox === 'boolean') next.smartInbox = b.smartInbox;
-    if (b.swipe && typeof b.swipe.left === 'string' && typeof b.swipe.right === 'string') next.swipe = { left: b.swipe.left, right: b.swipe.right };
-    if (typeof b.signaturePerAccount === 'boolean') next.signaturePerAccount = b.signaturePerAccount;
-    setSetting('ui', next);
-    return uiSettings();
-  });
+  app.put<{ Body: unknown }>('/api/settings', async (req) => updateUiSettings(req.body || {}));
 
   app.post<{ Body: { subscription?: { endpoint?: string } } }>('/api/push/subscribe', async (req, reply) => {
     const sub = req.body?.subscription;

@@ -20,6 +20,7 @@ export type ComposeState =
       subject?: string;
       text?: string;
       quotedText?: string;
+      fromAddress?: string;
       quotedHtml?: string;
       inReplyTo?: string;
       forwardOf?: string;

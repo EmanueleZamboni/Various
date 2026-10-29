@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { type ReactNode, useEffect, useState, type FormEvent } from 'react';
 import { Link, Route, Routes, useLocation } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '../api/client';
@@ -7,7 +7,7 @@ import type { Account, AccountInput, Category, Me, SwipeAction } from '../api/ty
 import { SignatureEditor } from './SignatureEditor';
 import { startRegistration, browserSupportsWebAuthn } from '@simplewebauthn/browser';
 import type { Passkey } from '../api/types';
-import { useSignatures } from '../api/hooks';
+import { useSignatures, useFolders } from '../api/hooks';
 import type { Signature } from '../api/types';
 import { Icon, type IconName } from '../icons';
 import { useUI } from '../store';
@@ -19,8 +19,11 @@ const COLORS = ['#3B6FE0', '#D9486B', '#2E9E6B', '#8A5BD6', '#E07C2A', '#1AA3B5'
 const NAV: { to: string; label: string; icon: IconName }[] = [
   { to: '/settings/accounts', label: 'Accounts', icon: 'people' },
   { to: '/settings/signatures', label: 'Signatures', icon: 'pen' },
+  { to: '/settings/inbox', label: 'Inbox', icon: 'inbox' },
+  { to: '/settings/reading', label: 'Reading', icon: 'mailOpen' },
+  { to: '/settings/composing', label: 'Composing', icon: 'send' },
   { to: '/settings/notifications', label: 'Notifications', icon: 'bell' },
-  { to: '/settings/preferences', label: 'Preferences', icon: 'filter' },
+  { to: '/settings/preferences', label: 'Swipes & look', icon: 'filter' },
   { to: '/settings/security', label: 'Security', icon: 'shield' },
 ];
 
@@ -56,6 +59,9 @@ export function SettingsPage({ me, onLogout }: { me?: Me; onLogout: () => void }
           <Route path="accounts" element={<AccountsSettings />} />
           <Route path="signatures" element={<SignaturesSettings />} />
           <Route path="notifications" element={<NotificationSettings me={me} />} />
+          <Route path="inbox" element={<InboxSettings />} />
+          <Route path="reading" element={<ReadingSettings />} />
+          <Route path="composing" element={<ComposeSettings />} />
           <Route path="preferences" element={<PreferenceSettings />} />
           <Route path="security" element={<SecuritySettings me={me} />} />
         </Routes>
@@ -141,9 +147,22 @@ function EditAccount({ account: a, onDone }: { account: Account; onDone: () => v
   const [name, setName] = useState(a.name);
   const [color, setColor] = useState(a.color);
   const [password, setPassword] = useState('');
+  const [aliases, setAliases] = useState((a.aliases ?? []).join(', '));
+  const [notify, setNotify] = useState<string>(a.notify ?? 'default');
+  const [folderMap, setFolderMap] = useState<Record<string, string>>(a.folders ?? {});
+  const { data: folders } = useFolders();
+  const myFolders = (folders ?? []).filter((f) => f.accountId === a.id);
   const [err, setErr] = useState('');
   const save = useMutation({
-    mutationFn: () => api.accounts.update(a.id, { name, color, ...(password ? { password } : {}) }),
+    mutationFn: () =>
+      api.accounts.update(a.id, {
+        name,
+        color,
+        aliases: aliases.split(/[,;\s]+/).map((x) => x.trim()).filter(Boolean),
+        notify,
+        folders: Object.fromEntries(Object.entries(folderMap).filter(([, v]) => v)),
+        ...(password ? { password } : {}),
+      }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['accounts'] }); toast({ text: 'Account updated' }); onDone(); },
     onError: (e) => setErr((e as Error).message),
   });
@@ -160,6 +179,34 @@ function EditAccount({ account: a, onDone }: { account: Account; onDone: () => v
       <div className="field">
         <span className="label">Color</span>
         <ColorPicker value={color} onChange={setColor} />
+      </div>
+      <div className="field">
+        <label htmlFor={`al-${a.id}`}>Other addresses delivered to this mailbox (aliases)</label>
+        <input id={`al-${a.id}`} className="input" value={aliases} onChange={(e) => setAliases(e.target.value)} placeholder="press@example.com, hello@example.com" />
+        <small className="help">Replies to mail sent to one of these go out from that address.</small>
+      </div>
+      <div className="field">
+        <label htmlFor={`nt-${a.id}`}>Notifications for this address</label>
+        <select id={`nt-${a.id}`} className="select" value={notify} onChange={(e) => setNotify(e.target.value)}>
+          <option value="default">Same as the general setting</option>
+          <option value="all">Every new email</option>
+          <option value="people">Only people</option>
+          <option value="none">None</option>
+        </select>
+      </div>
+      <div className="field">
+        <span className="label">Folders used for</span>
+        <div className="grid-2">
+          {(['archive', 'sent', 'drafts', 'junk', 'trash', 'blocked'] as const).map((role) => (
+            <label key={role} className="field" style={{ gap: 4 }}>
+              <small className="help" style={{ textTransform: 'capitalize' }}>{role === 'junk' ? 'Spam' : role}</small>
+              <select className="select" value={folderMap[role] ?? ''} onChange={(e) => setFolderMap((f) => ({ ...f, [role]: e.target.value }))}>
+                <option value="">Automatic</option>
+                {myFolders.map((f) => <option key={f.id} value={f.path}>{f.path}</option>)}
+              </select>
+            </label>
+          ))}
+        </div>
       </div>
       <div className="field">
         <label htmlFor={`p-${a.id}`}>New password {a.status === 'error' ? '(the server rejected the current one)' : '(leave empty to keep)'}</label>
@@ -313,6 +360,110 @@ function ServerFields({ label, value, onChange, idp }: { label: string; value: {
 
 // ---------- Notifications ----------
 
+function Row({ title, hint, children }: { title: string; hint?: string; children?: ReactNode }) {
+  return (
+    <div className="toggle-row">
+      <div className="t">
+        <span>{title}</span>
+        {hint && <small>{hint}</small>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function Switch({ on, onChange, label }: { on: boolean; onChange: (v: boolean) => void; label: string }) {
+  return <button className="switch" role="switch" aria-checked={on} aria-label={label} onClick={() => onChange(!on)} />;
+}
+
+function Select<T extends string>({ value, onChange, options, label, width = 200 }: { value: T; onChange: (v: T) => void; options: { id: T; label: string }[]; label: string; width?: number }) {
+  return (
+    <select className="select" style={{ width }} aria-label={label} value={value} onChange={(e) => onChange(e.target.value as T)}>
+      {options.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+    </select>
+  );
+}
+
+function InboxSettings() {
+  const { data: s } = useSettings();
+  const update = useUpdateSettings();
+  const setSmart = useUI((u) => u.setSmart);
+  if (!s) return <h2>Inbox</h2>;
+  const inbox = s.inbox;
+  const set = (patch: Partial<typeof inbox>) => update.mutate({ inbox: patch });
+  return (
+    <>
+      <h2>Inbox</h2>
+      <p className="help">How the list is organised. These apply on every device.</p>
+      <div className="settings-section">
+        <div className="card">
+          <Row title="Smart inbox" hint="People first, with notifications and newsletters grouped"><Switch on={inbox.smart} label="Smart inbox" onChange={(v) => { setSmart(v); set({ smart: v }); }} /></Row>
+          <Row title="Group notifications" hint="Receipts, shares, alerts in one card"><Switch on={inbox.groupNotifications} label="Group notifications" onChange={(v) => set({ groupNotifications: v })} /></Row>
+          <Row title="Group newsletters" hint="Bulk mail with an unsubscribe link in one card"><Switch on={inbox.groupNewsletters} label="Group newsletters" onChange={(v) => set({ groupNewsletters: v })} /></Row>
+          <Row title="Pinned on top" hint="Show pinned conversations in their own section"><Switch on={inbox.pinnedOnTop} label="Pinned on top" onChange={(v) => set({ pinnedOnTop: v })} /></Row>
+        </div>
+        <div className="card">
+          <Row title="Preview lines" hint="Lines of the message shown under the subject"><Select value={String(inbox.previewLines) as '0' | '1' | '2'} label="Preview lines" width={140} options={[{ id: '0', label: 'None' }, { id: '1', label: 'One line' }, { id: '2', label: 'Two lines' }]} onChange={(v) => set({ previewLines: Number(v) as 0 | 1 | 2 })} /></Row>
+          <Row title="Sender pictures" hint="Gravatar or company logo, initials otherwise"><Switch on={inbox.showAvatars} label="Sender pictures" onChange={(v) => set({ showAvatars: v })} /></Row>
+          <Row title="Show which address" hint="A small tag with the account on each row"><Switch on={inbox.showAccountTag} label="Show account tag" onChange={(v) => set({ showAccountTag: v })} /></Row>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function ReadingSettings() {
+  const { data: s } = useSettings();
+  const update = useUpdateSettings();
+  if (!s) return <h2>Reading</h2>;
+  const r = s.reading;
+  const set = (patch: Partial<typeof r>) => update.mutate({ reading: patch });
+  return (
+    <>
+      <h2>Reading</h2>
+      <div className="settings-section">
+        <div className="card">
+          <Row title="Mark as read" hint="When a conversation counts as read"><Select value={r.markRead} label="Mark as read" options={[{ id: 'open', label: 'When opened' }, { id: 'delay', label: 'After a few seconds' }, { id: 'manual', label: 'Only by hand' }]} onChange={(v) => set({ markRead: v })} /></Row>
+          {r.markRead === 'delay' && <Row title="Delay" hint="Seconds the conversation stays open before it is marked read"><Select value={String(r.markReadDelay) as '1' | '2' | '5' | '10'} label="Delay" width={120} options={[{ id: '1', label: '1 s' }, { id: '2', label: '2 s' }, { id: '5', label: '5 s' }, { id: '10', label: '10 s' }]} onChange={(v) => set({ markReadDelay: Number(v) })} /></Row>}
+          <Row title="After archiving or deleting" hint="What to show next on a computer (the phone always goes back to the list)"><Select value={r.afterAction} label="After an action" options={[{ id: 'next', label: 'Next conversation' }, { id: 'previous', label: 'Previous conversation' }, { id: 'list', label: 'Back to the list' }]} onChange={(v) => set({ afterAction: v })} /></Row>
+          <Row title="Ask before deleting"><Switch on={r.confirmDelete} label="Confirm delete" onChange={(v) => set({ confirmDelete: v })} /></Row>
+        </div>
+        <div className="card">
+          <Row title="Images from senders" hint="Remote images can tell a sender you opened the mail"><Select value={r.remoteImages} label="Remote images" width={230} options={[{ id: 'ask', label: 'Ask every time' }, { id: 'contacts', label: 'Load for people I wrote to' }, { id: 'always', label: 'Always load' }]} onChange={(v) => set({ remoteImages: v })} /></Row>
+          <Row title="Show quoted text" hint="Expand the earlier messages quoted inside a reply"><Switch on={r.showQuoted} label="Show quoted text" onChange={(v) => set({ showQuoted: v })} /></Row>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function ComposeSettings() {
+  const { data: s } = useSettings();
+  const { data: accounts } = useAccounts();
+  const update = useUpdateSettings();
+  if (!s) return <h2>Composing</h2>;
+  const c = s.compose;
+  const set = (patch: Partial<typeof c>) => update.mutate({ compose: patch });
+  return (
+    <>
+      <h2>Composing</h2>
+      <div className="settings-section">
+        <div className="card">
+          <Row title="New emails are sent from" hint="Which address a new email starts with"><Select value={c.defaultAccount} label="Default account" width={260} options={[{ id: 'lastUsed', label: 'The last one I used' }, ...(accounts ?? []).map((a) => ({ id: a.id, label: a.email }))]} onChange={(v) => set({ defaultAccount: v })} /></Row>
+          <Row title="Reply from the address they wrote to" hint="If a mail came to info@…, the reply goes out from info@…, including aliases you listed on the account"><Switch on={c.replyFromRecipient} label="Reply from recipient address" onChange={(v) => set({ replyFromRecipient: v })} /></Row>
+          <Row title="Default reply" hint="What the Reply button does"><Select value={c.defaultReply} label="Default reply" width={160} options={[{ id: 'reply', label: 'Reply' }, { id: 'replyAll', label: 'Reply all' }]} onChange={(v) => set({ defaultReply: v })} /></Row>
+          <Row title="Quote the original" hint="Include the message you are answering under your reply"><Switch on={c.includeQuote} label="Include quoted text" onChange={(v) => set({ includeQuote: v })} /></Row>
+        </div>
+        <div className="card">
+          <Row title="Undo send" hint="Hold the email for a moment so you can take it back"><Select value={String(c.undoSendSec) as '0' | '5' | '10' | '20' | '30'} label="Undo send" width={140} options={[{ id: '0', label: 'Off' }, { id: '5', label: '5 seconds' }, { id: '10', label: '10 seconds' }, { id: '20', label: '20 seconds' }, { id: '30', label: '30 seconds' }]} onChange={(v) => set({ undoSendSec: Number(v) as 0 | 5 | 10 | 20 | 30 })} /></Row>
+          <Row title="Send a copy to myself (Bcc)"><Switch on={c.bccMyself} label="Bcc myself" onChange={(v) => set({ bccMyself: v })} /></Row>
+          <Row title="Warn when the subject is empty"><Switch on={c.confirmNoSubject} label="Warn on empty subject" onChange={(v) => set({ confirmNoSubject: v })} /></Row>
+        </div>
+      </div>
+    </>
+  );
+}
+
 function NotificationSettings({ me }: { me?: Me }) {
   const { data: s } = useSettings();
   const update = useUpdateSettings();
@@ -361,6 +512,12 @@ function NotificationSettings({ me }: { me?: Me }) {
   return (
     <>
       <h2>Notifications</h2>
+      {s && (
+        <div className="card" style={{ marginBottom: 12 }}>
+          <Row title="Sound" hint="Play a sound with each notification"><Switch on={s.notifications.sound} label="Notification sound" onChange={(v) => update.mutate({ notifications: { sound: v } })} /></Row>
+          <Row title="Per address" hint="Set a different level for one address under Accounts → Edit" />
+        </div>
+      )}
       <p className="help">Push notifications are sent by your server the moment mail arrives, so they work even when Postino is closed.</p>
       <div className="settings-section">
         <div className="card">
@@ -402,46 +559,24 @@ const SWIPES: { id: SwipeAction; label: string }[] = [
 function PreferenceSettings() {
   const { data: s } = useSettings();
   const update = useUpdateSettings();
-  const smart = useUI((u) => u.smart);
-  const setSmart = useUI((u) => u.setSmart);
+  if (!s) return <h2>Swipes & look</h2>;
   return (
     <>
-      <h2>Preferences</h2>
-      <p className="help">How the inbox is laid out and what swiping does on the phone.</p>
+      <h2>Swipes & look</h2>
+      <p className="help">What swiping does on the phone, and how dense the lists are.</p>
       <div className="settings-section">
         <div className="card">
-          <div className="toggle-row">
-            <div className="t">
-              <span>Smart inbox</span>
-              <small>People first; notifications and newsletters grouped below</small>
-            </div>
-            <button className="switch" role="switch" aria-checked={smart} aria-label="Smart inbox" onClick={() => { setSmart(!smart); update.mutate({ smartInbox: !smart }); }} />
-          </div>
-          <div className="toggle-row">
-            <div className="t">
-              <span>Swipe left</span>
-              <small>Drag a conversation to the left</small>
-            </div>
-            <select className="select" style={{ width: 170 }} aria-label="Swipe left action" value={s?.swipe.left ?? 'archive'} onChange={(e) => update.mutate({ swipe: { left: e.target.value as SwipeAction, right: s?.swipe.right ?? 'pin' } })}>
-              {SWIPES.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
-            </select>
-          </div>
-          <div className="toggle-row">
-            <div className="t">
-              <span>Swipe right</span>
-              <small>Drag a conversation to the right</small>
-            </div>
-            <select className="select" style={{ width: 170 }} aria-label="Swipe right action" value={s?.swipe.right ?? 'pin'} onChange={(e) => update.mutate({ swipe: { left: s?.swipe.left ?? 'archive', right: e.target.value as SwipeAction } })}>
-              {SWIPES.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
-            </select>
-          </div>
+          <Row title="Swipe left" hint="Drag a conversation to the left"><Select value={s.swipe.left} label="Swipe left action" width={170} options={SWIPES} onChange={(v) => update.mutate({ swipe: { left: v } })} /></Row>
+          <Row title="Swipe right" hint="Drag a conversation to the right"><Select value={s.swipe.right} label="Swipe right action" width={170} options={SWIPES} onChange={(v) => update.mutate({ swipe: { right: v } })} /></Row>
+        </div>
+        <div className="card">
+          <Row title="Density" hint="Space between conversations"><Select value={s.appearance.density} label="Density" width={170} options={[{ id: 'comfortable', label: 'Comfortable' }, { id: 'compact', label: 'Compact' }]} onChange={(v) => update.mutate({ appearance: { density: v } })} /></Row>
+          <Row title="Text size"><Select value={s.appearance.textSize} label="Text size" width={170} options={[{ id: 'normal', label: 'Normal' }, { id: 'large', label: 'Large' }]} onChange={(v) => update.mutate({ appearance: { textSize: v } })} /></Row>
         </div>
       </div>
     </>
   );
 }
-
-// ---------- Security ----------
 
 function SecuritySettings({ me }: { me?: Me }) {
   const qc = useQueryClient();

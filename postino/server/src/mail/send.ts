@@ -23,6 +23,8 @@ export type Outgoing = {
   signature?: { html: string; text: string } | null;
   /** The quoted original for replies and forwards, built by the server. */
   quote?: { html: string | null; text: string } | null;
+  /** Send as one of the account's aliases instead of its main address. */
+  fromAddress?: string;
 };
 
 export function formatAddress(a: Address): string {
@@ -59,7 +61,8 @@ export function smtpTransport(account: AccountRow) {
 
 /** Build the MIME message, send it over SMTP, and append a copy to the account's Sent folder. */
 export async function sendMail(msg: Outgoing): Promise<{ messageId: string; raw: Buffer }> {
-  const from = formatAddress({ name: msg.account.name, email: msg.account.email });
+  const fromEmail = msg.fromAddress || msg.account.email;
+  const from = formatAddress({ name: msg.account.name, email: fromEmail });
   const sig = msg.signature && (msg.signature.html.trim() || msg.signature.text.trim()) ? msg.signature : null;
   const text = [msg.text, sig ? `-- \n${sig.text}` : '', msg.quote ? msg.quote.text : ''].filter((p) => p && p.trim()).join('\n\n');
   const html = msg.html || [
@@ -96,7 +99,7 @@ export async function sendMail(msg: Outgoing): Promise<{ messageId: string; raw:
   const messageId = (compiled.messageId() as string).replace(/^<|>$/g, '');
   const transport = smtpTransport(msg.account);
   try {
-    await transport.sendMail({ envelope: { from: msg.account.email, to: [...parseAddressList(msg.to), ...parseAddressList(msg.cc || ''), ...parseAddressList(msg.bcc || '')].map((a) => a.email) }, raw });
+    await transport.sendMail({ envelope: { from: fromEmail, to: [...parseAddressList(msg.to), ...parseAddressList(msg.cc || ''), ...parseAddressList(msg.bcc || '')].map((a) => a.email) }, raw });
   } finally {
     transport.close();
   }

@@ -8,6 +8,7 @@ export type AppEvent =
   | { type: 'folder.updated'; folder: unknown }
   | { type: 'sync.progress'; accountId: string; fetched: number; total: number; done: boolean }
   | { type: 'action.failed'; message: string }
+  | { type: 'outbox.updated'; id: string; status: string }
   | { type: 'new.mail'; threadId: string; accountId: string; from: { name: string; email: string }; subject: string; category: string };
 
 class Bus extends EventEmitter {

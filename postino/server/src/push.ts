@@ -46,8 +46,12 @@ export function startPushBridge(): void {
     if (ev.type !== 'new.mail') return;
     const s = notificationSettings();
     if (!s.enabled) return;
-    if (!s.categories.includes(ev.category as never)) return;
-    const acct = db.prepare('SELECT email, name FROM accounts WHERE id = ?').get(Number(ev.accountId)) as { email: string; name: string } | undefined;
+    const acct = db.prepare('SELECT email, name, notify FROM accounts WHERE id = ?').get(Number(ev.accountId)) as { email: string; name: string; notify: string } | undefined;
+    // Per-account level: "default" follows the global categories, "all" everything, "people" only people, "none" silent.
+    const level = acct?.notify || 'default';
+    if (level === 'none') return;
+    if (level === 'people' && ev.category !== 'person') return;
+    if (level === 'default' && !s.categories.includes(ev.category as never)) return;
     const who = ev.from.name || ev.from.email;
     void sendPush({
       title: who,

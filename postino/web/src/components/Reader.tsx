@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
-import { useAccountMap, useMyEmails, useThread, useThreadActions } from '../api/hooks';
+import { useSettings, useAccountMap, useMyEmails, useThread, useThreadActions } from '../api/hooks';
 import type { Attachment, Message, ThreadSummary } from '../api/types';
 import { Icon } from '../icons';
 import { useNav } from '../nav';
@@ -12,6 +12,17 @@ import { ReplyBox, type ReplyMode } from './ReplyBox';
 
 export function Reader({ view }: { view: string }) {
   const nav = useNav();
+  const { data: settings } = useSettings();
+  const order = useUI((u) => u.order);
+  // After archive/delete: open the next conversation, the previous one, or go back to the list.
+  const afterAction = (id: string) => {
+    const pref = settings?.reading.afterAction ?? 'next';
+    const i = order.indexOf(id);
+    const next = pref === 'next' ? order[i + 1] ?? order[i - 1] : pref === 'previous' ? order[i - 1] ?? order[i + 1] : undefined;
+    const phone = window.matchMedia('(max-width: 760px)').matches;
+    if (next && !phone && pref !== 'list') nav.openThread(next);
+    else nav.closeThread();
+  };
   const ui = useUI();
   const act = useThreadActions();
   const accountMap = useAccountMap();
@@ -39,7 +50,13 @@ export function Reader({ view }: { view: string }) {
     setReplyMode(null);
     setReplyFor(null);
     if (scrollRef.current) scrollRef.current.scrollTop = 0;
-    if (data.thread.unread) void act({ threadIds: [data.thread.id], action: 'read', view, scope: 'all', silent: true });
+    // Mark as read: when opened, after a delay, or never automatically.
+    const mode = settings?.reading.markRead ?? 'open';
+    if (data.thread.unread && mode !== 'manual') {
+      const delay = mode === 'delay' ? Math.max(0, settings?.reading.markReadDelay ?? 2) * 1000 : 0;
+      const t = window.setTimeout(() => void act({ threadIds: [data.thread.id], action: 'read', view, scope: 'all', silent: true }), delay);
+      return () => window.clearTimeout(t);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data?.thread.id]);
 
@@ -153,8 +170,9 @@ export function Reader({ view }: { view: string }) {
   const inJunk = thread.folderRoles.includes('junk') || thread.folderRoles.includes('blocked');
   const canBlock = !!lastIncoming && !lastIncoming.mine;
   const doAct = (action: Parameters<typeof act>[0]['action']) => {
+    if (action === 'trash' && settings?.reading.confirmDelete && !window.confirm('Move this conversation to Trash?')) return;
     void act({ threadIds: [thread.id], action, view });
-    if (['archive', 'trash', 'junk', 'notjunk', 'inbox', 'delete'].includes(action)) nav.closeThread();
+    if (['archive', 'trash', 'junk', 'notjunk', 'inbox', 'delete'].includes(action)) afterAction(thread.id);
   };
   const isDraft = thread.folderRoles.includes('drafts') && messages.every((m) => m.draft);
 
@@ -232,7 +250,7 @@ export function Reader({ view }: { view: string }) {
                 }}
               />
             ) : (
-              <button className="reply-collapsed" onClick={() => startReply('reply')}>
+              <button className="reply-collapsed" onClick={() => startReply(settings?.compose.defaultReply ?? 'reply')}>
                 <Icon name="reply" size={18} />
                 Reply to {firstName(lastIncoming.mine ? lastIncoming.to[0] : lastIncoming.from)}
                 <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: 12, fontSize: 13 }}>
@@ -250,7 +268,7 @@ export function Reader({ view }: { view: string }) {
           <button onClick={() => doAct(inTrash ? 'inbox' : 'trash')}><Icon name={inTrash ? 'inbox' : 'trash'} />{inTrash ? 'Restore' : 'Delete'}</button>
           <button className={thread.pinned ? 'on' : ''} onClick={() => doAct(thread.pinned ? 'unpin' : 'pin')}><Icon name="pin" />{thread.pinned ? 'Unpin' : 'Pin'}</button>
           <button onClick={() => doAct(inJunk ? 'notjunk' : 'junk')}><Icon name="spam" />{inJunk ? 'Not spam' : 'Spam'}</button>
-          <button onClick={() => startReply('reply')}><Icon name="reply" />Reply</button>
+          <button onClick={() => startReply(settings?.compose.defaultReply ?? 'reply')}><Icon name="reply" />Reply</button>
         </nav>
       )}
     </section>
@@ -271,8 +289,13 @@ function MessageCard({ message: m, thread, accountColor, myEmails, expanded, sin
   onRefetch: () => void;
 }) {
   const [details, setDetails] = useState(false);
-  const [showImages, setShowImages] = useState(false);
-  const [showQuoted, setShowQuoted] = useState(false);
+  const { data: rs } = useSettings();
+  const imagesPolicy = rs?.reading.remoteImages ?? 'ask';
+  const [showImages, setShowImages] = useState(imagesPolicy === 'always' || (imagesPolicy === 'contacts' && !!m.knownSender));
+  const [showQuoted, setShowQuoted] = useState(rs?.reading.showQuoted ?? false);
+  useEffect(() => {
+    if (imagesPolicy === 'always' || (imagesPolicy === 'contacts' && m.knownSender)) setShowImages(true);
+  }, [imagesPolicy, m.knownSender, m.id]);
   const [menu, setMenu] = useState(false);
   const toast = useUI((s) => s.toast);
   const act = useThreadActions();

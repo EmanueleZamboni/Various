@@ -352,7 +352,7 @@ on('POST', '/api/accounts', ({ body }) => {
 on('PATCH', '/api/accounts/:id', ({ params, body }) => {
   const a = accounts.find((x) => x.id === params.id);
   if (!a) return fail(404, 'not_found', 'No such account.');
-  for (const k of ['name', 'color', 'signature', 'order'] as const) if (body[k] !== undefined) (a as any)[k] = body[k];
+  for (const k of ['name', 'color', 'signature', 'order', 'aliases', 'folders', 'notify'] as const) if (body[k] !== undefined) (a as any)[k] = body[k];
   if (body.password && a.status === 'error') { a.status = 'connected'; a.error = null; }
   emit('account.updated', a);
   return json(a);
@@ -471,6 +471,9 @@ on('GET', '/api/messages/:id/reply', ({ params, query }) => {
   return json({ to, cc, subject: /^re:/i.test(m.subject) ? m.subject : `Re: ${m.subject}`, quotedText, quotedHtml, accountId: m.accountId });
 });
 on('POST', '/api/send', async ({ body }) => {
+  const f0 = body instanceof FormData ? Object.fromEntries([...body.entries()].filter(([, v]) => typeof v === 'string')) as Record<string, string> : (body as Record<string, string>);
+  const delay = f0.sendAt ? new Date(f0.sendAt).getTime() - Date.now() : f0.now === '1' ? 0 : settings.compose.undoSendSec * 1000;
+  if (delay > 0) { const o = { id: nid('ob'), accountId: f0.accountId, to: f0.to || '', cc: f0.cc || '', subject: f0.subject || '', text: f0.text || '', sendAt: new Date(Date.now() + delay).toISOString(), status: 'queued', error: null, threadId: null, createdAt: new Date().toISOString() }; outbox.push(o); return json({ ok: true, queued: true, outboxId: o.id, sendAt: o.sendAt, threadId: null }); }
   const f: Record<string, string> = {};
   const files: string[] = [];
   if (body instanceof FormData) {
@@ -551,7 +554,11 @@ on('DELETE', '/api/signatures/:id', ({ params }) => { const i = signatures.findI
 
 // ----- settings / push
 on('GET', '/api/settings', () => json(settings));
-on('PUT', '/api/settings', ({ body }) => { Object.assign(settings, body); if (body.notifications) settings.notifications = { ...settings.notifications, ...body.notifications }; if (body.swipe) settings.swipe = { ...settings.swipe, ...body.swipe }; return json(settings); });
+const deepMerge = (base: any, patch: any) => { for (const [k, v] of Object.entries(patch || {})) { if (v && typeof v === 'object' && !Array.isArray(v) && base[k] && typeof base[k] === 'object') deepMerge(base[k], v); else base[k] = v; } return base; };
+on('PUT', '/api/settings', ({ body }) => { deepMerge(settings, body); if (typeof body.smartInbox === 'boolean') settings.inbox.smart = body.smartInbox; settings.smartInbox = settings.inbox.smart; return json(settings); });
+const outbox: { id: string; accountId: string; to: string; cc: string; subject: string; text: string; sendAt: string; status: string; error: null; threadId: string | null; createdAt: string }[] = [];
+on('GET', '/api/outbox', () => json({ items: outbox.filter((o) => o.status === 'queued' && new Date(o.sendAt).getTime() > Date.now()) }));
+on('DELETE', '/api/outbox/:id', ({ params }) => { const i = outbox.findIndex((o) => o.id === params.id); if (i < 0) return fail(404, 'gone', 'Already sent.'); const o = outbox.splice(i, 1)[0]; const d = { id: nid('d'), accountId: o.accountId, to: o.to, cc: o.cc, bcc: '', subject: o.subject, text: o.text, inReplyTo: null, threadId: o.threadId, updatedAt: new Date().toISOString() }; drafts.unshift(d); return json({ ok: true, draft: d }); });
 on('POST', '/api/push/subscribe', () => empty());
 on('DELETE', '/api/push/subscribe', () => empty());
 on('POST', '/api/push/test', () => empty());

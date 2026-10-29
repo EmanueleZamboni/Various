@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
-import { useAccountMap, useSignatures } from '../api/hooks';
+import { useAccountMap, useSettings, useSignatures } from '../api/hooks';
+import { useSendFeedback } from '../sendFeedback';
 import { SignaturePicker, SignaturePreview, defaultSignatureId } from './SignatureEditor';
 import type { Draft, Message, ReplyPrefill } from '../api/types';
 import { Icon } from '../icons';
@@ -22,7 +23,13 @@ export function ReplyBox({ message: m, mode, onModeChange, onClose, onSent }: {
   const account = accountMap.get(m.accountId);
   const toast = useUI((s) => s.toast);
   const qc = useQueryClient();
+  void qc;
+  const { data: settings } = useSettings();
+  const feedback = useSendFeedback();
   const [prefill, setPrefill] = useState<ReplyPrefill | null>(null);
+  // The server may answer from the alias/account the mail was sent to.
+  const sendingAccount = prefill?.accountId ? accountMap.get(prefill.accountId) ?? account : account;
+  const sendingAddress = prefill?.fromAddress || sendingAccount?.email;
   const [to, setTo] = useState('');
   const [cc, setCc] = useState('');
   const [text, setText] = useState('');
@@ -36,8 +43,8 @@ export function ReplyBox({ message: m, mode, onModeChange, onClose, onSent }: {
   const { data: signatures } = useSignatures();
   const [signatureId, setSignatureId] = useState<string>('');
   useEffect(() => {
-    if (signatures) setSignatureId(defaultSignatureId(signatures, m.accountId));
-  }, [signatures, m.accountId]);
+    if (signatures) setSignatureId(defaultSignatureId(signatures, prefill?.accountId ?? m.accountId));
+  }, [signatures, m.accountId, prefill?.accountId]);
   const signature = (signatures ?? []).find((s) => s.id === signatureId);
 
   useEffect(() => {
@@ -93,7 +100,8 @@ export function ReplyBox({ message: m, mode, onModeChange, onClose, onSent }: {
     setBusy(true);
     try {
       const fd = new FormData();
-      fd.set('accountId', m.accountId);
+      fd.set('accountId', prefill?.accountId ?? m.accountId);
+      if (prefill?.fromAddress) fd.set('fromAddress', prefill.fromAddress);
       fd.set('to', to);
       if (cc.trim()) fd.set('cc', cc);
       fd.set('subject', prefill?.subject ?? '');
@@ -101,14 +109,13 @@ export function ReplyBox({ message: m, mode, onModeChange, onClose, onSent }: {
       fd.set('signatureId', signatureId || 'none');
       if (mode === 'forward') fd.set('forwardOf', m.id);
       else fd.set('inReplyTo', m.id);
-      if (prefill?.quotedText) fd.set('quote', '1');
+      if (prefill?.quotedText && (settings?.compose.includeQuote ?? true)) fd.set('quote', '1');
       if (draft.current) fd.set('draftId', draft.current.id);
       for (const f of files) fd.append('attachments', f, f.name);
-      await api.send(fd);
+      const res = await api.send(fd);
       window.clearTimeout(saveTimer.current);
-      toast({ text: `Sent from ${account?.email ?? 'your account'}`, kind: 'success' });
-      qc.invalidateQueries({ queryKey: ['threads'] });
       onSent();
+      feedback(res, sendingAddress ?? 'your account');
     } catch (e) {
       setErr((e as Error).message);
     } finally {
@@ -156,7 +163,7 @@ export function ReplyBox({ message: m, mode, onModeChange, onClose, onSent }: {
           <button type="button" className={mode === 'forward' ? 'on' : ''} onClick={() => onModeChange('forward')}>Forward</button>
         </div>
         <span>
-          {target ? `to ${firstName(target)} ` : ''}from <i className="dot" style={{ ['--c' as string]: account?.color, verticalAlign: -1 }} /> <b>{account?.email}</b>
+          {target ? `to ${firstName(target)} ` : ''}from <i className="dot" style={{ ['--c' as string]: sendingAccount?.color, verticalAlign: -1 }} /> <b>{sendingAddress}</b>
         </span>
         <button type="button" className="ib" style={{ marginLeft: 'auto', width: 28, height: 28 }} aria-label="Close reply" onClick={() => void discard()}>
           <Icon name="x" size={16} />
@@ -200,7 +207,7 @@ export function ReplyBox({ message: m, mode, onModeChange, onClose, onSent }: {
           <Icon name="clip" size={18} />
           <input type="file" multiple hidden onChange={(e) => setFiles((fs) => [...fs, ...Array.from(e.target.files ?? [])])} />
         </label>
-        <SignaturePicker signatures={signatures ?? []} accountId={m.accountId} value={signatureId || 'none'} onChange={setSignatureId} compact />
+        <SignaturePicker signatures={signatures ?? []} accountId={prefill?.accountId ?? m.accountId} value={signatureId || 'none'} onChange={setSignatureId} compact />
         <span className="help" style={{ fontSize: 12 }}>{saved ? `Draft saved ${saved}` : ''}</span>
         <span className="sp" />
         <button type="submit" className="btn btn-primary" disabled={busy || !prefill}>

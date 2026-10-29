@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, type ReactNode } from 'react';
 import type { InfiniteData } from '@tanstack/react-query';
-import { useAccountMap, useAccounts, useBlocked, useMyEmails, useSearch, useThreadList, useThreadActions } from '../api/hooks';
+import { useAccountMap, useAccounts, useBlocked, useMyEmails, useOutbox, useSearch, useSettings, useThreadList, useThreadActions } from '../api/hooks';
 import { api } from '../api/client';
 import type { ThreadSummary, ThreadsResponse } from '../api/types';
 import { Icon, type IconName } from '../icons';
@@ -27,10 +27,27 @@ export function ThreadList({ view }: { view: string }) {
   const isSearch = view === 'search';
   const smart = view === 'inbox' && ui.smart;
   const base = { view, account: nav.accountId ?? undefined };
+  const { data: settings } = useSettings();
+  const groupNotif = settings?.inbox.groupNotifications ?? true;
+  const groupNews = settings?.inbox.groupNewsletters ?? true;
+  // Groups the user switched off fall back into the People list.
+  const peopleCats = ['person', ...(groupNotif ? [] : ['notification']), ...(groupNews ? [] : ['newsletter'])].join(',');
 
-  const people = useThreadList({ ...base, category: smart ? 'person' : undefined }, !isSearch && view !== 'blocked');
-  const notifs = useThreadList({ ...base, category: 'notification' }, smart);
-  const news = useThreadList({ ...base, category: 'newsletter' }, smart);
+  const people = useThreadList({ ...base, category: smart ? peopleCats : undefined }, !isSearch && view !== 'blocked');
+  const notifs = useThreadList({ ...base, category: 'notification' }, smart && groupNotif);
+  const news = useThreadList({ ...base, category: 'newsletter' }, smart && groupNews);
+  const outbox = useOutbox();
+  const cancelOutbox = async (id: string) => {
+    try {
+      const r = await api.outbox.cancel(id);
+      qc.invalidateQueries({ queryKey: ['outbox'] });
+      qc.invalidateQueries({ queryKey: ['drafts'] });
+      ui.openCompose({ mode: 'new', draft: r.draft, accountId: r.draft.accountId });
+    } catch {
+      ui.toast({ text: 'Too late, it was already sent.', kind: 'error' });
+      qc.invalidateQueries({ queryKey: ['outbox'] });
+    }
+  };
   const search = useSearch(nav.q, nav.accountId ?? undefined);
 
   const main = isSearch ? search : people;
@@ -43,8 +60,25 @@ export function ThreadList({ view }: { view: string }) {
     return h;
   }, [search.data]);
 
-  const pinnedRows = smart ? rows.filter((t) => t.pinned) : [];
-  const peopleRows = smart ? rows.filter((t) => !t.pinned) : rows;
+  const pinnedOnTop = settings?.inbox.pinnedOnTop ?? true;
+  const pinnedRows = smart && pinnedOnTop ? rows.filter((t) => t.pinned) : [];
+  const peopleRows = smart && pinnedOnTop ? rows.filter((t) => !t.pinned) : rows;
+  const scheduled = view === 'drafts' ? (outbox.data?.items ?? []) : [];
+  const scheduledBlock = scheduled.length > 0 && (
+    <>
+      <div className="sec">Scheduled <span className="n">{scheduled.length}</span></div>
+      {scheduled.map((o) => (
+        <div className="outbox-card" key={o.id}>
+          <Icon name="send" size={16} />
+          <div className="t">
+            <span><b>{o.subject || '(no subject)'}</b> to {o.to}</span>
+            <small>{o.status === 'failed' ? `Failed: ${o.error}` : `Sends ${new Date(o.sendAt).toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`}</small>
+          </div>
+          <button className="btn btn-ghost btn-sm" onClick={() => void cancelOutbox(o.id)}>{o.status === 'failed' ? 'Edit' : 'Cancel'}</button>
+        </div>
+      ))}
+    </>
+  );
 
   // Keyboard order follows what is on screen.
   useEffect(() => {
@@ -90,7 +124,8 @@ export function ThreadList({ view }: { view: string }) {
     nav.openThread(t.id);
   };
   const swipe = (t: ThreadSummary, dir: 'left' | 'right') => {
-    const action = dir === 'left' ? 'archive' : t.pinned ? 'unpin' : 'pin';
+    const pref = (dir === 'left' ? settings?.swipe.left : settings?.swipe.right) ?? (dir === 'left' ? 'archive' : 'pin');
+    const action = pref === 'pin' ? (t.pinned ? 'unpin' : 'pin') : pref === 'read' ? (t.unread ? 'read' : 'unread') : pref;
     void act({ threadIds: [t.id], action, view });
   };
 
@@ -104,7 +139,9 @@ export function ThreadList({ view }: { view: string }) {
       focused={ui.selectedId === t.id && !nav.threadId}
       highlight={highlights[t.id]}
       compact={compact}
-      showAccount={!nav.accountId}
+      previewLines={settings?.inbox.previewLines ?? 1}
+      showAvatar={settings?.inbox.showAvatars ?? true}
+      showAccount={!nav.accountId && (settings?.inbox.showAccountTag ?? true)}
       accountLabel={accountMap.get(t.accountId) ? accountLabel(accountMap.get(t.accountId)!.email, accounts ?? []) : ''}
       onOpen={() => open(t)}
       onSwipe={(dir) => swipe(t, dir)}
@@ -125,7 +162,7 @@ export function ThreadList({ view }: { view: string }) {
         <button className="btn btn-ghost" onClick={() => void main.refetch()}>Try again</button>
       </div>
     );
-  else if (!rows.length && !notifRows.length && !newsRows.length) body = <Empty view={view} q={nav.q} />;
+  else if (!rows.length && !notifRows.length && !newsRows.length) body = scheduled.length ? scheduledBlock : <Empty view={view} q={nav.q} />;
   else if (smart) {
     body = (
       <>
@@ -148,7 +185,7 @@ export function ThreadList({ view }: { view: string }) {
     );
   } else {
     let group = '';
-    body = rows.map((t) => {
+    const list = rows.map((t) => {
       const g = isSearch ? '' : dayGroup(t.lastDate);
       const header = g && g !== group ? <div className="sec">{g}</div> : null;
       group = g;
@@ -159,6 +196,12 @@ export function ThreadList({ view }: { view: string }) {
         </Fragment>
       );
     });
+    body = (
+      <>
+        {scheduledBlock}
+        {list}
+      </>
+    );
   }
 
   return (

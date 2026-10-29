@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type DragEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
-import { useAccounts, useSignatures } from '../api/hooks';
+import { useAccounts, useSettings, useSignatures } from '../api/hooks';
+import { useSendFeedback, sendLaterOptions } from '../sendFeedback';
 import { SignaturePicker, SignaturePreview, defaultSignatureId } from './SignatureEditor';
 import type { Draft } from '../api/types';
 import { Icon } from '../icons';
@@ -16,8 +17,13 @@ export function Compose() {
   const close = useUI((s) => s.closeCompose);
   const toast = useUI((s) => s.toast);
   const qc = useQueryClient();
+  void toast;
   const { data: accounts } = useAccounts();
+  const { data: settings } = useSettings();
+  const feedback = useSendFeedback();
   const [accountId, setAccountId] = useState(c.accountId ?? c.draft?.accountId ?? '');
+  const [sendAt, setSendAt] = useState<Date | null>(null);
+  const [laterOpen, setLaterOpen] = useState(false);
   const [to, setTo] = useState(c.to ?? c.draft?.to ?? '');
   const [cc, setCc] = useState(c.cc ?? c.draft?.cc ?? '');
   const [bcc, setBcc] = useState(c.bcc ?? c.draft?.bcc ?? '');
@@ -35,9 +41,29 @@ export function Compose() {
   const dirty = useRef(false);
   const sheetRef = useRef<HTMLDivElement>(null);
 
+  // Default sender for a new email: the configured account, or the last one used.
   useEffect(() => {
-    if (!accountId && accounts?.length) setAccountId(accounts[0].id);
-  }, [accounts, accountId]);
+    if (accountId || !accounts?.length) return;
+    const pref = settings?.compose.defaultAccount ?? 'lastUsed';
+    let pick = accounts.find((a) => a.id === pref)?.id;
+    if (!pick) {
+      try {
+        const last = localStorage.getItem('postino.lastAccount');
+        pick = accounts.find((a) => a.id === last)?.id;
+      } catch {
+        /* ignore */
+      }
+    }
+    setAccountId(pick ?? accounts[0].id);
+  }, [accounts, accountId, settings]);
+  useEffect(() => {
+    if (!accountId) return;
+    try {
+      localStorage.setItem('postino.lastAccount', accountId);
+    } catch {
+      /* ignore */
+    }
+  }, [accountId]);
 
   const account = accounts?.find((a) => a.id === accountId);
   const narrow = typeof window !== 'undefined' && window.matchMedia('(max-width: 760px)').matches;
@@ -146,16 +172,16 @@ export function Compose() {
       fd.set('signatureId', signatureId || 'none');
       if (c.inReplyTo) fd.set('inReplyTo', c.inReplyTo);
       if (c.forwardOf) fd.set('forwardOf', c.forwardOf);
-      if (c.quotedText && (c.inReplyTo || c.forwardOf)) fd.set('quote', '1');
+      if (c.quotedText && (c.inReplyTo || c.forwardOf) && (settings?.compose.includeQuote ?? true)) fd.set('quote', '1');
+      if (c.fromAddress) fd.set('fromAddress', c.fromAddress);
+      if (sendAt) fd.set('sendAt', sendAt.toISOString());
       if (draft.current) fd.set('draftId', draft.current.id);
       for (const f of files) fd.append('attachments', f, f.name);
-      await api.send(fd);
+      const res = await api.send(fd);
       window.clearTimeout(saveTimer.current);
       dirty.current = false;
-      toast({ text: `Sent from ${account?.email ?? 'your account'}`, kind: 'success' });
-      qc.invalidateQueries({ queryKey: ['threads'] });
-      qc.invalidateQueries({ queryKey: ['drafts'] });
       close();
+      feedback(res, c.fromAddress || account?.email || 'your account');
     } catch (e) {
       setErr((e as Error).message);
     } finally {
@@ -229,10 +255,27 @@ export function Compose() {
             <button type="button" className="ib danger" title="Discard" aria-label="Discard draft" onClick={() => void discard()}><Icon name="trash" size={18} /></button>
           )}
           <span className={`status${err ? ' err' : ''}`} role={err ? 'alert' : undefined}>{err || (saved ? `Draft saved ${saved}` : drag ? 'Drop files to attach' : '')}</span>
-          <button type="submit" className="btn btn-primary" disabled={busy || !accounts?.length}>
-            {busy ? 'Sending' : 'Send'}
-            <Icon name="send" size={15} />
-          </button>
+          <div className="send-group">
+            <button type="submit" className="btn btn-primary" disabled={busy || !accounts?.length}>
+              {busy ? 'Sending' : sendAt ? `Send ${sendAt.toLocaleString(undefined, { weekday: 'short', hour: '2-digit', minute: '2-digit' })}` : 'Send'}
+              <Icon name="send" size={15} />
+            </button>
+            <button type="button" className="btn btn-primary send-later" aria-label="Send later" aria-expanded={laterOpen} onClick={() => setLaterOpen((v) => !v)}>
+              <Icon name="chevronDown" size={15} />
+            </button>
+            {laterOpen && (
+              <div className="menu send-later-menu" role="menu">
+                {sendLaterOptions().map((o) => (
+                  <button type="button" role="menuitem" key={o.label} onClick={() => { setSendAt(o.at); setLaterOpen(false); }}>{o.label}</button>
+                ))}
+                <label className="menu-custom">
+                  Pick a time
+                  <input type="datetime-local" onChange={(e) => { if (e.target.value) { setSendAt(new Date(e.target.value)); setLaterOpen(false); } }} />
+                </label>
+                {sendAt && <button type="button" role="menuitem" onClick={() => { setSendAt(null); setLaterOpen(false); }}>Send now instead</button>}
+              </div>
+            )}
+          </div>
         </div>
       </form>
     </div>

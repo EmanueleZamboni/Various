@@ -256,3 +256,41 @@ notification and opens `/t/<threadId>` on click.
 ## Health
 
 - `GET /api/health` → `{ ok: true, accounts: number, uptime: number }` (no auth).
+
+## Added after v1
+
+### Settings (full)
+`GET /api/settings` / `PUT /api/settings` (deep-merged partial) →
+```ts
+{
+  notifications: { enabled, categories, sound },
+  inbox: { smart, groupNotifications, groupNewsletters, previewLines: 0|1|2, showAvatars, showAccountTag, pinnedOnTop },
+  reading: { markRead: "open"|"delay"|"manual", markReadDelay, remoteImages: "ask"|"always"|"contacts", afterAction: "next"|"previous"|"list", confirmDelete, showQuoted },
+  compose: { defaultAccount: "lastUsed"|accountId, replyFromRecipient, defaultReply: "reply"|"replyAll", includeQuote, undoSendSec: 0|5|10|20|30, sendAndArchive, bccMyself, confirmNoSubject },
+  swipe: { left, right }, appearance: { density, textSize }
+}
+```
+Per account (`PATCH /api/accounts/:id`): `aliases: string[]` (other addresses delivered to the mailbox; replies to them go out from that address), `folders: { archive|sent|drafts|junk|trash|blocked: path }` (pin a folder to a role), `notify: "default"|"all"|"people"|"none"`.
+
+### Sending: outbox, undo, send later
+`POST /api/send` extra fields: `signatureId` ("none" or id), `quote` ("1" to quote the original, server-built), `fromAddress` (alias), `sendAt` (ISO time → scheduled), `now` ("1" skips the undo delay).
+When the message is held (undo delay or schedule) the response is `{ ok, queued: true, outboxId, sendAt, threadId }`.
+- `GET /api/outbox` → `{ items: [{ id, accountId, to, cc, subject, text, sendAt, status, error, threadId }] }`
+- `DELETE /api/outbox/:id` → `{ ok, draft }` cancels and returns the message as a draft.
+- SSE `outbox.updated { id, status }`.
+- `GET /api/messages/:id/reply` also returns `fromAddress` (alias to send from) when "reply from the address they wrote to" applies.
+
+### Signatures
+`GET/POST /api/signatures`, `PUT/DELETE /api/signatures/:id` → `{ id, accountId, name, html, text, isDefault }`. HTML is sanitized; data: images are turned into inline attachments on send.
+
+### Passkeys (fingerprint / face sign-in)
+- `GET /api/passkeys`, `DELETE /api/passkeys/:id`
+- `POST /api/passkeys/register/options` → WebAuthn creation options; `POST /api/passkeys/register/verify { response, name }`
+- `POST /api/passkeys/login/options` (no auth) → request options; `POST /api/passkeys/login/verify { response }` → session cookie
+- `GET /api/me` includes `passkeys: number`.
+
+### Sender pictures
+`GET /api/avatar?email=` → image (Gravatar, BIMI logo or site icon, cached server-side) or 404. Lookups run in the background; a cold cache answers 404 with a short max-age and the client retries once.
+
+### Threads
+`category` on `GET /api/threads` accepts a comma list (`person,notification`). `Message.knownSender` is true for people you have written to.

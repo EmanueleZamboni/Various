@@ -12,7 +12,7 @@ import { bus } from '../events.js';
 const palette = ['#3B6CF6', '#E0567B', '#16A37A', '#9466E0', '#E8792B', '#13A1B5', '#8C9A1F', '#D23C6A', '#5B7A99', '#C2410C'];
 
 type ServerIn = { host?: string; port?: number | string; secure?: boolean | string };
-type AccountIn = { email?: string; name?: string; password?: string; username?: string; color?: string; signature?: string; order?: number; imap?: ServerIn; smtp?: ServerIn };
+type AccountIn = { email?: string; name?: string; password?: string; username?: string; color?: string; signature?: string; order?: number; imap?: ServerIn; smtp?: ServerIn; aliases?: string[]; folders?: Record<string, string>; notify?: string };
 
 function server(s: ServerIn | undefined, defPort: number): { host: string; port: number; secure: boolean } | null {
   if (!s || !s.host) return null;
@@ -111,6 +111,19 @@ export function registerAccountRoutes(app: FastifyInstance): void {
     if (typeof b.signature === 'string') { sets.push('signature = ?'); params.push(b.signature); }
     if (typeof b.order === 'number') { sets.push('sort_order = ?'); params.push(b.order); }
     if (typeof b.username === 'string' && b.username.trim()) { sets.push('username = ?'); params.push(b.username.trim()); }
+    if (Array.isArray(b.aliases)) {
+      const clean = [...new Set(b.aliases.map((a) => String(a).trim().toLowerCase()).filter((a) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(a) && a !== row.email.toLowerCase()))];
+      sets.push('aliases = ?'); params.push(JSON.stringify(clean));
+    }
+    if (typeof b.notify === 'string' && ['default', 'all', 'people', 'none'].includes(b.notify)) { sets.push('notify = ?'); params.push(b.notify); }
+    let refolder = false;
+    if (b.folders && typeof b.folders === 'object') {
+      const allowed = ['archive', 'sent', 'drafts', 'junk', 'trash', 'blocked'];
+      const clean: Record<string, string> = {};
+      for (const [role, pth] of Object.entries(b.folders)) if (allowed.includes(role) && typeof pth === 'string' && pth) clean[role] = pth;
+      sets.push('folder_overrides = ?'); params.push(JSON.stringify(clean));
+      refolder = true;
+    }
     let reconnect = false;
     if (typeof b.password === 'string' && b.password) { sets.push('password_enc = ?'); params.push(encrypt(b.password)); reconnect = true; }
     const imap = server(b.imap, 993);
@@ -119,7 +132,11 @@ export function registerAccountRoutes(app: FastifyInstance): void {
     if (smtp) { sets.push('smtp_host = ?, smtp_port = ?, smtp_secure = ?'); params.push(smtp.host, smtp.port, smtp.secure ? 1 : 0); }
     if (sets.length) db.prepare(`UPDATE accounts SET ${sets.join(', ')} WHERE id = ?`).run(...params, id);
     if (reconnect) await manager.restart(id);
-    else manager.get(id)?.refreshAccount();
+    else {
+      const sync = manager.get(id);
+      sync?.refreshAccount();
+      if (refolder && sync) await sync.listFolders().catch(() => undefined);
+    }
     const updated = db.prepare('SELECT * FROM accounts WHERE id = ?').get(id) as AccountRow;
     bus.publish({ type: 'account.updated', account: accountView(updated) });
     return accountView(updated);

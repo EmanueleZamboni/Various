@@ -34,8 +34,11 @@ function viewWhere(view: string, accountId: number | null, category: string | nu
     where.push("t.roles LIKE '%,inbox,%'");
   }
   if (category && view === 'inbox') {
-    where.push('t.category = ?');
-    params.push(category);
+    const cats = category.split(',').filter((c) => ['person', 'notification', 'newsletter'].includes(c));
+    if (cats.length) {
+      where.push(`t.category IN (${cats.map(() => '?').join(',')})`);
+      params.push(...cats);
+    }
   }
   if (unread) where.push('t.unread_count > 0');
   return { where: where.length ? 'WHERE ' + where.join(' AND ') : '', params };
@@ -48,7 +51,7 @@ function draftThreadIds(): Set<number> {
 export function listThreads(q: ListQuery) {
   const view = q.view || 'inbox';
   const accountId = q.account ? Number(q.account) : null;
-  const category = q.category && ['person', 'notification', 'newsletter'].includes(q.category) ? q.category : null;
+  const category = q.category && q.category.split(',').every((c) => ['person', 'notification', 'newsletter'].includes(c)) ? q.category : null;
   const limit = Math.min(Math.max(Number(q.limit) || 50, 1), 200);
   const { where, params } = viewWhere(view, accountId, category, q.unread === '1');
   const cursorWhere: string[] = [];

@@ -5,6 +5,7 @@ import { useThreadActions } from '../api/hooks';
 import { Icon } from '../icons';
 import { useNav } from '../nav';
 import { useUI } from '../store';
+import { useSettings } from '../api/hooks';
 import { Sidebar } from './Sidebar';
 import { ThreadList } from './ThreadList';
 import { Reader } from './Reader';
@@ -16,6 +17,20 @@ export function Shell({ me, forcedView, onLogout }: { me?: Me; forcedView?: stri
   const nav = useNav();
   const navigate = useNavigate();
   const ui = useUI();
+  const { data: settings } = useSettings();
+  // The Smart/All choice is stored on the server so every device agrees.
+  useEffect(() => {
+    if (settings && settings.inbox.smart !== ui.smart) ui.setSmart(settings.inbox.smart);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings?.inbox.smart]);
+  const afterKeyAction = (id: string) => {
+    const pref = settings?.reading.afterAction ?? 'next';
+    const order = ui.order;
+    const i = order.indexOf(id);
+    const next = pref === 'next' ? order[i + 1] ?? order[i - 1] : pref === 'previous' ? order[i - 1] ?? order[i + 1] : undefined;
+    if (next && pref !== 'list' && !window.matchMedia('(max-width: 760px)').matches) nav.openThread(next);
+    else nav.closeThread();
+  };
   const act = useThreadActions();
   const view = forcedView ?? nav.view;
 
@@ -52,10 +67,16 @@ export function Shell({ me, forcedView, onLogout }: { me?: Me; forcedView?: stri
           if (ui.selectedId && !sel) nav.openThread(ui.selectedId);
           return;
         case 'e':
-          if (sel) void act({ threadIds: [sel], action: 'archive', view });
+          if (sel) {
+            void act({ threadIds: [sel], action: 'archive', view });
+            afterKeyAction(sel);
+          }
           return;
         case '#':
-          if (sel) void act({ threadIds: [sel], action: 'trash', view });
+          if (sel) {
+            void act({ threadIds: [sel], action: 'trash', view });
+            afterKeyAction(sel);
+          }
           return;
         case 'p':
           if (sel) void act({ threadIds: [sel], action: 'pin', view });
@@ -96,7 +117,7 @@ export function Shell({ me, forcedView, onLogout }: { me?: Me; forcedView?: stri
   const phoneView = nav.threadId ? 'reader' : 'list';
 
   return (
-    <div className="shell" data-view={phoneView} data-drawer={ui.drawerOpen ? 'open' : 'closed'}>
+    <div className="shell" data-view={phoneView} data-drawer={ui.drawerOpen ? 'open' : 'closed'} data-density={settings?.appearance.density ?? 'comfortable'} data-text={settings?.appearance.textSize ?? 'normal'}>
       <Sidebar />
       <div className="drawer-scrim" onClick={() => ui.setDrawer(false)} />
       {nav.isSettings ? (

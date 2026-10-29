@@ -11,7 +11,11 @@ Postino keeps a searchable copy on your own server.
 - Spam folder (merges the provider's `Junk` and `INBOX.spam`), Archive, Trash, Pinned
 - Reply, reply all, forward, attachments, drafts, signatures per account
 - Push notifications on Android (and desktop browsers), installable as an app (PWA)
-- Password login with optional 2FA (TOTP); mailbox passwords encrypted at rest
+- Password login, **fingerprint / face sign-in** (passkeys) and optional 2FA (TOTP); mailbox passwords encrypted at rest
+- Rich signatures (formatting, images) per account; reply from the address the mail was sent to (aliases)
+- Undo send and Send later (an outbox that survives restarts)
+- Sender pictures (Gravatar, company logos)
+- Settings for inbox grouping, preview lines, mark-as-read, remote images, swipes, density, per-account notifications
 
 ## Layout
 

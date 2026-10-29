@@ -5,13 +5,24 @@ import { db } from '../db.js';
 import { config } from '../config.js';
 import { randomToken } from '../crypto.js';
 import { manager } from '../mail/manager.js';
-import { sendMail, parseAddressList, formatAddress, type OutgoingAttachment } from '../mail/send.js';
+import { parseAddressList, formatAddress } from '../mail/send.js';
+import { sendMail } from '../mail/send.js';
+import { enqueue, cancel, listQueued, executeSend, type SendJob } from '../mail/outbox.js';
+import { uiSettings } from '../settings.js';
 import { attachmentPath, type MessageRow, type FolderRow } from '../mail/store.js';
 import type { AccountRow, AttachmentRow } from '../views.js';
 import type { Address } from '../mail/parse.js';
 import { bus } from '../events.js';
 import { log } from '../log.js';
 import { signatureById, defaultSignature } from './signatures.js';
+
+const safeList = (v: string | null | undefined): string[] => {
+  try {
+    return (JSON.parse(v || '[]') as string[]).map((x) => String(x).toLowerCase());
+  } catch {
+    return [];
+  }
+};
 
 const esc = (t: string): string => t.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c] as string));
 
@@ -43,8 +54,24 @@ function quoteText(text: string): string {
 
 /** Values to prefill a reply/forward form for a message. */
 export function replyPrefill(m: MessageRow, mode: 'reply' | 'replyAll' | 'forward') {
-  const account = db.prepare('SELECT * FROM accounts WHERE id = ?').get(m.account_id) as AccountRow;
-  const mine = new Set((db.prepare('SELECT email FROM accounts').all() as { email: string }[]).map((r) => r.email.toLowerCase()));
+  let account = db.prepare('SELECT * FROM accounts WHERE id = ?').get(m.account_id) as AccountRow;
+  const allAccounts = db.prepare('SELECT * FROM accounts').all() as AccountRow[];
+  const ownerOf = new Map<string, AccountRow>();
+  for (const a of allAccounts) {
+    ownerOf.set(a.email.toLowerCase(), a);
+    for (const al of safeList(a.aliases)) ownerOf.set(al, a);
+  }
+  const mine = new Set(ownerOf.keys());
+  // "Reply from the address the email was sent to": pick the account (or alias) that received it.
+  let fromAddress: string | null = null;
+  if (uiSettings().compose.replyFromRecipient && !m.mine) {
+    const rcpts = [...(JSON.parse(m.to_json) as Address[]), ...(JSON.parse(m.cc_json) as Address[])];
+    const hit = rcpts.find((r) => ownerOf.has(r.email));
+    if (hit) {
+      account = ownerOf.get(hit.email) as AccountRow;
+      if (hit.email !== account.email.toLowerCase()) fromAddress = hit.email;
+    }
+  }
   const from = JSON.parse(m.from_json) as Address;
   const to = JSON.parse(m.to_json) as Address[];
   const cc = JSON.parse(m.cc_json) as Address[];
@@ -57,7 +84,7 @@ export function replyPrefill(m: MessageRow, mode: 'reply' | 'replyAll' | 'forwar
     const header = [`---------- Forwarded message ----------`, `From: ${formatAddress(from)}`, `Date: ${fmtDate(m.date)}`, `Subject: ${m.subject}`, `To: ${to.map(formatAddress).join(', ')}`, cc.length ? `Cc: ${cc.map(formatAddress).join(', ')}` : '']
       .filter(Boolean)
       .join('\n');
-    return { accountId: String(account.id), to: '', cc: '', subject: /^fwd?:/i.test(m.subject) ? m.subject : `Fwd: ${subjectBase}`, quotedText: `\n\n${header}\n\n${text}`, quotedHtml: body?.html || null, headerLine: header };
+    return { accountId: String(account.id), fromAddress, to: '', cc: '', subject: /^fwd?:/i.test(m.subject) ? m.subject : `Fwd: ${subjectBase}`, quotedText: `\n\n${header}\n\n${text}`, quotedHtml: body?.html || null, headerLine: header };
   }
   const primary = m.mine ? to : replyTo.length ? replyTo : [from];
   let toList = primary;
@@ -75,6 +102,7 @@ export function replyPrefill(m: MessageRow, mode: 'reply' | 'replyAll' | 'forwar
   if (!toList.length) toList = [from];
   return {
     accountId: String(account.id),
+    fromAddress,
     to: toList.map(formatAddress).join(', '),
     cc: ccList.map(formatAddress).join(', '),
     subject: /^re:/i.test(m.subject) ? m.subject : `Re: ${subjectBase}`,
@@ -84,7 +112,7 @@ export function replyPrefill(m: MessageRow, mode: 'reply' | 'replyAll' | 'forwar
   };
 }
 
-type SendFields = { accountId?: string; to?: string; cc?: string; bcc?: string; subject?: string; text?: string; html?: string; inReplyTo?: string; forwardOf?: string; draftId?: string; uploadIds?: string | string[]; signatureId?: string; quote?: string };
+type SendFields = { accountId?: string; to?: string; cc?: string; bcc?: string; subject?: string; text?: string; html?: string; inReplyTo?: string; forwardOf?: string; draftId?: string; uploadIds?: string | string[]; signatureId?: string; quote?: string; fromAddress?: string; sendAt?: string; now?: string };
 
 export function registerComposeRoutes(app: FastifyInstance): void {
   app.get<{ Params: { id: string }; Querystring: { mode?: string } }>('/api/messages/:id/reply', async (req, reply) => {
@@ -143,6 +171,7 @@ export function registerComposeRoutes(app: FastifyInstance): void {
       }
       b = { ...fields, uploadIds: [...uploadIds, ...(fields.uploadIds ? fields.uploadIds.split(',') : [])] };
     }
+    const settings = uiSettings();
     const account = db.prepare('SELECT * FROM accounts WHERE id = ?').get(Number(b.accountId)) as AccountRow | undefined;
     if (!account) return reply.code(400).send({ error: 'no_account', message: 'Choose which address to send from.' });
     const to = String(b.to || '').trim();
@@ -151,36 +180,16 @@ export function registerComposeRoutes(app: FastifyInstance): void {
       const raw = val.split(/[,;]/).map((s) => s.trim()).filter(Boolean);
       if (raw.length !== parseAddressList(val).length) return reply.code(400).send({ error: 'bad_address', message: `${field} has an address that does not look right.` });
     }
-    const attachments: OutgoingAttachment[] = [];
-    const uploadIds = (Array.isArray(b.uploadIds) ? b.uploadIds : b.uploadIds ? [b.uploadIds] : []).map((s) => String(s).replace(/[^A-Za-z0-9_-]/g, ''));
-    for (const id of uploadIds) {
-      const metaFile = path.join(config.uploadsDir, id + '.json');
-      if (!fs.existsSync(metaFile)) continue;
-      const meta = JSON.parse(fs.readFileSync(metaFile, 'utf8')) as { filename: string; contentType: string };
-      attachments.push({ filename: meta.filename, contentType: meta.contentType, path: path.join(config.uploadsDir, id) });
-    }
-    let inReplyTo: { messageId: string; references: string[] } | null = null;
+    let bcc = String(b.bcc || '');
+    if (settings.compose.bccMyself && !parseAddressList(bcc).some((a) => a.email === account.email)) bcc = bcc ? `${bcc}, ${account.email}` : account.email;
+    const uploadIds = (Array.isArray(b.uploadIds) ? b.uploadIds : b.uploadIds ? [b.uploadIds] : []).map((x) => String(x).replace(/[^A-Za-z0-9_-]/g, ''));
+    let inReplyTo: SendJob['inReplyTo'] = null;
     let replyRow: MessageRow | undefined;
     if (b.inReplyTo) {
       replyRow = db.prepare('SELECT * FROM messages WHERE id = ?').get(Number(b.inReplyTo)) as MessageRow | undefined;
       if (replyRow?.message_id) {
         const refs = (db.prepare('SELECT ref FROM message_refs WHERE message_row = ?').all(replyRow.id) as { ref: string }[]).map((r) => r.ref);
-        inReplyTo = { messageId: replyRow.message_id, references: refs.slice(-20) };
-      }
-    }
-    if (b.forwardOf) {
-      const fwd = db.prepare('SELECT * FROM messages WHERE id = ?').get(Number(b.forwardOf)) as MessageRow | undefined;
-      if (fwd) {
-        const atts = db.prepare('SELECT * FROM attachments WHERE message_row = ? AND is_inline = 0').all(fwd.id) as AttachmentRow[];
-        const sync = manager.get(fwd.account_id);
-        for (const a of atts) {
-          try {
-            const file = sync ? await sync.cacheAttachment(a.id) : attachmentPath(a.id);
-            attachments.push({ filename: a.filename, contentType: a.content_type, path: file });
-          } catch {
-            // skip attachments we cannot fetch
-          }
-        }
+        inReplyTo = { messageId: replyRow.message_id, references: refs.slice(-20), row: replyRow.id };
       }
     }
     // Signature: an explicit id, "none", or the account's default.
@@ -198,24 +207,65 @@ export function registerComposeRoutes(app: FastifyInstance): void {
         quote = { html: pre.quotedHtml ? `<div>${esc(pre.headerLine).replace(/\n/g, '<br>')}</div>${pre.quotedHtml}` : null, text: pre.quotedText.trim() };
       }
     }
+    // Reply from the alias the mail was sent to, when it belongs to this account.
+    let fromAddress: string | undefined;
+    if (b.fromAddress) {
+      const alias = String(b.fromAddress).toLowerCase();
+      const aliases = safeList(account.aliases);
+      if (alias === account.email.toLowerCase() || aliases.includes(alias)) fromAddress = alias;
+    }
+    const job: SendJob = {
+      accountId: account.id,
+      to,
+      cc: String(b.cc || ''),
+      bcc,
+      subject: String(b.subject || ''),
+      text: String(b.text || ''),
+      html: b.html ? String(b.html) : undefined,
+      inReplyTo,
+      forwardOf: b.forwardOf ? Number(b.forwardOf) : null,
+      signature,
+      quote,
+      uploadIds,
+      draftId: b.draftId ? Number(b.draftId) : null,
+      threadId: replyRow?.thread_id ?? (b.forwardOf ? null : null),
+      fromAddress,
+    };
+    // "Send later" or "Undo send": queue it; otherwise send now.
+    let sendAt: Date | null = null;
+    if (b.sendAt) {
+      const d = new Date(String(b.sendAt));
+      if (Number.isNaN(d.getTime())) return reply.code(400).send({ error: 'bad_time', message: 'That send time is not valid.' });
+      sendAt = d;
+    } else if (settings.compose.undoSendSec > 0 && b.now !== '1') {
+      sendAt = new Date(Date.now() + settings.compose.undoSendSec * 1000);
+    }
+    if (sendAt) {
+      const row = enqueue(job, sendAt);
+      if (job.draftId) db.prepare('DELETE FROM drafts WHERE id = ?').run(job.draftId);
+      return { ok: true, queued: true, outboxId: String(row.id), sendAt: row.send_at, threadId: job.threadId ? String(job.threadId) : null };
+    }
     try {
-      const r = await sendMail({ account, to, cc: String(b.cc || ''), bcc: String(b.bcc || ''), subject: String(b.subject || ''), text: String(b.text || ''), html: b.html ? String(b.html) : undefined, inReplyTo, attachments, signature, quote });
-      if (replyRow) {
-        const sync = manager.get(replyRow.account_id);
-        sync?.markAnswered(replyRow.id).catch((err: Error) => log.warn({ err: err.message }, 'could not flag as answered'));
-      }
-      if (b.draftId) db.prepare('DELETE FROM drafts WHERE id = ?').run(Number(b.draftId));
-      for (const id of uploadIds) {
-        for (const f of [path.join(config.uploadsDir, id), path.join(config.uploadsDir, id + '.json')]) fs.promises.unlink(f).catch(() => undefined);
-      }
-      const sent = db.prepare('SELECT id, thread_id FROM messages WHERE account_id = ? AND message_id = ? ORDER BY id DESC LIMIT 1').get(account.id, r.messageId) as { id: number; thread_id: number } | undefined;
-      const threadId = sent?.thread_id ?? replyRow?.thread_id ?? null;
-      if (threadId) bus.publish({ type: 'thread.updated', threadId: String(threadId), accountId: String(account.id) });
-      return { ok: true, messageId: r.messageId, threadId: threadId ? String(threadId) : null };
+      const r = await executeSend(job);
+      return { ok: true, messageId: r.messageId, threadId: r.threadId ? String(r.threadId) : null };
     } catch (err) {
       const msg = (err as Error).message;
       return reply.code(502).send({ error: 'send_failed', message: /auth|535|credentials/i.test(msg) ? 'The mail server refused the login. Check the account password in Settings.' : `Sending failed: ${msg}` });
     }
+  });
+
+  app.get('/api/outbox', async () => ({ items: listQueued() }));
+
+  // Undo: the job comes back as a draft so it can be reopened.
+  app.delete<{ Params: { id: string } }>('/api/outbox/:id', async (req, reply) => {
+    const job = cancel(Number(req.params.id));
+    if (!job) return reply.code(404).send({ error: 'gone', message: 'That email was already sent.' });
+    const info = db
+      .prepare('INSERT INTO drafts(account_id, thread_id, in_reply_to, forward_of, to_text, cc_text, bcc_text, subject, text, attachments_json) VALUES (?,?,?,?,?,?,?,?,?,?)')
+      .run(job.accountId, job.threadId ?? null, job.inReplyTo?.row ?? null, job.forwardOf ?? null, job.to, job.cc, job.bcc, job.subject, job.text, JSON.stringify(job.uploadIds.map((id) => ({ id }))));
+    const d = db.prepare('SELECT * FROM drafts WHERE id = ?').get(info.lastInsertRowid) as DraftRow;
+    if (d.thread_id) bus.publish({ type: 'thread.updated', threadId: String(d.thread_id), accountId: String(d.account_id) });
+    return { ok: true, draft: draftView(d) };
   });
 
   app.get('/api/drafts', async () => (db.prepare('SELECT * FROM drafts ORDER BY updated_at DESC').all() as DraftRow[]).map(draftView));
