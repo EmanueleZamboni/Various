@@ -7,7 +7,7 @@ import { useUI } from '../store';
 export const useMe = (enabled = true) =>
   useQuery({ queryKey: ['me'], queryFn: api.auth.me, enabled, retry: false, staleTime: 5 * 60_000 });
 
-export const useAccounts = () => useQuery({ queryKey: ['accounts'], queryFn: api.accounts.list, staleTime: 30_000 });
+export const useAccounts = (enabled = true) => useQuery({ queryKey: ['accounts'], queryFn: api.accounts.list, staleTime: 30_000, enabled });
 
 export const useFolders = () => useQuery({ queryKey: ['folders'], queryFn: api.folders.list, staleTime: 60_000 });
 

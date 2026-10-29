@@ -39,8 +39,8 @@ export function Setup({ onDone }: { onDone: () => void }) {
       <div className="auth-card">
         <Brand />
         <div>
-          <h1>Choose your password</h1>
-          <p className="help">This password protects every mailbox you connect. Pick a long one you can remember.</p>
+          <h1>Welcome to Postino</h1>
+          <p className="help">First, a password for Postino itself: it protects every mailbox you connect. A long sentence you can remember works best. Your mailboxes come next.</p>
         </div>
         <form onSubmit={submit}>
           <div className="field">

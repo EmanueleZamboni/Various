@@ -14,7 +14,7 @@ import { useUI } from '../store';
 import { currentSubscription, disablePush, enablePush, pushSupported } from '../push';
 import { pluralize } from '../util/format';
 
-const COLORS = ['#3B6FE0', '#D9486B', '#2E9E6B', '#8A5BD6', '#E07C2A', '#1AA3B5', '#9A8A1E', '#5B6B9E', '#B8456B', '#157A5B'];
+export const COLORS = ['#3B6FE0', '#D9486B', '#2E9E6B', '#8A5BD6', '#E07C2A', '#1AA3B5', '#9A8A1E', '#5B6B9E', '#B8456B', '#157A5B'];
 
 const NAV: { to: string; label: string; icon: IconName }[] = [
   { to: '/settings/accounts', label: 'Accounts', icon: 'people' },
@@ -224,7 +224,7 @@ function EditAccount({ account: a, onDone }: { account: Account; onDone: () => v
   );
 }
 
-function ColorPicker({ value, onChange }: { value: string; onChange: (c: string) => void }) {
+export function ColorPicker({ value, onChange }: { value: string; onChange: (c: string) => void }) {
   return (
     <div className="colors" role="radiogroup" aria-label="Account color">
       {COLORS.map((c) => (
@@ -345,7 +345,7 @@ function AddAccount({ onDone }: { onDone: () => void }) {
   );
 }
 
-function ServerFields({ label, value, onChange, idp }: { label: string; value: { host: string; port: number; secure: boolean }; onChange: (v: { host: string; port: number; secure: boolean }) => void; idp: string }) {
+export function ServerFields({ label, value, onChange, idp }: { label: string; value: { host: string; port: number; secure: boolean }; onChange: (v: { host: string; port: number; secure: boolean }) => void; idp: string }) {
   return (
     <div className="field">
       <span className="label">{label}</span>

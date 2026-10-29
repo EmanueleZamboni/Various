@@ -5,6 +5,8 @@ import { api, ApiError } from './api/client';
 import { useMe } from './api/hooks';
 import { useServerEvents } from './api/events';
 import { Login, Setup } from './components/Auth';
+import { Welcome, markWizardOpen, wizardWanted } from './components/Welcome';
+import { useAccounts } from './api/hooks';
 import { Shell } from './components/Shell';
 import { Toasts } from './components/Toasts';
 
@@ -40,6 +42,7 @@ function rememberSignedIn(v: boolean): void {
 export default function App() {
   const [auth, setAuth] = useState<AuthState>('loading');
   const me = useMe(auth === 'in');
+  const accounts = useAccounts(auth === 'in');
   const qc = useQueryClient();
   const navigate = useNavigate();
   const loc = useLocation();
@@ -96,19 +99,24 @@ export default function App() {
   useEffect(() => {
     if (auth === 'setup' && loc.pathname !== '/setup') navigate('/setup', { replace: true });
     if (auth === 'login' && loc.pathname !== '/login') navigate('/login', { replace: true });
-    if (auth === 'in' && (loc.pathname === '/login' || loc.pathname === '/setup')) navigate('/inbox', { replace: true });
+    if (auth === 'in' && (loc.pathname === '/login' || loc.pathname === '/setup')) navigate(wizardWanted() ? '/welcome' : '/inbox', { replace: true });
   }, [auth, loc.pathname, navigate]);
+  // A fresh install (no mailbox yet) always lands in the wizard.
+  useEffect(() => {
+    if (auth === 'in' && accounts.data && accounts.data.length === 0 && loc.pathname !== '/welcome' && !loc.pathname.startsWith('/settings')) navigate('/welcome', { replace: true });
+  }, [auth, accounts.data, loc.pathname, navigate]);
 
   if (auth === 'loading') return <div className="auth" aria-busy="true" />;
 
   return (
     <>
       <Routes>
-        <Route path="/setup" element={<Setup onDone={() => { rememberSignedIn(true); setAuth('in'); }} />} />
+        <Route path="/setup" element={<Setup onDone={() => { rememberSignedIn(true); markWizardOpen(); setAuth('in'); }} />} />
         <Route path="/login" element={<Login onDone={() => { rememberSignedIn(true); setAuth('in'); }} />} />
         {auth === 'in' && (
           <>
             <Route path="/" element={<Navigate to="/inbox" replace />} />
+            <Route path="/welcome" element={<Welcome onFinish={() => navigate('/inbox', { replace: true })} />} />
             <Route path="/t/:threadId" element={<Shell forcedView="inbox" me={me.data} onLogout={() => { rememberSignedIn(false); purgeClientState(qc); setAuth('login'); }} />} />
             <Route path="/search" element={<Shell me={me.data} onLogout={() => { rememberSignedIn(false); purgeClientState(qc); setAuth('login'); }} />} />
             <Route path="/search/t/:threadId" element={<Shell me={me.data} onLogout={() => { rememberSignedIn(false); purgeClientState(qc); setAuth('login'); }} />} />

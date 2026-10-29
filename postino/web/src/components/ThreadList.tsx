@@ -344,7 +344,7 @@ function Empty({ view, q }: { view: string; q: string }) {
         <div className="big"><Icon name="people" size={24} /></div>
         <h2>Connect your first mailbox</h2>
         <p>Add each address once (Gmail, your own domains…). They all land in this one inbox.</p>
-        <button className="btn btn-primary" onClick={() => navigate('/settings/accounts?add=1')}>Add an account</button>
+        <button className="btn btn-primary" onClick={() => navigate('/welcome')}>Set up Postino</button>
       </div>
     );
   if (view === 'search')
