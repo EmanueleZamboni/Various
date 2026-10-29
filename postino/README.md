@@ -107,6 +107,18 @@ Everything lives in `postino/data/` (SQLite database, cached attachments, the
 secret key). Copy that folder; `data/secret.key` (or `POSTINO_SECRET` in `.env`)
 is needed to read the stored account passwords.
 
+## If something goes wrong
+
+- **Forgot the Postino password**: `docker compose exec postino node scripts/reset-password.mjs` (signs every device out and turns 2FA off; passkeys keep working).
+- **An account shows "Login refused"**: open Settings → Accounts → Edit, re-enter the mailbox password. For Gmail/iCloud use an *app password*.
+- **"Certificate problem"** on a provider with a bad TLS certificate: add `POSTINO_TLS_INSECURE=1` to `.env` (only if you trust the network) and `docker compose up -d`.
+- **No notifications on the phone**: the site must be opened over HTTPS and added to the home screen; then Settings → Notifications → Enable, and allow notifications in Android's prompt. "Send test" shows whether the phone is registered.
+- **Google Drive buttons missing**: Settings → Google Drive must show "Connected". If Google refuses the redirect, the URI in the Google Cloud console must match the one shown there exactly.
+- **Mail is not arriving live**: Settings → Accounts shows a red dot when the IMAP connection dropped; Postino reconnects by itself (backoff up to 5 minutes). `docker compose logs -f postino` shows why.
+- **Disk**: `data/attachments` and `data/avatars` are caches and can be deleted; they are fetched again when needed.
+- **Backups**: `scripts/backup.sh` (see the comment inside for the nightly cron line). Restore = stop the app, replace `data/postino.db` and `data/secret.key`, start it again.
+- **Logs**: `docker compose logs --tail 200 postino`.
+
 ## Security notes
 
 - All API calls need the session cookie; login is rate-limited; 2FA is optional.

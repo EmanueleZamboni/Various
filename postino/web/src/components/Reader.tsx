@@ -387,6 +387,7 @@ function MessageCard({ message: m, thread, accountColor, myEmails, expanded, sin
                 <button className="btn btn-ghost btn-sm" onClick={() => setShowImages(true)}>Load images</button>
               </div>
             )}
+            {m.calendar && <EventCard ev={m.calendar} attachments={m.attachments} />}
             {m.body.html ? <HtmlBody id={m.id} html={m.body.html} showImages={showImages} /> : <div className="msg-body text" style={{ padding: 0 }}>{m.body.text}</div>}
             {m.body.quoted && (
               <>
@@ -505,5 +506,37 @@ export function HtmlBody({ id, html, showImages }: { id: string; html: string; s
       srcDoc={doc}
       style={{ height }}
     />
+  );
+}
+
+
+/** Invitation card for a text/calendar part, with a one-click add to Google Calendar. */
+function EventCard({ ev, attachments }: { ev: NonNullable<Message['calendar']>; attachments: Attachment[] }) {
+  const start = ev.start ? new Date(ev.start) : null;
+  const end = ev.end ? new Date(ev.end) : null;
+  const when = !start
+    ? ''
+    : ev.allDay
+      ? start.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' }) + (end && end.getTime() - start.getTime() > 86400_000 ? ` – ${new Date(end.getTime() - 1).toLocaleDateString(undefined, { day: 'numeric', month: 'long' })}` : '')
+      : start.toLocaleString(undefined, { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }) + (end ? ` – ${end.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}` : '');
+  const ics = attachments.find((a) => /\.ics$/i.test(a.filename) || /calendar/i.test(a.contentType));
+  const cancelled = ev.method === 'CANCEL';
+  return (
+    <div className={`event-card${cancelled ? ' cancelled' : ''}`}>
+      <div className="event-date">
+        <b>{start ? start.getDate() : '—'}</b>
+        <small>{start ? start.toLocaleDateString(undefined, { month: 'short' }) : ''}</small>
+      </div>
+      <div className="event-body">
+        <b>{cancelled ? 'Cancelled: ' : ''}{ev.summary || 'Event'}</b>
+        {when && <span>{when}</span>}
+        {ev.location && <span className="help">{ev.location}</span>}
+        {ev.organizer && <span className="help">Organised by {ev.organizer.name || ev.organizer.email}</span>}
+        <div className="row-inline" style={{ marginTop: 6 }}>
+          {ev.googleLink && !cancelled && <a className="btn btn-primary btn-sm" href={ev.googleLink} target="_blank" rel="noopener"><Icon name="plus" size={14} />Add to Google Calendar</a>}
+          {ics && <a className="btn btn-ghost btn-sm" href={ics.url} download={ics.filename}><Icon name="download" size={14} />.ics file</a>}
+        </div>
+      </div>
+    </div>
   );
 }

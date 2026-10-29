@@ -94,6 +94,7 @@ export type Message = {
   attachments: Attachment[];
   listUnsubscribe: string | null;
   knownSender?: boolean;
+  calendar?: CalendarEvent | null;
   body: MessageBody;
 };
 
@@ -212,3 +213,18 @@ export type ServerEvent =
   | { type: 'sync.progress'; accountId: string; fetched: number; total: number; done: boolean }
   | { type: 'action.failed'; message: string }
   | { type: 'new.mail'; threadId: string; accountId: string; from: Address; subject: string; category: Category };
+
+export type CalendarEvent = {
+  method: string;
+  summary: string;
+  description: string;
+  location: string;
+  start: string | null;
+  end: string | null;
+  allDay: boolean;
+  organizer: { name: string; email: string } | null;
+  attendees: { name: string; email: string; status: string }[];
+  uid: string;
+  url: string;
+  googleLink: string | null;
+};

@@ -170,6 +170,9 @@ export function ThreadRow({ thread: t, account, myEmails, selected, focused, hig
             <button className={`ib${t.pinned ? ' on' : ''}`} aria-label={t.pinned ? 'Unpin' : 'Pin'} title={t.pinned ? 'Unpin' : 'Pin'} onClick={() => onAction(t.pinned ? 'unpin' : 'pin')}>
               <Icon name="pin" size={16} />
             </button>
+            <button className="ib" aria-label={t.unread ? 'Mark as read' : 'Mark as unread'} title={t.unread ? 'Mark as read' : 'Mark as unread (u)'} onClick={() => onAction(t.unread ? 'read' : 'unread')}>
+              <Icon name={t.unread ? 'mailOpen' : 'unread'} size={16} />
+            </button>
             <button className="ib" aria-label="Archive" title="Archive (e)" onClick={() => onAction('archive')}>
               <Icon name="archive" size={16} />
             </button>

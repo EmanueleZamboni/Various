@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
 import { useAccountMap, useSettings, useSignatures } from '../api/hooks';
-import { useSendFeedback } from '../sendFeedback';
+import { useSendFeedback, sendLaterOptions } from '../sendFeedback';
 import { SignaturePicker, SignaturePreview, defaultSignatureId } from './SignatureEditor';
 import type { Draft, Message, ReplyPrefill } from '../api/types';
 import { Icon } from '../icons';
@@ -42,6 +42,8 @@ export function ReplyBox({ message: m, mode, onModeChange, onClose, onSent }: {
   const [saved, setSaved] = useState('');
   const { data: signatures } = useSignatures();
   const [signatureId, setSignatureId] = useState<string>('');
+  const [sendAt, setSendAt] = useState<Date | null>(null);
+  const [laterOpen, setLaterOpen] = useState(false);
   useEffect(() => {
     if (signatures) setSignatureId(defaultSignatureId(signatures, prefill?.accountId ?? m.accountId));
   }, [signatures, m.accountId, prefill?.accountId]);
@@ -110,6 +112,7 @@ export function ReplyBox({ message: m, mode, onModeChange, onClose, onSent }: {
       if (mode === 'forward') fd.set('forwardOf', m.id);
       else fd.set('inReplyTo', m.id);
       if (prefill?.quotedText && (settings?.compose.includeQuote ?? true)) fd.set('quote', '1');
+      if (sendAt) fd.set('sendAt', sendAt.toISOString());
       if (draft.current) fd.set('draftId', draft.current.id);
       for (const f of files) fd.append('attachments', f, f.name);
       const res = await api.send(fd);
@@ -210,10 +213,27 @@ export function ReplyBox({ message: m, mode, onModeChange, onClose, onSent }: {
         <SignaturePicker signatures={signatures ?? []} accountId={prefill?.accountId ?? m.accountId} value={signatureId || 'none'} onChange={setSignatureId} compact />
         <span className="help" style={{ fontSize: 12 }}>{saved ? `Draft saved ${saved}` : ''}</span>
         <span className="sp" />
-        <button type="submit" className="btn btn-primary" disabled={busy || !prefill}>
-          {busy ? 'Sending' : 'Send'}
-          <Icon name="send" size={15} />
-        </button>
+        <div className="send-group">
+          <button type="submit" className="btn btn-primary" disabled={busy || !prefill}>
+            {busy ? 'Sending' : sendAt ? `Send ${sendAt.toLocaleString(undefined, { weekday: 'short', hour: '2-digit', minute: '2-digit' })}` : 'Send'}
+            <Icon name="send" size={15} />
+          </button>
+          <button type="button" className="btn btn-primary send-later" aria-label="Send later" aria-expanded={laterOpen} onClick={() => setLaterOpen((v) => !v)}>
+            <Icon name="chevronDown" size={15} />
+          </button>
+          {laterOpen && (
+            <div className="menu send-later-menu" role="menu">
+              {sendLaterOptions().map((o) => (
+                <button type="button" role="menuitem" key={o.label} onClick={() => { setSendAt(o.at); setLaterOpen(false); }}>{o.label}</button>
+              ))}
+              <label className="menu-custom">
+                Pick a time
+                <input type="datetime-local" onChange={(e) => { if (e.target.value) { setSendAt(new Date(e.target.value)); setLaterOpen(false); } }} />
+              </label>
+              {sendAt && <button type="button" role="menuitem" onClick={() => { setSendAt(null); setLaterOpen(false); }}>Send now instead</button>}
+            </div>
+          )}
+        </div>
       </div>
     </form>
   );
