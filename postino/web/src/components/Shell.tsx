@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { Me } from '../api/types';
 import { useThreadActions } from '../api/hooks';
@@ -117,8 +117,15 @@ export function Shell({ me, forcedView, onLogout }: { me?: Me; forcedView?: stri
 
   const phoneView = nav.threadId ? 'reader' : 'list';
 
+  const online = useOnline();
   return (
     <div className="shell" data-view={phoneView} data-drawer={ui.drawerOpen ? 'open' : 'closed'} data-density={settings?.appearance.density ?? 'comfortable'} data-text={settings?.appearance.textSize ?? 'normal'}>
+      {!online && (
+        <div className="offline-bar" role="status">
+          <Icon name="alert" size={16} />
+          You're offline. Showing the last synced mail; changes will fail until the connection is back.
+        </div>
+      )}
       <Sidebar />
       <div className="drawer-scrim" onClick={() => ui.setDrawer(false)} />
       {nav.isSettings ? (
@@ -142,4 +149,20 @@ export function Shell({ me, forcedView, onLogout }: { me?: Me; forcedView?: stri
       <AttachmentViewer />
     </div>
   );
+}
+
+/** Browser connectivity, so the shell can say why nothing refreshes. */
+function useOnline(): boolean {
+  const [online, setOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine);
+  useEffect(() => {
+    const on = () => setOnline(true);
+    const off = () => setOnline(false);
+    window.addEventListener('online', on);
+    window.addEventListener('offline', off);
+    return () => {
+      window.removeEventListener('online', on);
+      window.removeEventListener('offline', off);
+    };
+  }, []);
+  return online;
 }

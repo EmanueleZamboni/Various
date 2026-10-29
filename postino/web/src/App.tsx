@@ -10,6 +10,23 @@ import { Toasts } from './components/Toasts';
 
 type AuthState = 'loading' | 'setup' | 'login' | 'in';
 
+const SIGNED_IN_KEY = 'postino.signedIn';
+function wasSignedIn(): boolean {
+  try {
+    return localStorage.getItem(SIGNED_IN_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+function rememberSignedIn(v: boolean): void {
+  try {
+    if (v) localStorage.setItem(SIGNED_IN_KEY, '1');
+    else localStorage.removeItem(SIGNED_IN_KEY);
+  } catch {
+    // storage blocked: nothing to remember
+  }
+}
+
 export default function App() {
   const [auth, setAuth] = useState<AuthState>('loading');
   const me = useMe(auth === 'in');
@@ -26,12 +43,22 @@ export default function App() {
         if (s.needsSetup) return setAuth('setup');
         try {
           await api.auth.me();
-          if (alive) setAuth('in');
+          if (!alive) return;
+          rememberSignedIn(true);
+          setAuth('in');
         } catch (e) {
-          if (alive) setAuth(e instanceof ApiError && e.status === 401 ? 'login' : 'login');
+          if (!alive) return;
+          if (e instanceof ApiError && e.status === 401) {
+            rememberSignedIn(false);
+            setAuth('login');
+          } else {
+            // Server unreachable (offline, or the VM restarting): keep showing the last
+            // synced mail when this browser was signed in before; the offline bar explains.
+            setAuth(wasSignedIn() ? 'in' : 'login');
+          }
         }
       } catch {
-        if (alive) setAuth('login');
+        if (alive) setAuth(wasSignedIn() ? 'in' : 'login');
       }
     })();
     return () => {
@@ -44,7 +71,10 @@ export default function App() {
     if (auth !== 'in') return;
     const unsub = qc.getQueryCache().subscribe((ev) => {
       const err = ev.query.state.error;
-      if (err instanceof ApiError && err.status === 401) setAuth('login');
+      if (err instanceof ApiError && err.status === 401) {
+        rememberSignedIn(false);
+        setAuth('login');
+      }
     });
     return unsub;
   }, [auth, qc]);
@@ -62,17 +92,17 @@ export default function App() {
   return (
     <>
       <Routes>
-        <Route path="/setup" element={<Setup onDone={() => setAuth('in')} />} />
-        <Route path="/login" element={<Login onDone={() => setAuth('in')} />} />
+        <Route path="/setup" element={<Setup onDone={() => { rememberSignedIn(true); setAuth('in'); }} />} />
+        <Route path="/login" element={<Login onDone={() => { rememberSignedIn(true); setAuth('in'); }} />} />
         {auth === 'in' && (
           <>
             <Route path="/" element={<Navigate to="/inbox" replace />} />
-            <Route path="/t/:threadId" element={<Shell forcedView="inbox" me={me.data} onLogout={() => setAuth('login')} />} />
-            <Route path="/search" element={<Shell me={me.data} onLogout={() => setAuth('login')} />} />
-            <Route path="/search/t/:threadId" element={<Shell me={me.data} onLogout={() => setAuth('login')} />} />
-            <Route path="/settings/*" element={<Shell me={me.data} onLogout={() => setAuth('login')} />} />
-            <Route path="/:view" element={<Shell me={me.data} onLogout={() => setAuth('login')} />} />
-            <Route path="/:view/t/:threadId" element={<Shell me={me.data} onLogout={() => setAuth('login')} />} />
+            <Route path="/t/:threadId" element={<Shell forcedView="inbox" me={me.data} onLogout={() => { rememberSignedIn(false); setAuth('login'); }} />} />
+            <Route path="/search" element={<Shell me={me.data} onLogout={() => { rememberSignedIn(false); setAuth('login'); }} />} />
+            <Route path="/search/t/:threadId" element={<Shell me={me.data} onLogout={() => { rememberSignedIn(false); setAuth('login'); }} />} />
+            <Route path="/settings/*" element={<Shell me={me.data} onLogout={() => { rememberSignedIn(false); setAuth('login'); }} />} />
+            <Route path="/:view" element={<Shell me={me.data} onLogout={() => { rememberSignedIn(false); setAuth('login'); }} />} />
+            <Route path="/:view/t/:threadId" element={<Shell me={me.data} onLogout={() => { rememberSignedIn(false); setAuth('login'); }} />} />
           </>
         )}
         <Route path="*" element={<div className="auth" />} />

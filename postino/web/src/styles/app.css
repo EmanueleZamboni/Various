@@ -332,6 +332,21 @@ textarea:focus-visible {
   grid-template-columns: var(--sidebar-w) var(--list-w) minmax(0, 1fr);
   padding-top: env(safe-area-inset-top, 0px);
 }
+.offline-bar {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #7a4a00;
+  background: #fff4e0;
+  border-bottom: 1px solid #f3dcb0;
+}
+.shell:has(.offline-bar) {
+  grid-template-rows: auto minmax(0, 1fr);
+}
 .sidebar {
   display: flex;
   flex-direction: column;
