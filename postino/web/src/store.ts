@@ -26,6 +26,8 @@ export type ComposeState =
       forwardOf?: string;
       threadId?: string;
       draft?: Draft;
+      /** An IMAP draft (saved by another app) being edited: deleted from the server once sent. */
+      imapDraftId?: string;
       /** Reply box sits inline under the thread instead of a modal */
       inline?: boolean;
     };

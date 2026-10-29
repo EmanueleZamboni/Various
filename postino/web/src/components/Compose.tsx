@@ -220,6 +220,8 @@ export function Compose() {
       const res = await api.send(fd);
       window.clearTimeout(saveTimer.current);
       dirty.current = false;
+      // The draft another app left in the IMAP Drafts folder is done with.
+      if (c.imapDraftId) api.messages.act({ messageIds: [c.imapDraftId], action: 'trash' }).then(() => qc.invalidateQueries({ queryKey: ['threads'] })).catch(() => undefined);
       close();
       feedback(res, fromAddress || account?.email || 'your account');
     } catch (e) {

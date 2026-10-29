@@ -230,7 +230,7 @@ export function Reader({ view }: { view: string }) {
               single={messages.length === 1}
               onToggle={() => toggle(m.id)}
               onReply={(mode) => startReply(mode, m.id)}
-              onEditDraft={() => ui.openCompose({ mode: 'new', accountId: m.accountId, to: m.to.map((a) => a.email).join(', '), cc: m.cc.map((a) => a.email).join(', '), subject: m.subject, text: m.body.text ?? '' })}
+              onEditDraft={() => ui.openCompose({ mode: 'new', accountId: m.accountId, imapDraftId: m.id, to: m.to.map((a) => a.email).join(', '), cc: m.cc.map((a) => a.email).join(', '), subject: m.subject, text: m.body.text ?? '' })}
               onBlock={() => ui.setPendingBlock({ email: m.from.email, name: displayName(m.from), threadId: thread.id })}
               onRefetch={() => qc.invalidateQueries({ queryKey: ['thread', thread.id] })}
             />
