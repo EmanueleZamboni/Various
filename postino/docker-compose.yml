@@ -1,8 +1,15 @@
 # Postino + Caddy (automatic HTTPS). Copy .env.example to .env first.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   postino:
     build: .
     restart: unless-stopped
+    logging: *logging
     env_file: .env
     environment:
       - POSTINO_SECURE_COOKIES=true
@@ -19,6 +26,7 @@ services:
   caddy:
     image: caddy:2
     restart: unless-stopped
+    logging: *logging
     env_file: .env
     ports:
       - "80:80"

@@ -20,6 +20,7 @@ import { manager } from './mail/manager.js';
 import { startPushBridge, vapidKeys } from './push.js';
 import { startOutbox } from './mail/outbox.js';
 import { pruneAttachmentCache, pruneUploads } from './mail/store.js';
+import { db } from './db.js';
 
 export async function buildApp() {
   const app = Fastify({ logger: false, trustProxy: true, bodyLimit: 2 * 1024 * 1024 });
@@ -146,8 +147,11 @@ async function main(): Promise<void> {
       if (r.removed) log.info({ removed: r.removed, freedMb: Math.round(r.freed / 1048576) }, 'attachment cache pruned');
       const u = pruneUploads();
       if (u) log.info({ removed: u }, 'abandoned uploads removed');
+      // Keep the write-ahead log small and the query planner's statistics fresh.
+      db.pragma('wal_checkpoint(PASSIVE)');
+      db.pragma('optimize');
     } catch (err) {
-      log.warn({ err: (err as Error).message }, 'attachment cache prune failed');
+      log.warn({ err: (err as Error).message }, 'maintenance pass failed');
     }
   };
   setTimeout(prune, 60_000).unref();
