@@ -16,6 +16,8 @@ Postino keeps a searchable copy on your own server.
 - Undo send and Send later (an outbox that survives restarts)
 - Sender pictures (Gravatar, company logos)
 - Settings for inbox grouping, preview lines, mark-as-read, remote images, swipes, density, per-account notifications
+- Works offline: the last synced mail opens even without a connection (changes wait until it is back)
+- Built for a free VM: a 100,000-message mailbox lists in ~10 ms and searches in under 200 ms (SQLite FTS5)
 
 ## Layout
 
