@@ -25,9 +25,30 @@ export function useServerEvents(enabled: boolean) {
     let retry = 1000;
     let closed = false;
     let timer: number | undefined;
+    // Events arrive in bursts (hundreds per second during a first sync); refetch at most every 600 ms.
+    let listsDirty = false;
+    const dirtyThreads = new Set<string>();
+    let flushTimer: number | undefined;
+    const flush = () => {
+      flushTimer = undefined;
+      if (listsDirty) {
+        listsDirty = false;
+        qc.invalidateQueries({ queryKey: ['threads'] });
+        qc.invalidateQueries({ queryKey: ['search'] });
+      }
+      for (const id of dirtyThreads) qc.invalidateQueries({ queryKey: ['thread', id] });
+      dirtyThreads.clear();
+    };
+    const schedule = () => {
+      if (flushTimer === undefined) flushTimer = window.setTimeout(flush, 600);
+    };
     const invalidateLists = () => {
-      qc.invalidateQueries({ queryKey: ['threads'] });
-      qc.invalidateQueries({ queryKey: ['search'] });
+      listsDirty = true;
+      schedule();
+    };
+    const invalidateThread = (id: string) => {
+      if (id) dirtyThreads.add(String(id));
+      schedule();
     };
     const connect = () => {
       es = new EventSource('/api/events');
@@ -51,14 +72,14 @@ export function useServerEvents(enabled: boolean) {
           switch (name) {
             case 'thread.updated':
               invalidateLists();
-              qc.invalidateQueries({ queryKey: ['thread', data.threadId] });
+              invalidateThread(data.threadId);
               break;
             case 'thread.removed':
               invalidateLists();
               qc.removeQueries({ queryKey: ['thread', data.threadId] });
               break;
             case 'message.updated':
-              qc.invalidateQueries({ queryKey: ['thread', data.threadId] });
+              invalidateThread(data.threadId);
               break;
             case 'account.updated': {
               const a = data as Account;
@@ -95,6 +116,7 @@ export function useServerEvents(enabled: boolean) {
     connect();
     return () => {
       closed = true;
+      if (flushTimer !== undefined) window.clearTimeout(flushTimer);
       if (timer) window.clearTimeout(timer);
       es?.close();
     };

@@ -1,10 +1,12 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, Route, Routes, useLocation } from 'react-router-dom';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '../api/client';
 import { useAccounts, useSettings, useUpdateSettings } from '../api/hooks';
 import type { Account, AccountInput, Category, Me, SwipeAction } from '../api/types';
 import { SignatureEditor } from './SignatureEditor';
+import { startRegistration, browserSupportsWebAuthn } from '@simplewebauthn/browser';
+import type { Passkey } from '../api/types';
 import { useSignatures } from '../api/hooks';
 import type { Signature } from '../api/types';
 import { Icon, type IconName } from '../icons';
@@ -504,8 +506,74 @@ function SecuritySettings({ me }: { me?: Me }) {
           )}
           {terr && <p className="error-text" role="alert">{terr}</p>}
         </div>
+        <PasskeysCard />
       </div>
     </>
+  );
+}
+
+function PasskeysCard() {
+  const qc = useQueryClient();
+  const toast = useUI((s) => s.toast);
+  const { data } = useQuery({ queryKey: ['passkeys'], queryFn: api.passkeys.list });
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+  const supported = typeof window !== 'undefined' && browserSupportsWebAuthn();
+  const add = async () => {
+    setErr('');
+    setBusy(true);
+    try {
+      const options = await api.passkeys.registerOptions();
+      const response = await startRegistration({ optionsJSON: options });
+      const name = /Android/i.test(navigator.userAgent) ? 'Android phone' : /iPhone|iPad/i.test(navigator.userAgent) ? 'iPhone' : /Mac/i.test(navigator.userAgent) ? 'Mac' : /Windows/i.test(navigator.userAgent) ? 'Windows PC' : 'This device';
+      await api.passkeys.registerVerify(response, name);
+      try {
+        localStorage.setItem('postino.passkey', '1');
+      } catch {
+        /* ignore */
+      }
+      qc.invalidateQueries({ queryKey: ['passkeys'] });
+      qc.invalidateQueries({ queryKey: ['me'] });
+      toast({ text: 'Fingerprint sign-in added for this device', kind: 'success' });
+    } catch (e) {
+      if ((e as Error).name === 'NotAllowedError') setErr('Cancelled, or this device already has a passkey here.');
+      else if ((e as Error).name === 'InvalidStateError') setErr('This device is already registered.');
+      else setErr((e as Error).message || 'Could not add the passkey.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  const remove = useMutation({
+    mutationFn: (id: string) => api.passkeys.remove(id),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['passkeys'] }); qc.invalidateQueries({ queryKey: ['me'] }); toast({ text: 'Passkey removed' }); },
+  });
+  const list: Passkey[] = data?.passkeys ?? [];
+  return (
+    <div className="card">
+      <div className="toggle-row" style={{ borderBottom: 0, padding: 0 }}>
+        <div className="t">
+          <b>Fingerprint / face sign-in</b>
+          <small>{supported ? 'Sign in with your fingerprint, face or device PIN instead of the password (a passkey). Add each phone or computer once.' : 'This browser does not support passkeys.'}</small>
+        </div>
+        {supported && <button className="btn btn-ghost" onClick={() => void add()} disabled={busy}>{busy ? 'Waiting…' : 'Add this device'}</button>}
+      </div>
+      {list.length > 0 && (
+        <ul className="plain-list">
+          {list.map((p) => (
+            <li key={p.id} className="row-inline" style={{ justifyContent: 'space-between' }}>
+              <span>
+                <b>{p.name}</b>
+                <small className="help" style={{ display: 'block' }}>
+                  Added {new Date(p.createdAt).toLocaleDateString()}{p.lastUsedAt ? ` · last used ${new Date(p.lastUsedAt).toLocaleDateString()}` : ''}{p.syncedToCloud ? ' · synced by your password manager' : ''}
+                </small>
+              </span>
+              <button className="btn btn-quiet btn-sm" onClick={() => remove.mutate(p.id)}>Remove</button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {err && <p className="error-text" role="alert">{err}</p>}
+    </div>
   );
 }
 

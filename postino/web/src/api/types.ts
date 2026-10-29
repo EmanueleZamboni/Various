@@ -158,7 +158,9 @@ export type Settings = {
   signaturePerAccount: boolean;
 };
 
-export type Me = { ok: true; totpEnabled: boolean; vapidPublicKey: string };
+export type Me = { ok: true; totpEnabled: boolean; passkeys: number; vapidPublicKey: string };
+
+export type Passkey = { id: string; name: string; createdAt: string; lastUsedAt: string | null; syncedToCloud: boolean };
 
 export type ServerPreset = {
   imap: { host: string; port: number; secure: boolean };

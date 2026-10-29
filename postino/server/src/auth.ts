@@ -25,7 +25,7 @@ function cookieSecure(req: FastifyRequest): boolean {
   return proto === 'https';
 }
 
-function issueSession(req: FastifyRequest, reply: FastifyReply): void {
+export function issueSession(req: FastifyRequest, reply: FastifyReply): void {
   const token = randomToken(32);
   const expires = new Date(Date.now() + config.sessionDays * 86400_000);
   db.prepare('INSERT INTO sessions(token_hash, expires_at, user_agent) VALUES (?, ?, ?)').run(sha256(token), expires.toISOString(), String(req.headers['user-agent'] || '').slice(0, 200));
@@ -88,7 +88,8 @@ export function registerAuthRoutes(app: FastifyInstance): void {
   app.get('/api/me', async (req, reply) => {
     if (!isAuthenticated(req)) return reply.code(401).send({ error: 'unauthorized' });
     const row = authRow();
-    return { ok: true, totpEnabled: Boolean(row?.totp_secret), vapidPublicKey: vapidKeys().publicKey };
+    const passkeys = (db.prepare('SELECT COUNT(*) AS n FROM passkeys').get() as { n: number }).n;
+    return { ok: true, totpEnabled: Boolean(row?.totp_secret), passkeys, vapidPublicKey: vapidKeys().publicKey };
   });
 
   app.post<{ Body: { current?: string; next?: string } }>('/api/me/password', async (req, reply) => {

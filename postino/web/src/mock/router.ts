@@ -319,7 +319,10 @@ on('POST', '/api/login', ({ body }) => {
   return empty();
 });
 on('POST', '/api/logout', () => { setAuth(false, false); return empty(); });
-on('GET', '/api/me', () => json({ ok: true, totpEnabled: false, vapidPublicKey: 'BMockVapidKey' }));
+on('GET', '/api/me', () => json({ ok: true, totpEnabled: false, passkeys: 0, vapidPublicKey: 'BMockVapidKey' }));
+on('GET', '/api/passkeys', () => json({ passkeys: [] }));
+on('POST', '/api/passkeys/register/options', () => fail(400, 'demo', 'Fingerprint sign-in works on the real server, not in the demo.'));
+on('POST', '/api/passkeys/login/options', () => fail(404, 'no_passkeys', 'No passkey in the demo. Password: password'));
 on('POST', '/api/me/password', ({ body }) => (body?.current === 'password' ? empty() : fail(400, 'bad_credentials', 'Current password is wrong.')));
 on('POST', '/api/me/totp/start', () => json({ secret: 'JBSWY3DPEHPK3PXP', otpauthUrl: 'otpauth://totp/Postino?secret=JBSWY3DPEHPK3PXP', qrDataUrl: 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160"><rect width="160" height="160" fill="#fff"/><rect x="20" y="20" width="40" height="40"/><rect x="100" y="20" width="40" height="40"/><rect x="20" y="100" width="40" height="40"/><rect x="70" y="70" width="20" height="20"/></svg>') }));
 on('POST', '/api/me/totp/enable', ({ body }) => (/^\d{6}$/.test(body?.code ?? '') ? empty() : fail(400, 'bad_code', 'That code is not valid.')));

@@ -44,11 +44,57 @@ function writeMeta(k: string, m: Meta): void {
   fs.writeFileSync(path.join(dir, k + '.json'), JSON.stringify(m));
 }
 
+/** True for addresses that must never be fetched from a server (SSRF): loopback, LAN, link-local, cloud metadata. */
+export function isPrivateAddress(ip: string): boolean {
+  if (ip.includes(':')) {
+    const v6 = ip.toLowerCase();
+    if (v6 === '::1' || v6 === '::' || v6.startsWith('fe80:') || v6.startsWith('fc') || v6.startsWith('fd')) return true;
+    const mapped = v6.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+    return mapped ? isPrivateAddress(mapped[1]) : false;
+  }
+  const p = ip.split('.').map(Number);
+  if (p.length !== 4 || p.some((n) => Number.isNaN(n))) return true;
+  return (
+    p[0] === 10 || p[0] === 127 || p[0] === 0 ||
+    (p[0] === 172 && p[1] >= 16 && p[1] <= 31) ||
+    (p[0] === 192 && p[1] === 168) ||
+    (p[0] === 169 && p[1] === 254) || // link-local and cloud metadata (169.254.169.254)
+    (p[0] === 100 && p[1] >= 64 && p[1] <= 127) ||
+    p[0] >= 224
+  );
+}
+
+/** Resolve a host and refuse it when any address is private. */
+async function assertPublicHost(hostname: string): Promise<void> {
+  const h = hostname.replace(/^\[|\]$/g, '');
+  if (/^[\d.]+$/.test(h) || h.includes(':')) {
+    if (isPrivateAddress(h)) throw new Error('private address');
+    return;
+  }
+  if (h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.local') || h.endsWith('.internal')) throw new Error('private host');
+  const addrs = await dns.lookup(h, { all: true });
+  if (!addrs.length || addrs.some((a) => isPrivateAddress(a.address))) throw new Error('private address');
+}
+
+/** fetch() that only talks to public https hosts, checking every redirect hop. */
+async function safeFetch(url: string, init: RequestInit & { signal: AbortSignal }, hops = 0): Promise<Response> {
+  const u = new URL(url);
+  if (u.protocol !== 'https:') throw new Error('https only');
+  await assertPublicHost(u.hostname);
+  const res = await fetch(u, { ...init, redirect: 'manual' });
+  if ([301, 302, 303, 307, 308].includes(res.status)) {
+    const loc = res.headers.get('location');
+    if (!loc || hops >= 3) throw new Error('too many redirects');
+    return safeFetch(new URL(loc, u).toString(), init, hops + 1);
+  }
+  return res;
+}
+
 async function fetchImage(url: string, accept = 'image/*'): Promise<{ bytes: Buffer; contentType: string } | null> {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), TIMEOUT);
   try {
-    const res = await fetch(url, { signal: ctrl.signal, redirect: 'follow', headers: { accept, 'user-agent': 'Postino/0.1 (+avatar fetch)' } });
+    const res = await safeFetch(url, { signal: ctrl.signal, headers: { accept, 'user-agent': 'Postino/0.1 (+avatar fetch)' } });
     if (!res.ok) return null;
     const type = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
     if (!type.startsWith('image/')) return null;
@@ -92,7 +138,7 @@ async function fromSiteIcon(domain: string): Promise<{ bytes: Buffer; contentTyp
     let html = '';
     let finalBase = base;
     try {
-      const res = await fetch(base, { signal: ctrl.signal, redirect: 'follow', headers: { accept: 'text/html', 'user-agent': 'Mozilla/5.0 (compatible; Postino/0.1)' } });
+      const res = await safeFetch(base, { signal: ctrl.signal, headers: { accept: 'text/html', 'user-agent': 'Mozilla/5.0 (compatible; Postino/0.1)' } });
       if (!res.ok) continue;
       finalBase = res.url || base;
       const reader = res.body?.getReader();
@@ -165,8 +211,39 @@ async function lookup(email: string): Promise<AvatarResult> {
   return null;
 }
 
-/** Cached avatar for an address, fetching it when the cache is cold or stale. */
-export async function getAvatar(rawEmail: string): Promise<AvatarResult> {
+// Lookups run in the background, a few at a time, so a page of 50 senders never
+// turns into 150 slow outbound requests holding up the list.
+const queue: string[] = [];
+const queued = new Set<string>();
+let running = 0;
+const MAX_PARALLEL = 3;
+
+function pump(): void {
+  while (running < MAX_PARALLEL && queue.length) {
+    const email = queue.shift() as string;
+    running++;
+    const k = key(email);
+    const p = lookup(email)
+      .catch((err) => {
+        log.debug({ email, err: (err as Error).message }, 'avatar lookup failed');
+        writeMeta(k, { contentType: '', found: false, at: Date.now() });
+        return null;
+      })
+      .finally(() => {
+        running--;
+        queued.delete(email);
+        inflight.delete(k);
+        pump();
+      });
+    inflight.set(k, p);
+  }
+}
+
+/**
+ * Cached avatar for an address. A cold cache answers "none" at once and queues
+ * the lookup; the picture appears on the next load (the client retries once).
+ */
+export async function getAvatar(rawEmail: string): Promise<AvatarResult | 'pending'> {
   const email = rawEmail.trim().toLowerCase();
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return null;
   const k = key(email);
@@ -176,12 +253,12 @@ export async function getAvatar(rawEmail: string): Promise<AvatarResult> {
     const fresh = Date.now() - meta.at < (meta.found ? POSITIVE_TTL : NEGATIVE_TTL);
     if (fresh) return meta.found && fs.existsSync(file) ? { file, contentType: meta.contentType } : null;
   }
-  let p = inflight.get(k);
-  if (!p) {
-    p = lookup(email).finally(() => inflight.delete(k));
-    inflight.set(k, p);
+  if (!queued.has(email)) {
+    queued.add(email);
+    queue.push(email);
+    pump();
   }
-  return p;
+  return 'pending';
 }
 
 /** Shared-domain logo lookups can be reused across senders of the same company. */

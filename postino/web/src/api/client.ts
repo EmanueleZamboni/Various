@@ -13,7 +13,7 @@ import type {
   ThreadAction,
   ThreadDetail,
   ThreadsResponse,
- Signature } from './types';
+ Signature, Passkey } from './types';
 
 export class ApiError extends Error {
   status: number;
@@ -77,6 +77,14 @@ export const api = {
     totpStart: () => post<{ secret: string; otpauthUrl: string; qrDataUrl: string }>('/api/me/totp/start'),
     totpEnable: (code: string) => post<void>('/api/me/totp/enable', { code }),
     totpDisable: (password: string) => post<void>('/api/me/totp/disable', { password }),
+  },
+  passkeys: {
+    list: () => get<{ passkeys: Passkey[] }>('/api/passkeys'),
+    registerOptions: () => post<any>('/api/passkeys/register/options'),
+    registerVerify: (response: unknown, name: string) => post<{ ok: true; passkeys: Passkey[] }>('/api/passkeys/register/verify', { response, name }),
+    remove: (id: string) => del<void>(`/api/passkeys/${encodeURIComponent(id)}`),
+    loginOptions: () => post<any>('/api/passkeys/login/options'),
+    loginVerify: (response: unknown) => post<void>('/api/passkeys/login/verify', { response }),
   },
   accounts: {
     list: () => get<Account[]>('/api/accounts'),

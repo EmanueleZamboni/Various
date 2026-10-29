@@ -16,6 +16,7 @@
     "@fastify/multipart": "^9.2.1",
     "@fastify/rate-limit": "^11.2.1",
     "@fastify/static": "^10.1.8",
+    "@simplewebauthn/server": "^14.0.3",
     "better-sqlite3": "^13.0.3",
     "email-reply-parser": "^2.3.9",
     "fastify": "^5.12.7",

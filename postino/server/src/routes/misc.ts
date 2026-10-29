@@ -123,6 +123,10 @@ export function registerMiscRoutes(app: FastifyInstance): void {
     const email = String(req.query.email || '');
     const a = await getAvatar(email);
     reply.header('X-Content-Type-Options', 'nosniff');
+    if (a === 'pending') {
+      reply.header('Cache-Control', 'private, max-age=20');
+      return reply.code(404).send();
+    }
     if (!a) {
       reply.header('Cache-Control', 'private, max-age=86400');
       return reply.code(404).send();

@@ -1,4 +1,5 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
+import { startAuthentication, browserSupportsWebAuthn } from '@simplewebauthn/browser';
 import { api, ApiError } from '../api/client';
 import { Icon } from '../icons';
 
@@ -66,6 +67,42 @@ export function Login({ onDone }: { onDone: () => void }) {
   const [needTotp, setNeedTotp] = useState(false);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  const canPasskey = typeof window !== 'undefined' && browserSupportsWebAuthn();
+  const [passkeyHint, setPasskeyHint] = useState(() => {
+    try {
+      return localStorage.getItem('postino.passkey') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const usePasskey = async () => {
+    setErr('');
+    setBusy(true);
+    try {
+      const options = await api.passkeys.loginOptions();
+      const response = await startAuthentication({ optionsJSON: options });
+      await api.passkeys.loginVerify(response);
+      try {
+        localStorage.setItem('postino.passkey', '1');
+      } catch {
+        /* ignore */
+      }
+      onDone();
+    } catch (e) {
+      if (e instanceof ApiError && e.code === 'no_passkeys') {
+        setPasskeyHint(false);
+        setErr('No fingerprint login set up yet. Sign in with your password, then add it in Settings → Security.');
+      } else if ((e as Error).name === 'NotAllowedError') setErr('Fingerprint sign-in was cancelled.');
+      else setErr(e instanceof ApiError ? e.message : 'Fingerprint sign-in did not work. Use your password.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  // Devices that already used a passkey here go straight to the fingerprint prompt.
+  useEffect(() => {
+    if (passkeyHint && canPasskey) void usePasskey();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setErr('');
@@ -103,6 +140,12 @@ export function Login({ onDone }: { onDone: () => void }) {
           <button className="btn btn-primary btn-lg" type="submit" disabled={busy || !pw}>
             {busy ? 'Signing in' : 'Sign in'}
           </button>
+          {canPasskey && (
+            <button className="btn btn-ghost btn-lg" type="button" onClick={() => void usePasskey()} disabled={busy}>
+              <Icon name="shield" size={16} />
+              Sign in with fingerprint or face
+            </button>
+          )}
         </form>
       </div>
     </div>
