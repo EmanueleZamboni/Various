@@ -1,7 +1,8 @@
 import { useRef, useState, type PointerEvent } from 'react';
 import type { Account, ThreadAction, ThreadSummary } from '../api/types';
 import { Icon } from '../icons';
-import { displayName, formatListDate, initials, participantsLabel } from '../util/format';
+import { displayName, formatListDate, participantsLabel } from '../util/format';
+import { Avatar } from './Avatar';
 
 type Props = {
   thread: ThreadSummary;
@@ -120,9 +121,7 @@ export function ThreadRow({ thread: t, account, myEmails, selected, focused, hig
         onPointerUp={end}
         onPointerCancel={end}
       >
-        <div className={`av${compact ? ' sm' : ''}`} style={{ ['--c' as string]: account?.color }} aria-hidden="true">
-          {initials(avatarSource)}
-        </div>
+        <Avatar who={avatarSource} color={account?.color} small={compact} />
         <div className="row-main">
           <div className="row-top">
             {t.unread && <i className="udot" title="Unread" />}

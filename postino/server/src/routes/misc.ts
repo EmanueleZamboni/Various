@@ -7,6 +7,8 @@ import type { ThreadRow } from '../mail/store.js';
 import { sendPush, notificationSettings } from '../push.js';
 import type { Address } from '../mail/parse.js';
 import { manager } from '../mail/manager.js';
+import { getAvatar } from '../avatars.js';
+import fs from 'node:fs';
 
 export type UiSettings = {
   notifications: { enabled: boolean; categories: ('person' | 'notification' | 'newsletter')[] };
@@ -115,6 +117,21 @@ export function registerMiscRoutes(app: FastifyInstance): void {
     });
     // Keep the reply open; Fastify will not end it because we hijacked the raw stream.
     reply.hijack();
+  });
+
+  app.get<{ Querystring: { email?: string } }>('/api/avatar', async (req, reply) => {
+    const email = String(req.query.email || '');
+    const a = await getAvatar(email);
+    reply.header('X-Content-Type-Options', 'nosniff');
+    if (!a) {
+      reply.header('Cache-Control', 'private, max-age=86400');
+      return reply.code(404).send();
+    }
+    reply.header('Content-Type', a.contentType);
+    reply.header('Cache-Control', 'private, max-age=604800');
+    // SVG logos (BIMI) must never run scripts, even if someone opens the URL directly.
+    reply.header('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; sandbox");
+    return reply.send(fs.createReadStream(a.file));
   });
 
   app.get('/api/health', async () => ({ ok: true, accounts: manager.all().length, uptime: Math.round(process.uptime()) }));

@@ -6,7 +6,8 @@ import type { Attachment, Message, ThreadSummary } from '../api/types';
 import { Icon } from '../icons';
 import { useNav } from '../nav';
 import { useUI } from '../store';
-import { displayName, firstName, formatBytes, formatFullDate, formatListDate, initials } from '../util/format';
+import { displayName, firstName, formatBytes, formatFullDate, formatListDate } from '../util/format';
+import { Avatar } from './Avatar';
 import { ReplyBox, type ReplyMode } from './ReplyBox';
 
 export function Reader({ view }: { view: string }) {
@@ -283,7 +284,7 @@ function MessageCard({ message: m, thread, accountColor, myEmails, expanded, sin
     return (
       <div className="msg collapsed" role="button" tabIndex={0} onClick={onToggle} onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onToggle()}>
         <div className="msg-head">
-          <div className={`av sm${me ? ' me' : ''}`} style={{ ['--c' as string]: accountColor }}>{me ? 'Me' : initials(m.from)}</div>
+          <Avatar who={m.from} color={accountColor} small me={me} />
           <div className="msg-who">
             <b>{me ? 'You' : displayName(m.from)}</b>
             <span className="msg-snip">{m.snippet}</span>
@@ -307,7 +308,7 @@ function MessageCard({ message: m, thread, accountColor, myEmails, expanded, sin
   return (
     <article className="msg">
       <div className="msg-head" style={{ cursor: single ? 'default' : 'pointer' }} onClick={() => !single && onToggle()}>
-        <div className={`av sm${me ? ' me' : ''}`} style={{ ['--c' as string]: accountColor }}>{me ? 'Me' : initials(m.from)}</div>
+        <Avatar who={m.from} color={accountColor} small me={me} />
         <div className="msg-who">
           <b>{me ? 'You' : displayName(m.from)}</b>
           <small>
