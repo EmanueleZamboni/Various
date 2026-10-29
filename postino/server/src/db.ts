@@ -259,13 +259,21 @@ function hasColumn(table: string, column: string): boolean {
   const cols = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
   return cols.some((c) => c.name === column);
 }
-if (!hasColumn('accounts', 'initial_sync_done')) {
-  db.exec(`ALTER TABLE accounts ADD COLUMN initial_sync_done INTEGER NOT NULL DEFAULT 0`);
+// Two processes opening the same database (e.g. tests, or a script run next to
+// the server) may race here, so a column added meanwhile is not an error.
+function addColumn(table: string, column: string, def: string): void {
+  if (hasColumn(table, column)) return;
+  try {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${def}`);
+  } catch (err) {
+    if (!/duplicate column/i.test((err as Error).message)) throw err;
+  }
 }
-if (!hasColumn('accounts', 'aliases')) db.exec(`ALTER TABLE accounts ADD COLUMN aliases TEXT NOT NULL DEFAULT '[]'`);
-if (!hasColumn('accounts', 'folder_overrides')) db.exec(`ALTER TABLE accounts ADD COLUMN folder_overrides TEXT NOT NULL DEFAULT '{}'`);
-if (!hasColumn('bodies', 'calendar_json')) db.exec(`ALTER TABLE bodies ADD COLUMN calendar_json TEXT`);
-if (!hasColumn('accounts', 'notify')) db.exec(`ALTER TABLE accounts ADD COLUMN notify TEXT NOT NULL DEFAULT 'default'`);
+addColumn('accounts', 'initial_sync_done', 'INTEGER NOT NULL DEFAULT 0');
+addColumn('accounts', 'aliases', "TEXT NOT NULL DEFAULT '[]'");
+addColumn('accounts', 'folder_overrides', "TEXT NOT NULL DEFAULT '{}'");
+addColumn('bodies', 'calendar_json', 'TEXT');
+addColumn('accounts', 'notify', "TEXT NOT NULL DEFAULT 'default'");
 
 // Plain-text signatures from the first release become rich signatures.
 {

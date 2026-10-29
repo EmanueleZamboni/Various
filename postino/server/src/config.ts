@@ -48,4 +48,7 @@ export const config = {
   folderPollMs: 3 * 60_000,
   inboxPollMs: 60_000,
   logLevel: env('LOG_LEVEL', 'info'),
+  // Cached attachments beyond this size are dropped (least recently used first)
+  // and fetched again from the server when opened.
+  attachmentCacheBytes: Math.max(64, Number(env('POSTINO_ATTACHMENT_CACHE_MB', '2048')) || 2048) * 1024 * 1024,
 };

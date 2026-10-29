@@ -270,6 +270,58 @@ export function attachmentPath(id: number): string {
   return path.join(config.attachmentsDir, String(id));
 }
 
+/** Mark a cached attachment as recently used so pruning drops it last. */
+export function touchAttachment(id: number): void {
+  try {
+    const now = new Date();
+    fs.utimesSync(attachmentPath(id), now, now);
+  } catch {
+    // not cached
+  }
+}
+
+/**
+ * Keep the attachment cache under config.attachmentCacheBytes by removing the
+ * least recently used files. Dropped attachments are fetched again on demand.
+ */
+export function pruneAttachmentCache(limit = config.attachmentCacheBytes): { removed: number; freed: number } {
+  let names: string[];
+  try {
+    names = fs.readdirSync(config.attachmentsDir);
+  } catch {
+    return { removed: 0, freed: 0 };
+  }
+  const files: { id: number; size: number; mtime: number }[] = [];
+  let total = 0;
+  for (const n of names) {
+    if (!/^\d+$/.test(n)) continue;
+    try {
+      const st = fs.statSync(path.join(config.attachmentsDir, n));
+      files.push({ id: Number(n), size: st.size, mtime: st.mtimeMs });
+      total += st.size;
+    } catch {
+      // vanished meanwhile
+    }
+  }
+  if (total <= limit) return { removed: 0, freed: 0 };
+  files.sort((a, b) => a.mtime - b.mtime);
+  const uncache = db.prepare('UPDATE attachments SET cached = 0 WHERE id = ?');
+  let removed = 0;
+  let freed = 0;
+  for (const f of files) {
+    if (total - freed <= limit) break;
+    try {
+      fs.unlinkSync(attachmentPath(f.id));
+      uncache.run(f.id);
+      removed++;
+      freed += f.size;
+    } catch {
+      // ignore
+    }
+  }
+  return { removed, freed };
+}
+
 export function deleteMessagesByIds(ids: number[]): void {
   if (!ids.length) return;
   const tx = db.transaction(() => {

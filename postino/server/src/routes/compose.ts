@@ -9,7 +9,7 @@ import { parseAddressList, formatAddress } from '../mail/send.js';
 import { sendMail } from '../mail/send.js';
 import { enqueue, cancel, listQueued, executeSend, type SendJob } from '../mail/outbox.js';
 import { uiSettings } from '../settings.js';
-import { attachmentPath, type MessageRow, type FolderRow } from '../mail/store.js';
+import { attachmentPath, touchAttachment, type MessageRow, type FolderRow } from '../mail/store.js';
 import type { AccountRow, AttachmentRow } from '../views.js';
 import type { Address } from '../mail/parse.js';
 import { bus } from '../events.js';
@@ -318,6 +318,8 @@ export function registerComposeRoutes(app: FastifyInstance): void {
       const sync = manager.get(a.account_id);
       if (!sync) return reply.code(503).send({ error: 'offline', message: 'The account is not connected right now.' });
       file = await sync.cacheAttachment(a.id);
+    } else {
+      touchAttachment(a.id);
     }
     const inline = req.query.inline === '1';
     const type = a.content_type.toLowerCase();

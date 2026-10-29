@@ -19,6 +19,7 @@ import { registerGoogleRoutes } from './google.js';
 import { manager } from './mail/manager.js';
 import { startPushBridge, vapidKeys } from './push.js';
 import { startOutbox } from './mail/outbox.js';
+import { pruneAttachmentCache } from './mail/store.js';
 
 export async function buildApp() {
   const app = Fastify({ logger: false, trustProxy: true, bodyLimit: 2 * 1024 * 1024 });
@@ -134,6 +135,17 @@ async function main(): Promise<void> {
   startPushBridge();
   manager.startAll();
   startOutbox();
+  // Keep the attachment cache bounded; the first pass runs a minute after start.
+  const prune = () => {
+    try {
+      const r = pruneAttachmentCache();
+      if (r.removed) log.info({ removed: r.removed, freedMb: Math.round(r.freed / 1048576) }, 'attachment cache pruned');
+    } catch (err) {
+      log.warn({ err: (err as Error).message }, 'attachment cache prune failed');
+    }
+  };
+  setTimeout(prune, 60_000).unref();
+  setInterval(prune, 6 * 3_600_000).unref();
   await app.listen({ port: config.port, host: config.host });
   log.info({ port: config.port, data: config.dataDir }, 'postino listening');
   const shutdown = async () => {
