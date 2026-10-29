@@ -40,7 +40,7 @@ if [ -n "$PUBLIC_IP" ] && [ -n "$RESOLVED" ] && [ "$PUBLIC_IP" != "$RESOLVED" ];
   echo "Warning: $DOMAIN resolves to $RESOLVED but this server's address is $PUBLIC_IP."
   echo "         Caddy cannot get a certificate until the DNS A record points here."
 elif [ -z "$RESOLVED" ]; then
-  echo "Warning: $DOMAIN does not resolve yet. Add an A record -> ${PUBLIC_IP:-this server's IP} and HTTPS will start working within minutes."
+  echo "Warning: $DOMAIN does not resolve yet. Add an A record -> ${PUBLIC_IP:-the IP of this server} and HTTPS will start working within minutes."
 fi
 
 # ---- 2. Firewall (Oracle's Ubuntu image blocks everything but SSH) -----------------
