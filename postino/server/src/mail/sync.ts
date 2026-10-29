@@ -333,14 +333,27 @@ export class AccountSync {
     return rows.sort((a, b) => roleOrder.indexOf(a.role) - roleOrder.indexOf(b.role) || a.path.localeCompare(b.path));
   }
 
+  /** Prefix new folders need on this server ("" on most, "INBOX." on cPanel-style setups). */
+  private namespacePrefix(client: ImapFlow): string {
+    const ns = client.namespace as { prefix?: string; delimiter?: string | null } | undefined;
+    if (ns?.prefix) return ns.delimiter && !ns.prefix.endsWith(ns.delimiter) ? ns.prefix + ns.delimiter : ns.prefix;
+    // No NAMESPACE info: infer it when every folder but INBOX lives under INBOX.
+    const rows = db.prepare("SELECT path, delimiter FROM folders WHERE account_id = ? AND present = 1 AND upper(path) <> 'INBOX'").all(this.id) as { path: string; delimiter: string }[];
+    if (rows.length && rows.every((r) => r.path.toUpperCase().startsWith('INBOX' + (r.delimiter || '.')))) return 'INBOX' + (rows[0].delimiter || '.');
+    return '';
+  }
+
   /** Find a folder with the role, creating a standard one on the server when missing. */
   async ensureFolder(role: FolderRole): Promise<FolderRow> {
     const existing = folderByRole(this.id, role);
     if (existing) return existing;
     const names: Partial<Record<FolderRole, string>> = { archive: 'Archive', blocked: 'Blocked', junk: 'Junk', trash: 'Trash', sent: 'Sent', drafts: 'Drafts' };
-    const name = names[role];
-    if (!name) throw new Error(`No default folder for role ${role}`);
+    const base = names[role];
+    if (!base) throw new Error(`No default folder for role ${role}`);
     const client = await this.requireClient();
+    // Many hosting providers keep every folder under "INBOX." (the personal namespace
+    // prefix); a root-level folder would be refused or hidden there.
+    const name = this.namespacePrefix(client) + base;
     try {
       await client.mailboxCreate(name);
     } catch (err) {
