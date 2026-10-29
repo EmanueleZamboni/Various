@@ -720,7 +720,9 @@ export class AccountSync {
     const ids = new Map<string, string>();
     for (const p of parts) {
       if (!isAttachmentPart(p) && !p.inline) continue;
-      const id = registerAttachmentMeta(messageRow, { part: p.part, filename: p.filename || `attachment.${p.type.split('/')[1] || 'bin'}`, contentType: p.type, size: p.size, contentId: p.contentId, inline: p.inline });
+      // BODYSTRUCTURE reports the encoded size; base64 is a third bigger than the file.
+      const size = /base64/i.test(p.encoding || '') ? Math.round((p.size * 3) / 4) : p.size;
+      const id = registerAttachmentMeta(messageRow, { part: p.part, filename: p.filename || `attachment.${p.type.split('/')[1] || 'bin'}`, contentType: p.type, size, contentId: p.contentId, inline: p.inline });
       if (p.contentId) ids.set(p.contentId, `/api/attachments/${id}?inline=1`);
     }
     let text: string | null = null;
