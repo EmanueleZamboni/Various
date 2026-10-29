@@ -131,6 +131,29 @@ export function Compose() {
 
   const hasContent = !!(to.trim() || subject.trim() || text.trim() || files.length || uploads.length);
 
+  // The phone's back button closes the composer (keeping the draft) instead of leaving the page.
+  const backEntry = useRef(false);
+  useEffect(() => {
+    const token = `compose-${Date.now()}`;
+    window.history.pushState({ postinoSheet: token }, '');
+    backEntry.current = true;
+    const onPop = () => {
+      if (!backEntry.current) return;
+      backEntry.current = false;
+      void closeAndKeepRef.current();
+    };
+    window.addEventListener('popstate', onPop);
+    return () => {
+      window.removeEventListener('popstate', onPop);
+      // Closed with a button: drop the extra history entry so back goes where it should.
+      if (backEntry.current && (window.history.state as { postinoSheet?: string } | null)?.postinoSheet === token) {
+        backEntry.current = false;
+        window.history.back();
+      }
+    };
+  }, []);
+  const closeAndKeepRef = useRef<() => Promise<void>>(async () => undefined);
+
   const closeAndKeep = async () => {
     window.clearTimeout(saveTimer.current);
     if (hasContent && dirty.current) {
@@ -143,6 +166,7 @@ export function Compose() {
     }
     close();
   };
+  closeAndKeepRef.current = closeAndKeep;
   const discard = async () => {
     window.clearTimeout(saveTimer.current);
     if (draft.current) {
