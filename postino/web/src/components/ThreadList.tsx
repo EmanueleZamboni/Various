@@ -50,9 +50,9 @@ export function ThreadList({ view }: { view: string }) {
   useEffect(() => {
     const ids = [
       ...pinnedRows.map((t) => t.id),
+      ...(smart && ui.bundlesOpen.notif ? notifRows.map((t) => t.id) : []),
+      ...(smart && ui.bundlesOpen.news ? newsRows.map((t) => t.id) : []),
       ...peopleRows.map((t) => t.id),
-      ...(smart ? (ui.bundlesOpen.notif ? notifRows : notifRows.slice(0, 3)).map((t) => t.id) : []),
-      ...(smart ? (ui.bundlesOpen.news ? newsRows : newsRows.slice(0, 3)).map((t) => t.id) : []),
     ];
     ui.setOrder(ids);
   });
@@ -135,14 +135,15 @@ export function ThreadList({ view }: { view: string }) {
             {pinnedRows.map((t) => renderRow(t))}
           </>
         )}
+        {/* Bundles sit above People so they stay reachable in a long inbox; closed, they are one line each. */}
+        <Bundle k="notif" label="Notifications" icon="bell" rows={notifRows} query={notifs} render={(t) => renderRow(t, true)} />
+        <Bundle k="news" label="Newsletters" icon="news" rows={newsRows} query={news} render={(t) => renderRow(t, true)} />
         {peopleRows.length > 0 && (
           <>
             <div className="sec">People <span className="n">{counts?.total ?? peopleRows.length}</span></div>
             {peopleRows.map((t) => renderRow(t))}
           </>
         )}
-        <Bundle k="notif" label="Notifications" icon="bell" rows={notifRows} query={notifs} render={(t) => renderRow(t, true)} />
-        <Bundle k="news" label="Newsletters" icon="news" rows={newsRows} query={news} render={(t) => renderRow(t, true)} />
       </>
     );
   } else {
@@ -220,7 +221,7 @@ function Bundle({ k, label, icon, rows, query, render }: { k: string; label: str
   if (!rows.length) return null;
   const unread = query.data?.pages[0]?.counts.unread ?? rows.filter((t) => t.unread).length;
   const total = query.data?.pages[0]?.counts.total ?? rows.length;
-  const shown = open ? rows : rows.slice(0, 3);
+  const shown = open ? rows : [];
   const latest = rows[0];
   return (
     <section className={`bundle${open ? ' open' : ''}`} aria-label={label}>
@@ -234,9 +235,6 @@ function Bundle({ k, label, icon, rows, query, render }: { k: string; label: str
         <Icon name="chevronDown" size={16} className="bundle-chev" />
       </button>
       {shown.map(render)}
-      {rows.length > 3 && !open && (
-        <button className="bundle-more" onClick={() => toggle(k)}>See all {total}</button>
-      )}
       {open && query.hasNextPage && (
         <button className="bundle-more" onClick={() => void query.fetchNextPage()} disabled={query.isFetchingNextPage}>
           {query.isFetchingNextPage ? 'Loading' : 'Load more'}
