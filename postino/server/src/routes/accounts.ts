@@ -30,6 +30,7 @@ async function testImap(opts: { host: string; port: number; secure: boolean; use
     auth: { user: opts.user, pass: opts.pass },
     logger: false,
     verifyOnly: true,
+    connectionTimeout: 15_000, // a wrong host must fail in seconds, not hang the "Test connection" button
     tls: { rejectUnauthorized: process.env.POSTINO_TLS_INSECURE !== '1' },
   });
   await client.connect();

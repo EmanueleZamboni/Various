@@ -192,6 +192,7 @@ export class AccountSync {
         logger: false,
         clientInfo: { name: 'Postino', version: '0.1' },
         socketTimeout: 5 * 60_000,
+        connectionTimeout: 30_000,
         tls: { rejectUnauthorized: process.env.POSTINO_TLS_INSECURE !== '1' },
       } as ConstructorParameters<typeof ImapFlow>[0]);
       client.on('error', (err) => {
@@ -892,7 +893,7 @@ export function friendlyError(msg: string): string {
   if (/ENOTFOUND|getaddrinfo/i.test(msg)) return 'Server not found: check the IMAP host name.';
   if (/ECONNREFUSED/i.test(msg)) return 'Connection refused: check the port and whether SSL is on.';
   if (/certificate|self signed|CERT_/i.test(msg)) return 'Certificate problem: the server\'s SSL certificate is not trusted.';
-  if (/timeout/i.test(msg)) return 'Connection timed out.';
+  if (/timeout|in required time/i.test(msg)) return 'Connection timed out: check the host name, the port and your firewall.';
   return msg;
 }
 
