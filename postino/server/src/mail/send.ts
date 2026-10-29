@@ -19,6 +19,10 @@ export type Outgoing = {
   html?: string;
   inReplyTo?: { messageId: string; references: string[] } | null;
   attachments: OutgoingAttachment[];
+  /** Rich signature placed after the message and before any quoted mail. */
+  signature?: { html: string; text: string } | null;
+  /** The quoted original for replies and forwards, built by the server. */
+  quote?: { html: string | null; text: string } | null;
 };
 
 export function formatAddress(a: Address): string {
@@ -56,9 +60,21 @@ export function smtpTransport(account: AccountRow) {
 /** Build the MIME message, send it over SMTP, and append a copy to the account's Sent folder. */
 export async function sendMail(msg: Outgoing): Promise<{ messageId: string; raw: Buffer }> {
   const from = formatAddress({ name: msg.account.name, email: msg.account.email });
-  const signature = msg.account.signature ? `\n\n-- \n${msg.account.signature}` : '';
-  const text = msg.text + (msg.text.includes('-- \n') ? '' : signature);
-  const html = msg.html || textToHtml(text);
+  const sig = msg.signature && (msg.signature.html.trim() || msg.signature.text.trim()) ? msg.signature : null;
+  const text = [msg.text, sig ? `-- \n${sig.text}` : '', msg.quote ? msg.quote.text : ''].filter((p) => p && p.trim()).join('\n\n');
+  const html = msg.html || [
+    textToHtml(msg.text),
+    sig ? `<div style="margin-top:16px">${sig.html}</div>` : '',
+    msg.quote ? `<div style="margin-top:16px">${msg.quote.html || textToHtml(msg.quote.text)}</div>` : '',
+  ].filter(Boolean).join('');
+  // Inline data: images (signature logos) become cid: attachments; mail clients do not render data URLs.
+  const inline: { filename: string; contentType: string; content: Buffer; cid: string }[] = [];
+  let n = 0;
+  const htmlWithCids = html.replace(/src=(["'])data:(image\/[a-z0-9.+-]+);base64,([A-Za-z0-9+/=\s]+)\1/gi, (_m, q: string, type: string, b64: string) => {
+    const cid = `img${++n}.${Date.now()}@postino`;
+    inline.push({ filename: `image${n}.${type.split('/')[1] === 'jpeg' ? 'jpg' : type.split('/')[1]}`, contentType: type, content: Buffer.from(b64.replace(/\s+/g, ''), 'base64'), cid });
+    return `src=${q}cid:${cid}${q}`;
+  });
   const headers: Record<string, string> = {};
   const mail = {
     from,
@@ -67,11 +83,11 @@ export async function sendMail(msg: Outgoing): Promise<{ messageId: string; raw:
     bcc: msg.bcc || undefined,
     subject: msg.subject,
     text,
-    html,
+    html: htmlWithCids,
     headers,
     inReplyTo: msg.inReplyTo ? `<${msg.inReplyTo.messageId}>` : undefined,
     references: msg.inReplyTo ? [...msg.inReplyTo.references, msg.inReplyTo.messageId].map((r) => `<${r}>`).join(' ') : undefined,
-    attachments: msg.attachments.map((a) => ({ filename: a.filename, contentType: a.contentType, path: a.path, content: a.content })),
+    attachments: [...msg.attachments.map((a) => ({ filename: a.filename, contentType: a.contentType, path: a.path, content: a.content })), ...inline],
     date: new Date(),
   };
   const composer = new MailComposer(mail as never);

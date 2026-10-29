@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type DragEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
-import { useAccounts } from '../api/hooks';
+import { useAccounts, useSignatures } from '../api/hooks';
+import { SignaturePicker, SignaturePreview, defaultSignatureId } from './SignatureEditor';
 import type { Draft } from '../api/types';
 import { Icon } from '../icons';
 import { useUI } from '../store';
@@ -41,12 +42,13 @@ export function Compose() {
   const account = accounts?.find((a) => a.id === accountId);
   const narrow = typeof window !== 'undefined' && window.matchMedia('(max-width: 760px)').matches;
 
-  // Signature on first pick of account for a new message.
+  // Signature: the account's default, switchable per message.
+  const { data: signatures } = useSignatures();
+  const [signatureId, setSignatureId] = useState<string>('');
   useEffect(() => {
-    if (c.mode !== 'new' || c.draft || !account?.signature || text) return;
-    setText(`\n\n${account.signature}`);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [account?.id]);
+    if (accountId && signatures) setSignatureId(defaultSignatureId(signatures, accountId));
+  }, [accountId, signatures]);
+  const signature = (signatures ?? []).find((s) => s.id === signatureId);
 
   const saveDraft = async () => {
     if (!dirty.current || !accountId) return;
@@ -140,9 +142,11 @@ export function Compose() {
       if (cc.trim()) fd.set('cc', cc);
       if (bcc.trim()) fd.set('bcc', bcc);
       fd.set('subject', subject.trim() || '(no subject)');
-      fd.set('text', c.quotedText ? `${text}\n\n${c.quotedText}` : text);
+      fd.set('text', text);
+      fd.set('signatureId', signatureId || 'none');
       if (c.inReplyTo) fd.set('inReplyTo', c.inReplyTo);
       if (c.forwardOf) fd.set('forwardOf', c.forwardOf);
+      if (c.quotedText && (c.inReplyTo || c.forwardOf)) fd.set('quote', '1');
       if (draft.current) fd.set('draftId', draft.current.id);
       for (const f of files) fd.append('attachments', f, f.name);
       await api.send(fd);
@@ -202,6 +206,7 @@ export function Compose() {
         </div>
         <label htmlFor="c-body" className="sr-only">Message</label>
         <textarea id="c-body" className="compose-body" value={text} onChange={(e) => setText(e.target.value)} placeholder="Write your message" autoFocus={!!c.to} />
+        {signature && <div style={{ padding: '0 18px' }}><SignaturePreview signature={signature} /></div>}
         {c.quotedText && <div className="compose-quote">{c.quotedText}</div>}
         {files.length > 0 && (
           <div className="compose-atts">
@@ -219,6 +224,7 @@ export function Compose() {
             <Icon name="clip" size={18} />
             <input type="file" multiple hidden onChange={(e) => e.target.files && addFiles(e.target.files)} />
           </label>
+          <SignaturePicker signatures={signatures ?? []} accountId={accountId} value={signatureId || 'none'} onChange={setSignatureId} compact={narrow} />
           {hasContent && (
             <button type="button" className="ib danger" title="Discard" aria-label="Discard draft" onClick={() => void discard()}><Icon name="trash" size={18} /></button>
           )}

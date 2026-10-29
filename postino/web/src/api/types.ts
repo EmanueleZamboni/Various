@@ -130,6 +130,16 @@ export type Draft = {
   updatedAt: string;
 };
 
+export type Signature = {
+  id: string;
+  accountId: string;
+  name: string;
+  html: string;
+  text: string;
+  isDefault: boolean;
+  updatedAt: string;
+};
+
 export type ReplyPrefill = {
   to: string;
   cc: string;

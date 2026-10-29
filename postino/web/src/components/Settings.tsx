@@ -4,6 +4,9 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '../api/client';
 import { useAccounts, useSettings, useUpdateSettings } from '../api/hooks';
 import type { Account, AccountInput, Category, Me, SwipeAction } from '../api/types';
+import { SignatureEditor } from './SignatureEditor';
+import { useSignatures } from '../api/hooks';
+import type { Signature } from '../api/types';
 import { Icon, type IconName } from '../icons';
 import { useUI } from '../store';
 import { currentSubscription, disablePush, enablePush, pushSupported } from '../push';
@@ -13,6 +16,7 @@ const COLORS = ['#3B6FE0', '#D9486B', '#2E9E6B', '#8A5BD6', '#E07C2A', '#1AA3B5'
 
 const NAV: { to: string; label: string; icon: IconName }[] = [
   { to: '/settings/accounts', label: 'Accounts', icon: 'people' },
+  { to: '/settings/signatures', label: 'Signatures', icon: 'pen' },
   { to: '/settings/notifications', label: 'Notifications', icon: 'bell' },
   { to: '/settings/preferences', label: 'Preferences', icon: 'filter' },
   { to: '/settings/security', label: 'Security', icon: 'shield' },
@@ -48,6 +52,7 @@ export function SettingsPage({ me, onLogout }: { me?: Me; onLogout: () => void }
         <Routes>
           <Route index element={<AccountsSettings />} />
           <Route path="accounts" element={<AccountsSettings />} />
+          <Route path="signatures" element={<SignaturesSettings />} />
           <Route path="notifications" element={<NotificationSettings me={me} />} />
           <Route path="preferences" element={<PreferenceSettings />} />
           <Route path="security" element={<SecuritySettings me={me} />} />
@@ -133,11 +138,10 @@ function EditAccount({ account: a, onDone }: { account: Account; onDone: () => v
   const toast = useUI((s) => s.toast);
   const [name, setName] = useState(a.name);
   const [color, setColor] = useState(a.color);
-  const [signature, setSignature] = useState(a.signature);
   const [password, setPassword] = useState('');
   const [err, setErr] = useState('');
   const save = useMutation({
-    mutationFn: () => api.accounts.update(a.id, { name, color, signature, ...(password ? { password } : {}) }),
+    mutationFn: () => api.accounts.update(a.id, { name, color, ...(password ? { password } : {}) }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['accounts'] }); toast({ text: 'Account updated' }); onDone(); },
     onError: (e) => setErr((e as Error).message),
   });
@@ -154,10 +158,6 @@ function EditAccount({ account: a, onDone }: { account: Account; onDone: () => v
       <div className="field">
         <span className="label">Color</span>
         <ColorPicker value={color} onChange={setColor} />
-      </div>
-      <div className="field">
-        <label htmlFor={`s-${a.id}`}>Signature</label>
-        <textarea id={`s-${a.id}`} className="textarea" value={signature} onChange={(e) => setSignature(e.target.value)} placeholder="Added at the end of new emails from this account" />
       </div>
       <div className="field">
         <label htmlFor={`p-${a.id}`}>New password {a.status === 'error' ? '(the server rejected the current one)' : '(leave empty to keep)'}</label>
@@ -506,5 +506,98 @@ function SecuritySettings({ me }: { me?: Me }) {
         </div>
       </div>
     </>
+  );
+}
+
+
+// ---------- Signatures ----------
+
+function SignaturesSettings() {
+  const { data: accounts } = useAccounts();
+  const { data: signatures, isLoading } = useSignatures();
+  const [editing, setEditing] = useState<Signature | 'new' | null>(null);
+  const [newFor, setNewFor] = useState<string>('');
+  const qc = useQueryClient();
+  const toast = useUI((s) => s.toast);
+  const remove = useMutation({
+    mutationFn: (id: string) => api.signatures.remove(id),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['signatures'] }); toast({ text: 'Signature removed' }); },
+  });
+  const makeDefault = useMutation({
+    mutationFn: (id: string) => api.signatures.update(id, { isDefault: true }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['signatures'] }); toast({ text: 'Default signature set' }); },
+  });
+  return (
+    <>
+      <h2>Signatures</h2>
+      <p className="help">Each account can have several signatures with formatting and images. The default one is added to new emails and replies; you can switch or remove it while writing.</p>
+      {(accounts ?? []).map((a) => {
+        const mine = (signatures ?? []).filter((s) => s.accountId === a.id);
+        return (
+          <div className="settings-section" key={a.id}>
+            <div className="row-inline" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
+              <span className="row-inline" style={{ gap: 8 }}><i className="dot" style={{ ['--c' as string]: a.color }} /><b>{a.email}</b></span>
+              <button className="btn btn-ghost btn-sm" onClick={() => { setNewFor(a.id); setEditing('new'); }}><Icon name="plus" size={14} />Add signature</button>
+            </div>
+            {editing === 'new' && newFor === a.id && (
+              <SignatureForm accountId={a.id} onDone={() => setEditing(null)} />
+            )}
+            {!isLoading && mine.length === 0 && editing !== 'new' && <p className="help">No signature yet for this address.</p>}
+            {mine.map((s) =>
+              editing !== 'new' && editing?.id === s.id ? (
+                <SignatureForm key={s.id} accountId={a.id} signature={s} onDone={() => setEditing(null)} />
+              ) : (
+                <div className="sig-card" key={s.id}>
+                  <div className="row-inline" style={{ justifyContent: 'space-between' }}>
+                    <span className="row-inline" style={{ gap: 8 }}><b>{s.name}</b>{s.isDefault && <span className="sig-default">Default</span>}</span>
+                    <span className="row-inline" style={{ gap: 4 }}>
+                      {!s.isDefault && <button className="btn btn-quiet btn-sm" onClick={() => makeDefault.mutate(s.id)}>Make default</button>}
+                      <button className="btn btn-quiet btn-sm" onClick={() => setEditing(s)}>Edit</button>
+                      <button className="ib danger" aria-label={`Remove ${s.name}`} title="Remove" onClick={() => remove.mutate(s.id)}><Icon name="trash" size={16} /></button>
+                    </span>
+                  </div>
+                  <div className="sig-render" dangerouslySetInnerHTML={{ __html: s.html }} />
+                </div>
+              ),
+            )}
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+function SignatureForm({ accountId, signature, onDone }: { accountId: string; signature?: Signature; onDone: () => void }) {
+  const qc = useQueryClient();
+  const toast = useUI((s) => s.toast);
+  const [name, setName] = useState(signature?.name ?? 'Signature');
+  const [html, setHtml] = useState(signature?.html ?? '');
+  const [isDefault, setIsDefault] = useState(signature?.isDefault ?? false);
+  const [err, setErr] = useState('');
+  const save = useMutation({
+    mutationFn: () => (signature ? api.signatures.update(signature.id, { name, html, isDefault }) : api.signatures.create({ accountId, name, html, isDefault })),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['signatures'] }); toast({ text: signature ? 'Signature saved' : 'Signature added' }); onDone(); },
+    onError: (e) => setErr((e as Error).message),
+  });
+  return (
+    <form className="card" style={{ margin: '8px 0' }} onSubmit={(e) => { e.preventDefault(); save.mutate(); }}>
+      <div className="field">
+        <label htmlFor={`sig-name-${signature?.id ?? 'new'}`}>Name</label>
+        <input id={`sig-name-${signature?.id ?? 'new'}`} className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Work, Short, Italian…" />
+      </div>
+      <div className="field">
+        <span className="label">Signature</span>
+        <SignatureEditor value={html} onChange={setHtml} />
+      </div>
+      <label className="row-inline" style={{ gap: 8 }}>
+        <input type="checkbox" checked={isDefault} onChange={(e) => setIsDefault(e.target.checked)} />
+        Use as the default for this address
+      </label>
+      {err && <p className="error-text" role="alert">{err}</p>}
+      <div className="row-inline">
+        <button type="submit" className="btn btn-primary" disabled={save.isPending}>{save.isPending ? 'Saving' : signature ? 'Save changes' : 'Add signature'}</button>
+        <button type="button" className="btn btn-quiet" onClick={onDone}>Cancel</button>
+      </div>
+    </form>
   );
 }

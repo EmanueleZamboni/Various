@@ -2283,3 +2283,118 @@ textarea:focus-visible {
     font-size: 17px;
   }
 }
+
+/* Signatures */
+.sig-editor {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--sheet, #fff);
+  overflow: hidden;
+}
+.sig-editor:focus-within {
+  border-color: var(--pine);
+}
+.sig-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line);
+  background: var(--canvas);
+}
+.sig-toolbar button,
+.sig-tool {
+  min-width: 30px;
+  height: 30px;
+  padding: 0 8px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--mute);
+  font-size: 13px;
+  cursor: pointer;
+}
+.sig-toolbar button:hover,
+.sig-tool:hover {
+  background: var(--hover);
+  color: var(--ink);
+}
+.sig-sep {
+  width: 1px;
+  height: 18px;
+  background: var(--line);
+  margin: 0 6px;
+}
+.sig-area {
+  min-height: 120px;
+  padding: 12px 14px;
+  outline: none;
+  line-height: 1.5;
+  font-size: 14px;
+}
+.sig-area img {
+  max-width: 100%;
+  height: auto;
+}
+.sig-area:empty::before {
+  content: 'Write your signature';
+  color: var(--faint);
+}
+.sig-preview {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--line);
+  color: var(--mute);
+  font-size: 14px;
+  line-height: 1.45;
+  max-height: 160px;
+  overflow: auto;
+}
+.sig-preview img {
+  max-width: 100%;
+  height: auto;
+}
+.sig-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--mute);
+  font-size: 13px;
+}
+.sig-pick select {
+  border: 0;
+  background: none;
+  color: var(--mute);
+  font: inherit;
+  cursor: pointer;
+  max-width: 160px;
+}
+.sig-pick select:hover {
+  color: var(--ink);
+}
+.sig-card {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: var(--sheet, #fff);
+  margin-bottom: 10px;
+}
+.sig-card .sig-render {
+  margin-top: 8px;
+  font-size: 14px;
+  line-height: 1.45;
+  max-height: 120px;
+  overflow: hidden;
+}
+.sig-card .sig-render img {
+  max-width: 100%;
+  height: auto;
+}
+.sig-default {
+  font-size: 12px;
+  color: var(--pine-ink);
+  background: var(--pine-soft);
+  border-radius: 999px;
+  padding: 2px 8px;
+}

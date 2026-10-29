@@ -10,6 +10,9 @@ import { attachmentPath, type MessageRow, type FolderRow } from '../mail/store.j
 import type { AccountRow, AttachmentRow } from '../views.js';
 import type { Address } from '../mail/parse.js';
 import { bus } from '../events.js';
+import { signatureById, defaultSignature } from './signatures.js';
+
+const esc = (t: string): string => t.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c] as string));
 
 type DraftRow = { id: number; account_id: number; thread_id: number | null; in_reply_to: number | null; forward_of: number | null; to_text: string; cc_text: string; bcc_text: string; subject: string; text: string; attachments_json: string; updated_at: string };
 
@@ -80,7 +83,7 @@ export function replyPrefill(m: MessageRow, mode: 'reply' | 'replyAll' | 'forwar
   };
 }
 
-type SendFields = { accountId?: string; to?: string; cc?: string; bcc?: string; subject?: string; text?: string; html?: string; inReplyTo?: string; forwardOf?: string; draftId?: string; uploadIds?: string | string[] };
+type SendFields = { accountId?: string; to?: string; cc?: string; bcc?: string; subject?: string; text?: string; html?: string; inReplyTo?: string; forwardOf?: string; draftId?: string; uploadIds?: string | string[]; signatureId?: string; quote?: string };
 
 export function registerComposeRoutes(app: FastifyInstance): void {
   app.get<{ Params: { id: string }; Querystring: { mode?: string } }>('/api/messages/:id/reply', async (req, reply) => {
@@ -179,8 +182,23 @@ export function registerComposeRoutes(app: FastifyInstance): void {
         }
       }
     }
+    // Signature: an explicit id, "none", or the account's default.
+    let signature: { html: string; text: string } | null = null;
+    if (b.signatureId !== 'none') {
+      const sig = b.signatureId ? signatureById(Number(b.signatureId)) : defaultSignature(account.id);
+      if (sig && sig.account_id === account.id) signature = { html: sig.html, text: sig.text };
+    }
+    // Quoted original (reply/forward), built here so HTML mail is quoted as HTML.
+    let quote: { html: string | null; text: string } | null = null;
+    if (b.quote === '1') {
+      const src = replyRow || (b.forwardOf ? (db.prepare('SELECT * FROM messages WHERE id = ?').get(Number(b.forwardOf)) as MessageRow | undefined) : undefined);
+      if (src) {
+        const pre = replyPrefill(src, b.forwardOf ? 'forward' : 'reply');
+        quote = { html: pre.quotedHtml ? `<div>${esc(pre.headerLine).replace(/\n/g, '<br>')}</div>${pre.quotedHtml}` : null, text: pre.quotedText.trim() };
+      }
+    }
     try {
-      const r = await sendMail({ account, to, cc: String(b.cc || ''), bcc: String(b.bcc || ''), subject: String(b.subject || ''), text: String(b.text || ''), html: b.html ? String(b.html) : undefined, inReplyTo, attachments });
+      const r = await sendMail({ account, to, cc: String(b.cc || ''), bcc: String(b.bcc || ''), subject: String(b.subject || ''), text: String(b.text || ''), html: b.html ? String(b.html) : undefined, inReplyTo, attachments, signature, quote });
       if (replyRow) {
         const sync = manager.get(replyRow.account_id);
         void sync?.markAnswered(replyRow.id);

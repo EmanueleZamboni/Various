@@ -1,7 +1,7 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query';
 import { useCallback, useMemo } from 'react';
 import { api } from './client';
-import type { Account, Settings, ThreadAction, ThreadDetail, ThreadSummary, ThreadsResponse } from './types';
+import type { Account, Settings, Signature, ThreadAction, ThreadDetail, ThreadSummary, ThreadsResponse } from './types';
 import { useUI } from '../store';
 
 export const useMe = (enabled = true) =>
@@ -199,4 +199,8 @@ export function useUpdateSettings() {
     mutationFn: (s: Partial<Settings>) => api.settings.update(s),
     onSuccess: (data) => qc.setQueryData(['settings'], data),
   });
+}
+
+export function useSignatures() {
+  return useQuery<Signature[]>({ queryKey: ['signatures'], queryFn: api.signatures.list, staleTime: 60_000 });
 }

@@ -198,6 +198,18 @@ CREATE TABLE IF NOT EXISTS drafts (
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 
+CREATE TABLE IF NOT EXISTS signatures (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  name TEXT NOT NULL DEFAULT 'Signature',
+  html TEXT NOT NULL DEFAULT '',
+  text TEXT NOT NULL DEFAULT '',
+  is_default INTEGER NOT NULL DEFAULT 0,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX IF NOT EXISTS signatures_account ON signatures(account_id);
+
 CREATE TABLE IF NOT EXISTS push_subscriptions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   endpoint TEXT NOT NULL UNIQUE,
@@ -227,6 +239,14 @@ function hasColumn(table: string, column: string): boolean {
 }
 if (!hasColumn('accounts', 'initial_sync_done')) {
   db.exec(`ALTER TABLE accounts ADD COLUMN initial_sync_done INTEGER NOT NULL DEFAULT 0`);
+}
+
+// Plain-text signatures from the first release become rich signatures.
+{
+  const legacy = db.prepare("SELECT id, signature FROM accounts WHERE signature <> '' AND id NOT IN (SELECT account_id FROM signatures)").all() as { id: number; signature: string }[];
+  const ins = db.prepare('INSERT INTO signatures(account_id, name, html, text, is_default) VALUES (?, ?, ?, ?, 1)');
+  const esc = (t: string) => t.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c] as string)).replace(/\n/g, '<br>');
+  for (const a of legacy) ins.run(a.id, 'Default', `<div>${esc(a.signature)}</div>`, a.signature);
 }
 
 export function getSetting<T>(key: string, fallback: T): T {

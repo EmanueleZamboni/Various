@@ -13,6 +13,7 @@ import { registerThreadRoutes } from './routes/threads.js';
 import { registerBlockedRoutes } from './routes/blocked.js';
 import { registerComposeRoutes } from './routes/compose.js';
 import { registerMiscRoutes } from './routes/misc.js';
+import { registerSignatureRoutes } from './routes/signatures.js';
 import { manager } from './mail/manager.js';
 import { startPushBridge, vapidKeys } from './push.js';
 
@@ -42,6 +43,7 @@ export async function buildApp() {
   registerBlockedRoutes(app);
   registerComposeRoutes(app);
   registerMiscRoutes(app);
+  registerSignatureRoutes(app);
 
   // Serve the built web app (SPA fallback to index.html).
   if (fs.existsSync(path.join(config.webDist, 'index.html'))) {

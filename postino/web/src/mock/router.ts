@@ -520,6 +520,32 @@ on('GET', '/api/attachments/:id', ({ params, query }) => {
   return new Response(content, { headers: { 'Content-Type': a?.contentType ?? 'application/octet-stream', 'Content-Disposition': `${inline ? 'inline' : 'attachment'}; filename="${name}"` } });
 });
 
+// ----- signatures
+const signatures: { id: string; accountId: string; name: string; html: string; text: string; isDefault: boolean; updatedAt: string }[] = [
+  { id: 'sig1', accountId: accounts[0].id, name: 'Collab', html: '<div><b>Ema Zamboni</b><br>Creator · Retro tech<br><a href="https://youtube.com/@emazamboni">youtube.com/@emazamboni</a></div>', text: 'Ema Zamboni\nCreator · Retro tech\nyoutube.com/@emazamboni', isDefault: true, updatedAt: new Date().toISOString() },
+  { id: 'sig2', accountId: accounts[3].id, name: 'STOSTUDIO', html: '<div><b>Emanuele Zamboni</b> | STOSTUDIO<br><span style="color:#666">Video production · Modena</span></div>', text: 'Emanuele Zamboni | STOSTUDIO\nVideo production · Modena', isDefault: true, updatedAt: new Date().toISOString() },
+];
+on('GET', '/api/signatures', () => json(signatures));
+on('POST', '/api/signatures', ({ body }) => {
+  const mine = signatures.filter((x) => x.accountId === body.accountId);
+  const isDefault = !!body.isDefault || mine.length === 0;
+  if (isDefault) for (const x of mine) x.isDefault = false;
+  const sg = { id: nid('sig'), accountId: body.accountId, name: body.name || 'Signature', html: body.html || '', text: String(body.html || '').replace(/<[^>]+>/g, ' ').trim(), isDefault, updatedAt: new Date().toISOString() };
+  signatures.push(sg);
+  return json(sg, 201);
+});
+on('PUT', '/api/signatures/:id', ({ params, body }) => {
+  const sg = signatures.find((x) => x.id === params.id);
+  if (!sg) return fail(404, 'not_found', 'Signature not found.');
+  if (body.isDefault) for (const x of signatures) if (x.accountId === sg.accountId) x.isDefault = false;
+  if (body.name !== undefined) sg.name = body.name;
+  if (body.html !== undefined) { sg.html = body.html; sg.text = String(body.html).replace(/<[^>]+>/g, ' ').trim(); }
+  if (body.isDefault !== undefined) sg.isDefault = !!body.isDefault;
+  sg.updatedAt = new Date().toISOString();
+  return json(sg);
+});
+on('DELETE', '/api/signatures/:id', ({ params }) => { const i = signatures.findIndex((x) => x.id === params.id); if (i >= 0) signatures.splice(i, 1); return empty(); });
+
 // ----- settings / push
 on('GET', '/api/settings', () => json(settings));
 on('PUT', '/api/settings', ({ body }) => { Object.assign(settings, body); if (body.notifications) settings.notifications = { ...settings.notifications, ...body.notifications }; if (body.swipe) settings.swipe = { ...settings.swipe, ...body.swipe }; return json(settings); });

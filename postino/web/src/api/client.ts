@@ -13,7 +13,7 @@ import type {
   ThreadAction,
   ThreadDetail,
   ThreadsResponse,
-} from './types';
+ Signature } from './types';
 
 export class ApiError extends Error {
   status: number;
@@ -127,6 +127,12 @@ export const api = {
     create: (d: Partial<Draft>) => post<Draft>('/api/drafts', d),
     update: (id: string, d: Partial<Draft>) => put<Draft>(`/api/drafts/${id}`, d),
     remove: (id: string) => del<void>(`/api/drafts/${id}`),
+  },
+  signatures: {
+    list: () => get<Signature[]>('/api/signatures'),
+    create: (s: { accountId: string; name: string; html: string; isDefault?: boolean }) => post<Signature>('/api/signatures', s),
+    update: (id: string, s: { name?: string; html?: string; isDefault?: boolean }) => put<Signature>(`/api/signatures/${id}`, s),
+    remove: (id: string) => del<void>(`/api/signatures/${id}`),
   },
   contacts: (q: string, limit = 8) => get<Address[]>(`/api/contacts${qs({ q, limit })}`),
   settings: {

@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
-import { useAccountMap } from '../api/hooks';
+import { useAccountMap, useSignatures } from '../api/hooks';
+import { SignaturePicker, SignaturePreview, defaultSignatureId } from './SignatureEditor';
 import type { Draft, Message, ReplyPrefill } from '../api/types';
 import { Icon } from '../icons';
 import { useUI } from '../store';
@@ -32,6 +33,12 @@ export function ReplyBox({ message: m, mode, onModeChange, onClose, onSent }: {
   const draft = useRef<Draft | null>(null);
   const saveTimer = useRef<number | undefined>(undefined);
   const [saved, setSaved] = useState('');
+  const { data: signatures } = useSignatures();
+  const [signatureId, setSignatureId] = useState<string>('');
+  useEffect(() => {
+    if (signatures) setSignatureId(defaultSignatureId(signatures, m.accountId));
+  }, [signatures, m.accountId]);
+  const signature = (signatures ?? []).find((s) => s.id === signatureId);
 
   useEffect(() => {
     let alive = true;
@@ -90,9 +97,11 @@ export function ReplyBox({ message: m, mode, onModeChange, onClose, onSent }: {
       fd.set('to', to);
       if (cc.trim()) fd.set('cc', cc);
       fd.set('subject', prefill?.subject ?? '');
-      fd.set('text', `${text}${prefill?.quotedText ? `\n\n${prefill.quotedText}` : ''}`);
+      fd.set('text', text);
+      fd.set('signatureId', signatureId || 'none');
       if (mode === 'forward') fd.set('forwardOf', m.id);
       else fd.set('inReplyTo', m.id);
+      if (prefill?.quotedText) fd.set('quote', '1');
       if (draft.current) fd.set('draftId', draft.current.id);
       for (const f of files) fd.append('attachments', f, f.name);
       await api.send(fd);
@@ -161,6 +170,7 @@ export function ReplyBox({ message: m, mode, onModeChange, onClose, onSent }: {
       )}
       <label htmlFor="reply-text" className="sr-only">Message</label>
       <textarea id="reply-text" value={text} onChange={(e) => setText(e.target.value)} placeholder={prefill ? (mode === 'forward' ? 'Add a note (optional)' : `Reply to ${target ? firstName(target) : ''}`) : 'Preparing reply'} disabled={!prefill} autoFocus />
+      {signature && <SignaturePreview signature={signature} />}
       {prefill?.quotedText && (
         <>
           <button type="button" className="quoted-toggle" onClick={() => setShowQuote((v) => !v)} aria-expanded={showQuote}>
@@ -190,6 +200,7 @@ export function ReplyBox({ message: m, mode, onModeChange, onClose, onSent }: {
           <Icon name="clip" size={18} />
           <input type="file" multiple hidden onChange={(e) => setFiles((fs) => [...fs, ...Array.from(e.target.files ?? [])])} />
         </label>
+        <SignaturePicker signatures={signatures ?? []} accountId={m.accountId} value={signatureId || 'none'} onChange={setSignatureId} compact />
         <span className="help" style={{ fontSize: 12 }}>{saved ? `Draft saved ${saved}` : ''}</span>
         <span className="sp" />
         <button type="submit" className="btn btn-primary" disabled={busy || !prefill}>
