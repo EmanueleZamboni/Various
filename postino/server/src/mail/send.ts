@@ -1,5 +1,5 @@
 import nodemailer from 'nodemailer';
-import MailComposer from 'nodemailer/lib/mail-composer/index.js';
+import MailComposer from 'nodemailer/lib/mail-composer';
 import { db } from '../db.js';
 import { decrypt } from '../crypto.js';
 import type { AccountRow } from '../views.js';

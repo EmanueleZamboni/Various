@@ -1,0 +1,36 @@
+# Postino + Caddy (automatic HTTPS). Copy .env.example to .env first.
+services:
+  postino:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - POSTINO_SECURE_COOKIES=true
+    volumes:
+      - ./data:/data
+    expose:
+      - "8025"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8025/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - postino
+
+volumes:
+  caddy_data:
+  caddy_config:
