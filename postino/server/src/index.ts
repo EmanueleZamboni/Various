@@ -61,6 +61,14 @@ export async function buildApp() {
 }
 
 async function main(): Promise<void> {
+  // A dropped IMAP connection or a bug in one background task must never take the whole server down.
+  process.on('unhandledRejection', (reason) => {
+    const e = reason as Error;
+    log.error({ err: e?.message || String(reason), stack: e?.stack }, 'unhandled rejection');
+  });
+  process.on('uncaughtException', (err) => {
+    log.error({ err: err.message, stack: err.stack }, 'uncaught exception');
+  });
   const app = await buildApp();
   vapidKeys();
   startPushBridge();

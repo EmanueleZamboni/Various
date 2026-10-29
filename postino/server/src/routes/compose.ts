@@ -10,6 +10,7 @@ import { attachmentPath, type MessageRow, type FolderRow } from '../mail/store.j
 import type { AccountRow, AttachmentRow } from '../views.js';
 import type { Address } from '../mail/parse.js';
 import { bus } from '../events.js';
+import { log } from '../log.js';
 import { signatureById, defaultSignature } from './signatures.js';
 
 const esc = (t: string): string => t.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c] as string));
@@ -201,7 +202,7 @@ export function registerComposeRoutes(app: FastifyInstance): void {
       const r = await sendMail({ account, to, cc: String(b.cc || ''), bcc: String(b.bcc || ''), subject: String(b.subject || ''), text: String(b.text || ''), html: b.html ? String(b.html) : undefined, inReplyTo, attachments, signature, quote });
       if (replyRow) {
         const sync = manager.get(replyRow.account_id);
-        void sync?.markAnswered(replyRow.id);
+        sync?.markAnswered(replyRow.id).catch((err: Error) => log.warn({ err: err.message }, 'could not flag as answered'));
       }
       if (b.draftId) db.prepare('DELETE FROM drafts WHERE id = ?').run(Number(b.draftId));
       for (const id of uploadIds) {
