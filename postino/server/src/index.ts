@@ -19,7 +19,7 @@ import { registerGoogleRoutes } from './google.js';
 import { manager } from './mail/manager.js';
 import { startPushBridge, vapidKeys } from './push.js';
 import { startOutbox } from './mail/outbox.js';
-import { pruneAttachmentCache } from './mail/store.js';
+import { pruneAttachmentCache, pruneUploads } from './mail/store.js';
 
 export async function buildApp() {
   const app = Fastify({ logger: false, trustProxy: true, bodyLimit: 2 * 1024 * 1024 });
@@ -78,7 +78,11 @@ export async function buildApp() {
     const e = err as Error & { statusCode?: number; code?: string; validation?: unknown };
     const status = e.statusCode && e.statusCode >= 400 ? e.statusCode : 500;
     if (status >= 500) log.error({ err: e.message, stack: e.stack }, 'request failed');
-    reply.code(status).send({ error: typeof e.code === 'string' ? e.code.toLowerCase() : status >= 500 ? 'internal' : 'bad_request', message: e.message });
+    let message = e.message;
+    if (e.code === 'FST_REQ_FILE_TOO_LARGE') message = 'That file is too big: attachments are limited to 25 MB each.';
+    else if (e.code === 'FST_FILES_LIMIT') message = 'Too many files: at most 10 attachments per email.';
+    else if (e.code === 'FST_ERR_CTP_BODY_TOO_LARGE') message = 'The request is too large.';
+    reply.code(status).send({ error: typeof e.code === 'string' ? e.code.toLowerCase() : status >= 500 ? 'internal' : 'bad_request', message });
   });
 
   registerAuthRoutes(app);
@@ -140,6 +144,8 @@ async function main(): Promise<void> {
     try {
       const r = pruneAttachmentCache();
       if (r.removed) log.info({ removed: r.removed, freedMb: Math.round(r.freed / 1048576) }, 'attachment cache pruned');
+      const u = pruneUploads();
+      if (u) log.info({ removed: u }, 'abandoned uploads removed');
     } catch (err) {
       log.warn({ err: (err as Error).message }, 'attachment cache prune failed');
     }

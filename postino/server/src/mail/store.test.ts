@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import { db } from '../db.js';
 import { config } from '../config.js';
-import { pruneAttachmentCache, attachmentPath, touchAttachment } from './store.js';
+import { pruneAttachmentCache, attachmentPath, touchAttachment, pruneUploads } from './store.js';
 
 describe('attachment cache pruning', () => {
   it('drops the least recently used files beyond the cap and marks them uncached', () => {
@@ -28,5 +28,27 @@ describe('attachment cache pruning', () => {
     expect((db.prepare('SELECT cached FROM attachments WHERE id = 2').get() as { cached: number }).cached).toBe(0);
     expect((db.prepare('SELECT cached FROM attachments WHERE id = 1').get() as { cached: number }).cached).toBe(1);
     expect(pruneAttachmentCache(250).removed).toBe(0);
+  });
+});
+
+describe('upload cleanup', () => {
+  it('removes old unreferenced uploads only', () => {
+    for (const n of fs.readdirSync(config.uploadsDir)) fs.unlinkSync(`${config.uploadsDir}/${n}`);
+    db.exec('DELETE FROM drafts');
+    const mk = (id: string, ageDays: number) => {
+      for (const f of [id, id + '.json']) {
+        fs.writeFileSync(`${config.uploadsDir}/${f}`, 'x');
+        const t = (Date.now() - ageDays * 86_400_000) / 1000;
+        fs.utimesSync(`${config.uploadsDir}/${f}`, t, t);
+      }
+    };
+    mk('old-unused', 10);
+    mk('old-in-draft', 10);
+    mk('fresh', 1);
+    db.prepare("INSERT INTO drafts(account_id, to_text, cc_text, bcc_text, subject, text, attachments_json) VALUES (99, '', '', '', '', '', ?)").run(JSON.stringify([{ id: 'old-in-draft', filename: 'a', size: 1 }]));
+    expect(pruneUploads()).toBe(2);
+    expect(fs.existsSync(`${config.uploadsDir}/old-unused`)).toBe(false);
+    expect(fs.existsSync(`${config.uploadsDir}/old-in-draft`)).toBe(true);
+    expect(fs.existsSync(`${config.uploadsDir}/fresh.json`)).toBe(true);
   });
 });

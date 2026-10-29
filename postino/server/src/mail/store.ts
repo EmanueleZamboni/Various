@@ -270,6 +270,49 @@ export function attachmentPath(id: number): string {
   return path.join(config.attachmentsDir, String(id));
 }
 
+/**
+ * Files attached to a draft that was never sent stay in data/uploads. Drop the ones
+ * older than a week that no draft and no queued email still references.
+ */
+export function pruneUploads(maxAgeMs = 7 * 86_400_000): number {
+  let names: string[];
+  try {
+    names = fs.readdirSync(config.uploadsDir);
+  } catch {
+    return 0;
+  }
+  const referenced = new Set<string>();
+  for (const r of db.prepare('SELECT attachments_json FROM drafts').all() as { attachments_json: string }[]) {
+    try {
+      for (const a of JSON.parse(r.attachments_json || '[]') as { id?: string }[]) if (a.id) referenced.add(a.id);
+    } catch {
+      // ignore a malformed row
+    }
+  }
+  for (const r of db.prepare("SELECT payload FROM outbox WHERE status = 'queued'").all() as { payload: string }[]) {
+    try {
+      for (const id of (JSON.parse(r.payload) as { uploadIds?: string[] }).uploadIds || []) referenced.add(id);
+    } catch {
+      // ignore
+    }
+  }
+  const cutoff = Date.now() - maxAgeMs;
+  let removed = 0;
+  for (const n of names) {
+    const id = n.replace(/\.json$/, '');
+    if (referenced.has(id)) continue;
+    const file = path.join(config.uploadsDir, n);
+    try {
+      if (fs.statSync(file).mtimeMs > cutoff) continue;
+      fs.unlinkSync(file);
+      removed++;
+    } catch {
+      // vanished meanwhile
+    }
+  }
+  return removed;
+}
+
 /** Mark a cached attachment as recently used so pruning drops it last. */
 export function touchAttachment(id: number): void {
   try {
