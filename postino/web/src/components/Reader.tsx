@@ -480,15 +480,8 @@ const FRAME_CSS = `
   blockquote{margin:0 0 0 .6em;padding-left:.9em;border-left:2px solid #cfd6d2;color:#6b7571}
   pre{white-space:pre-wrap}
 `;
-const FRAME_JS = `
-  (function(){
-    var id=document.documentElement.getAttribute('data-id');
-    var send=function(){parent.postMessage({postino:'h',id:id,h:Math.max(document.body.scrollHeight,document.documentElement.scrollHeight)},'*')};
-    if(window.ResizeObserver){new ResizeObserver(send).observe(document.body)}
-    window.addEventListener('load',send);setTimeout(send,50);setTimeout(send,400);
-    document.addEventListener('click',function(e){var a=e.target&&e.target.closest?e.target.closest('a'):null;if(a&&a.href){a.target='_blank';a.rel='noopener noreferrer'}});
-  })();
-`;
+/** The frame's script lives in public/frame.js: the app's CSP allows only files from its own origin. */
+const frameScriptUrl = () => new URL(`${import.meta.env.BASE_URL}frame.js`, location.href).href;
 
 export function HtmlBody({ id, html, showImages }: { id: string; html: string; showImages: boolean }) {
   const [height, setHeight] = useState(80);
@@ -503,10 +496,10 @@ export function HtmlBody({ id, html, showImages }: { id: string; html: string; s
   const doc = useMemo(() => {
     let body = html;
     if (showImages) body = body.replace(/\ssrc=""/g, '').replace(/data-remote-src=/g, 'src=');
-    // Only our own resize script may run: a nonce the mail body cannot know.
-    const nonce = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
-    const csp = `default-src 'none'; img-src data: blob: ${showImages ? 'https: http:' : ''} ${location.origin}; style-src 'unsafe-inline'; font-src https://fonts.gstatic.com; script-src 'nonce-${nonce}'`;
-    return `<!doctype html><html data-id="${id}"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${csp}"><base target="_blank"><style>${FRAME_CSS}</style></head><body>${body}<script nonce="${nonce}">${FRAME_JS}</script></body></html>`;
+    // Only scripts from our own origin may run (the mail body cannot reference any: the sanitizer drops script tags).
+    const script = frameScriptUrl();
+    const csp = `default-src 'none'; img-src data: blob: ${showImages ? 'https: http:' : ''} ${location.origin}; style-src 'unsafe-inline'; font-src https://fonts.gstatic.com; script-src ${location.origin}`;
+    return `<!doctype html><html data-id="${id}"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${csp}"><base target="_blank"><style>${FRAME_CSS}</style></head><body>${body}<script src="${script}"></script></body></html>`;
   }, [html, id, showImages]);
   return (
     <iframe
