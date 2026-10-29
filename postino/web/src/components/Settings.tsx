@@ -23,6 +23,7 @@ const NAV: { to: string; label: string; icon: IconName }[] = [
   { to: '/settings/reading', label: 'Reading', icon: 'mailOpen' },
   { to: '/settings/composing', label: 'Composing', icon: 'send' },
   { to: '/settings/notifications', label: 'Notifications', icon: 'bell' },
+  { to: '/settings/google', label: 'Google Drive', icon: 'folder' },
   { to: '/settings/preferences', label: 'Swipes & look', icon: 'filter' },
   { to: '/settings/security', label: 'Security', icon: 'shield' },
 ];
@@ -59,6 +60,7 @@ export function SettingsPage({ me, onLogout }: { me?: Me; onLogout: () => void }
           <Route path="accounts" element={<AccountsSettings />} />
           <Route path="signatures" element={<SignaturesSettings />} />
           <Route path="notifications" element={<NotificationSettings me={me} />} />
+          <Route path="google" element={<GoogleSettings />} />
           <Route path="inbox" element={<InboxSettings />} />
           <Route path="reading" element={<ReadingSettings />} />
           <Route path="composing" element={<ComposeSettings />} />
@@ -803,5 +805,83 @@ function SignatureForm({ accountId, signature, onDone }: { accountId: string; si
         <button type="button" className="btn btn-quiet" onClick={onDone}>Cancel</button>
       </div>
     </form>
+  );
+}
+
+
+// ---------- Google Drive ----------
+
+function GoogleSettings() {
+  const qc = useQueryClient();
+  const toast = useUI((s) => s.toast);
+  const loc = useLocation();
+  const { data } = useQuery({ queryKey: ['google'], queryFn: api.google.status, retry: false });
+  const { data: redirect } = useQuery({ queryKey: ['google-redirect'], queryFn: api.google.redirectUri });
+  const [clientId, setClientId] = useState('');
+  const [secret, setSecret] = useState('');
+  const [err, setErr] = useState('');
+  const result = new URLSearchParams(loc.search).get('result');
+  useEffect(() => {
+    if (!result) return;
+    qc.invalidateQueries({ queryKey: ['google'] });
+    toast({ text: result === 'connected' ? 'Google Drive connected' : result, kind: result === 'connected' ? 'success' : 'error' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [result]);
+  const saveCreds = useMutation({
+    mutationFn: () => api.google.credentials(clientId, secret),
+    onSuccess: () => { setSecret(''); qc.invalidateQueries({ queryKey: ['google'] }); toast({ text: 'Saved. Now connect your Google account.', kind: 'success' }); },
+    onError: (e) => setErr((e as Error).message),
+  });
+  const connect = async () => {
+    try {
+      const r = await api.google.connect();
+      window.location.href = r.url;
+    } catch (e) {
+      setErr((e as Error).message);
+    }
+  };
+  const disconnect = useMutation({ mutationFn: () => api.google.disconnect(), onSuccess: () => { qc.invalidateQueries({ queryKey: ['google'] }); toast({ text: 'Google Drive disconnected' }); } });
+  return (
+    <>
+      <h2>Google Drive</h2>
+      <p className="help">Save attachments to Drive and open Word, Excel and PowerPoint files straight in Google Docs, Sheets and Slides, like Gmail does. Postino only ever sees the files it uploads (the "drive.file" permission).</p>
+      <div className="settings-section">
+        {data?.connected ? (
+          <div className="card">
+            <div className="toggle-row" style={{ borderBottom: 0, padding: 0 }}>
+              <div className="t">
+                <b>Connected{data.email ? ` as ${data.email}` : ''}</b>
+                <small>Attachments now show "Save to Drive" and "Open in Google Docs/Sheets/Slides".</small>
+              </div>
+              <button className="btn btn-ghost" onClick={() => disconnect.mutate()} disabled={disconnect.isPending}>Disconnect</button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="card">
+              <b>1. Create a Google OAuth client (once, about 5 minutes)</b>
+              <ol className="help" style={{ margin: '6px 0 0', paddingLeft: 18, lineHeight: 1.7 }}>
+                <li>Open <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">console.cloud.google.com/apis/credentials</a> (any project; the one from your YouTube scripts is fine).</li>
+                <li>Enable the <b>Google Drive API</b> under "APIs & Services → Library".</li>
+                <li>"Create credentials → OAuth client ID", type <b>Web application</b>.</li>
+                <li>Under "Authorized redirect URIs" add exactly: <code style={{ userSelect: 'all' }}>{redirect?.redirectUri ?? '…'}</code></li>
+                <li>If the consent screen asks, add your own Google address as a test user.</li>
+                <li>Copy the client ID and client secret below.</li>
+              </ol>
+            </div>
+            <form className="card" onSubmit={(e) => { e.preventDefault(); setErr(''); saveCreds.mutate(); }}>
+              <b>2. Paste the client</b>
+              <div className="field"><label htmlFor="g-id">Client ID</label><input id="g-id" className="input" value={clientId || data?.clientId || ''} onChange={(e) => setClientId(e.target.value)} placeholder="1234-abcd.apps.googleusercontent.com" autoComplete="off" /></div>
+              <div className="field"><label htmlFor="g-secret">Client secret</label><input id="g-secret" className="input" type="password" value={secret} onChange={(e) => setSecret(e.target.value)} placeholder={data?.configured ? '(saved)' : 'GOCSPX-…'} autoComplete="off" /></div>
+              {err && <p className="error-text" role="alert">{err}</p>}
+              <div className="row-inline">
+                <button type="submit" className="btn btn-ghost" disabled={saveCreds.isPending || !secret}>Save</button>
+                <button type="button" className="btn btn-primary" onClick={() => void connect()} disabled={!data?.configured}>3. Connect Google account</button>
+              </div>
+            </form>
+          </>
+        )}
+      </div>
+    </>
   );
 }

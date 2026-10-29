@@ -1,6 +1,7 @@
 import { simpleParser, type ParsedMail, type AddressObject } from 'mailparser';
 import EmailReplyParser from 'email-reply-parser';
 import { sanitizeEmailHtml, htmlToText, textToHtml } from './sanitize.js';
+import { parseIcs } from './ics.js';
 
 export type Address = { name: string; email: string };
 export type Category = 'person' | 'notification' | 'newsletter';
@@ -22,6 +23,7 @@ export type ParsedHeaders = {
 };
 
 export type ParsedBody = {
+  calendar?: import('./ics.js').CalendarEvent | null;
   text: string | null;
   html: string | null; // sanitized
   quoted: string | null;
@@ -199,7 +201,17 @@ export function bodyFromParsed(mail: ParsedMail, cidUrl: (contentId: string) => 
   }
   const quoted = split.quoted;
   const snippet = makeSnippet(split.visible);
-  return { text, html, quoted, hasRemoteImages, snippet, attachments };
+  // Invitations: a text/calendar part (attached or inline) becomes an event card.
+  let calendar: import('./ics.js').CalendarEvent | null = null;
+  const ics = attachments.find((a) => /text\/calendar|application\/ics/i.test(a.contentType) || /\.ics$/i.test(a.filename));
+  if (ics && ics.content?.length) {
+    try {
+      calendar = parseIcs(ics.content.toString('utf8'));
+    } catch {
+      calendar = null;
+    }
+  }
+  return { text, html, quoted, hasRemoteImages, snippet, attachments, calendar };
 }
 
 function defaultFilename(contentType?: string): string {

@@ -15,13 +15,16 @@ export type ParsedQuery = {
   before: string | null; // ISO date
   after: string | null;
   newerThanDays: number | null;
+  olderThanDays: number | null;
+  larger: number | null; // bytes
+  smaller: number | null;
 };
 
 const roleAliases: Record<string, string> = { inbox: 'inbox', sent: 'sent', drafts: 'drafts', archive: 'archive', archived: 'archive', junk: 'junk', spam: 'junk', trash: 'trash', bin: 'trash', blocked: 'blocked', all: 'all', anywhere: 'all' };
 
 /** Parse a Gmail-like query string. */
 export function parseQuery(q: string): ParsedQuery {
-  const out: ParsedQuery = { terms: [], phrases: [], excluded: [], from: [], to: [], subject: [], hasAttachment: false, unread: null, pinned: null, inRole: null, account: null, before: null, after: null, newerThanDays: null };
+  const out: ParsedQuery = { terms: [], phrases: [], excluded: [], from: [], to: [], subject: [], hasAttachment: false, unread: null, pinned: null, inRole: null, account: null, before: null, after: null, newerThanDays: null, olderThanDays: null, larger: null, smaller: null };
   const tokens = q.match(/-?\w+:"[^"]*"|-?\w+:\S+|"[^"]*"|-\S+|\S+/g) || [];
   for (const raw of tokens) {
     let t = raw;
@@ -66,12 +69,28 @@ export function parseQuery(q: string): ParsedQuery {
           out.after = toIso(val);
           continue;
         case 'newer_than':
-        case 'newer': {
+        case 'newer':
+        case 'older_than':
+        case 'older': {
           const mm = val.match(/^(\d+)([dwmy])?$/i);
           if (mm) {
             const n = Number(mm[1]);
             const unit = (mm[2] || 'd').toLowerCase();
-            out.newerThanDays = unit === 'w' ? n * 7 : unit === 'm' ? n * 30 : unit === 'y' ? n * 365 : n;
+            const days = unit === 'w' ? n * 7 : unit === 'm' ? n * 30 : unit === 'y' ? n * 365 : n;
+            if (key.startsWith('newer')) out.newerThanDays = days;
+            else out.olderThanDays = days;
+          }
+          continue;
+        }
+        case 'larger':
+        case 'smaller':
+        case 'size': {
+          const mm = val.match(/^(\d+(?:\.\d+)?)\s*([kmg]?)b?$/i);
+          if (mm) {
+            const mult = { '': 1, k: 1024, m: 1024 * 1024, g: 1024 ** 3 }[mm[2].toLowerCase()] ?? 1;
+            const bytes = Math.round(Number(mm[1]) * mult);
+            if (key === 'smaller') out.smaller = bytes;
+            else out.larger = bytes;
           }
           continue;
         }
@@ -182,6 +201,18 @@ export function searchThreads(q: string, opts: { accountId: number | null; limit
   if (p.newerThanDays) {
     where.push('m.date >= ?');
     params.push(new Date(Date.now() - p.newerThanDays * 86400_000).toISOString());
+  }
+  if (p.olderThanDays) {
+    where.push('m.date < ?');
+    params.push(new Date(Date.now() - p.olderThanDays * 86400_000).toISOString());
+  }
+  if (p.larger) {
+    where.push('m.size >= ?');
+    params.push(p.larger);
+  }
+  if (p.smaller) {
+    where.push('m.size <= ?');
+    params.push(p.smaller);
   }
   // Operator-only searches without FTS text still work via plain SQL filters.
   if (!match && p.from.length) for (const f of p.from) { where.push("(lower(m.from_json) LIKE ?)"); params.push(`%${f.toLowerCase()}%`); }

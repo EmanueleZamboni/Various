@@ -321,6 +321,10 @@ on('POST', '/api/login', ({ body }) => {
 on('POST', '/api/logout', () => { setAuth(false, false); return empty(); });
 on('GET', '/api/me', () => json({ ok: true, totpEnabled: false, passkeys: 0, vapidPublicKey: 'BMockVapidKey' }));
 on('GET', '/api/passkeys', () => json({ passkeys: [] }));
+on('GET', '/api/google/status', () => json({ configured: false, connected: false, email: null, clientId: null }));
+on('GET', '/api/google/redirect-uri', () => json({ redirectUri: 'https://mail.example.com/api/google/callback' }));
+on('POST', '/api/google/credentials', () => fail(400, 'demo', 'Google Drive connects on the real server, not in the demo.'));
+on('POST', '/api/google/connect', () => fail(409, 'demo', 'Google Drive connects on the real server, not in the demo.'));
 on('POST', '/api/passkeys/register/options', () => fail(400, 'demo', 'Fingerprint sign-in works on the real server, not in the demo.'));
 on('POST', '/api/passkeys/login/options', () => fail(404, 'no_passkeys', 'No passkey in the demo. Password: password'));
 on('POST', '/api/me/password', ({ body }) => (body?.current === 'password' ? empty() : fail(400, 'bad_credentials', 'Current password is wrong.')));

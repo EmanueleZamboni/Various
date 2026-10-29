@@ -1,6 +1,7 @@
 import { db } from './db.js';
 import type { ThreadRow, MessageRow, FolderRow } from './mail/store.js';
 import type { Address } from './mail/parse.js';
+import { googleCalendarLink } from './mail/ics.js';
 
 export type AccountRow = {
   id: number;
@@ -117,7 +118,8 @@ export function attachmentView(a: AttachmentRow) {
   };
 }
 
-export function messageView(m: MessageRow, folder: FolderRow | undefined, body?: { text: string | null; html: string | null; quoted: string | null; has_remote_images: number } | null) {
+export function messageView(m: MessageRow, folder: FolderRow | undefined, body?: { text: string | null; html: string | null; quoted: string | null; has_remote_images: number; calendar_json?: string | null } | null) {
+  const calendar = body?.calendar_json ? parse<import('./mail/ics.js').CalendarEvent | null>(body.calendar_json, null) : null;
   const atts = db.prepare('SELECT * FROM attachments WHERE message_row = ? ORDER BY id').all(m.id) as AttachmentRow[];
   return {
     id: String(m.id),
@@ -143,6 +145,7 @@ export function messageView(m: MessageRow, folder: FolderRow | undefined, body?:
     attachments: atts.filter((a) => !a.is_inline || !a.content_id).map(attachmentView),
     listUnsubscribe: m.list_unsubscribe,
     knownSender: Boolean(db.prepare('SELECT 1 FROM contacts WHERE email = ? AND count >= 3').get(m.from_email)),
+    calendar: calendar ? { ...calendar, googleLink: googleCalendarLink(calendar) } : null,
     body: {
       html: body?.html ?? null,
       text: body?.text ?? null,

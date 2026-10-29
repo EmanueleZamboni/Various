@@ -147,6 +147,14 @@ export const api = {
     get: () => get<Settings>('/api/settings'),
     update: (s: DeepPartial<Settings>) => put<Settings>('/api/settings', s),
   },
+  google: {
+    status: () => get<{ configured: boolean; connected: boolean; email: string | null; clientId: string | null }>('/api/google/status'),
+    credentials: (clientId: string, clientSecret: string) => post<{ ok: true; redirectUri: string }>('/api/google/credentials', { clientId, clientSecret }),
+    redirectUri: () => get<{ redirectUri: string }>('/api/google/redirect-uri'),
+    connect: () => post<{ url: string }>('/api/google/connect'),
+    disconnect: () => post<void>('/api/google/disconnect'),
+    save: (attachmentId: string, convertTo?: string) => post<{ ok: true; id: string; webViewLink: string; converted: boolean }>('/api/google/save', { attachmentId, convertTo }),
+  },
   outbox: {
     list: () => get<{ items: OutboxItem[] }>('/api/outbox'),
     cancel: (id: string) => del<{ ok: true; draft: Draft }>(`/api/outbox/${id}`),

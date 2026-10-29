@@ -219,12 +219,13 @@ export function storeBody(messageRow: number, body: ParsedBody): void {
       | { id: number; thread_id: number; subject: string; from_json: string; to_json: string; cc_json: string; bcc_json: string }
       | undefined;
     if (!msg) return;
-    db.prepare('INSERT INTO bodies(message_row, text, html, quoted, has_remote_images) VALUES (?, ?, ?, ?, ?) ON CONFLICT(message_row) DO UPDATE SET text = excluded.text, html = excluded.html, quoted = excluded.quoted, has_remote_images = excluded.has_remote_images').run(
+    db.prepare('INSERT INTO bodies(message_row, text, html, quoted, has_remote_images, calendar_json) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(message_row) DO UPDATE SET text = excluded.text, html = excluded.html, quoted = excluded.quoted, has_remote_images = excluded.has_remote_images, calendar_json = excluded.calendar_json').run(
       messageRow,
       body.text,
       body.html,
       body.quoted,
       body.hasRemoteImages ? 1 : 0,
+      body.calendar ? JSON.stringify(body.calendar) : null,
     );
     const hasAtt = body.attachments.some((a) => !a.inline) ? 1 : 0;
     db.prepare('UPDATE messages SET body_fetched = 1, body_error = NULL, snippet = ?, has_attachments = ? WHERE id = ?').run(body.snippet, hasAtt, messageRow);

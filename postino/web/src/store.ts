@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Draft, ThreadAction } from './api/types';
+import type { Draft, ThreadAction, Attachment } from './api/types';
 
 export type Toast = {
   id: number;
@@ -50,6 +50,10 @@ type UIState = {
   dismissToast: (id: number) => void;
   shortcutsOpen: boolean;
   setShortcuts: (v: boolean) => void;
+  viewer: { attachments: Attachment[]; index: number } | null;
+  openViewer: (attachments: Attachment[], index: number) => void;
+  closeViewer: () => void;
+  setViewerIndex: (i: number) => void;
   pendingBlock: { email: string; name: string; threadId: string } | null;
   setPendingBlock: (v: UIState['pendingBlock']) => void;
   moveTarget: { threadIds: string[]; accountId: string } | null;
@@ -102,6 +106,10 @@ export const useUI = create<UIState>((set, get) => ({
   shortcutsOpen: false,
   setShortcuts: (v) => set({ shortcutsOpen: v }),
   pendingBlock: null,
+  viewer: null,
+  openViewer: (attachments, index) => set({ viewer: { attachments, index } }),
+  closeViewer: () => set({ viewer: null }),
+  setViewerIndex: (index) => set((s) => (s.viewer ? { viewer: { ...s.viewer, index } } : {})),
   setPendingBlock: (v) => set({ pendingBlock: v }),
   moveTarget: null,
   setMoveTarget: (v) => set({ moveTarget: v }),

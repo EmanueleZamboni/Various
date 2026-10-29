@@ -104,7 +104,7 @@ export function threadDetail(threadId: number) {
       byMsgId.set(r.message_id, r);
     }
   }
-  const bodyStmt = db.prepare('SELECT text, html, quoted, has_remote_images FROM bodies WHERE message_row = ?');
+  const bodyStmt = db.prepare('SELECT text, html, quoted, has_remote_images, calendar_json FROM bodies WHERE message_row = ?');
   const folderStmt = db.prepare('SELECT * FROM folders WHERE id = ?');
   const drafts = draftThreadIds();
   const messages = out.map((m) => messageView(m, folderStmt.get(m.folder_id) as FolderRow | undefined, bodyStmt.get(m.id) as never));
@@ -237,7 +237,7 @@ export function registerThreadRoutes(app: FastifyInstance): void {
   app.get<{ Params: { id: string; messageId: string } }>('/api/threads/:id/messages/:messageId', async (req, reply) => {
     const m = db.prepare('SELECT * FROM messages WHERE id = ? AND thread_id = ?').get(Number(req.params.messageId), Number(req.params.id)) as MessageRow | undefined;
     if (!m) return reply.code(404).send({ error: 'not_found' });
-    const body = db.prepare('SELECT text, html, quoted, has_remote_images FROM bodies WHERE message_row = ?').get(m.id) as never;
+    const body = db.prepare('SELECT text, html, quoted, has_remote_images, calendar_json FROM bodies WHERE message_row = ?').get(m.id) as never;
     const folder = db.prepare('SELECT * FROM folders WHERE id = ?').get(m.folder_id) as FolderRow | undefined;
     if (!m.body_fetched) manager.get(m.account_id)?.kickBodyLoop();
     return messageView(m, folder, body);

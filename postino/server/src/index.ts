@@ -15,6 +15,7 @@ import { registerComposeRoutes } from './routes/compose.js';
 import { registerMiscRoutes } from './routes/misc.js';
 import { registerSignatureRoutes } from './routes/signatures.js';
 import { registerPasskeyRoutes } from './passkeys.js';
+import { registerGoogleRoutes } from './google.js';
 import { manager } from './mail/manager.js';
 import { startPushBridge, vapidKeys } from './push.js';
 import { startOutbox } from './mail/outbox.js';
@@ -87,6 +88,7 @@ export async function buildApp() {
   registerMiscRoutes(app);
   registerSignatureRoutes(app);
   registerPasskeyRoutes(app);
+  registerGoogleRoutes(app);
 
   // Serve the built web app (SPA fallback to index.html).
   if (fs.existsSync(path.join(config.webDist, 'index.html'))) {

@@ -11,6 +11,7 @@ import { ThreadList } from './ThreadList';
 import { Reader } from './Reader';
 import { Compose } from './Compose';
 import { BlockConfirm, MovePicker, ShortcutsSheet } from './Sheets';
+import { AttachmentViewer } from './AttachmentViewer';
 import { SettingsPage } from './Settings';
 
 export function Shell({ me, forcedView, onLogout }: { me?: Me; forcedView?: string; onLogout: () => void }) {
@@ -138,6 +139,7 @@ export function Shell({ me, forcedView, onLogout }: { me?: Me; forcedView?: stri
       {ui.pendingBlock && <BlockConfirm />}
       {ui.moveTarget && <MovePicker view={view} />}
       {ui.shortcutsOpen && <ShortcutsSheet />}
+      <AttachmentViewer />
     </div>
   );
 }

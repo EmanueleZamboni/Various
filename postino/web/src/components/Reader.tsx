@@ -354,6 +354,7 @@ function MessageCard({ message: m, thread, accountColor, myEmails, expanded, sin
                   <div className="search-pop" style={{ left: 'auto', right: 0, width: 200 }} onMouseLeave={() => setMenu(false)}>
                     <button className="sug" onClick={() => { setMenu(false); onReply('replyAll'); }}><Icon name="replyAll" size={16} />Reply all</button>
                     <button className="sug" onClick={() => { setMenu(false); onReply('forward'); }}><Icon name="forward" size={16} />Forward</button>
+                    <button className="sug" onClick={() => { setMenu(false); printMessage(m); }}><Icon name="draft" size={16} />Print</button>
                     <button className="sug" onClick={() => { setMenu(false); void act({ threadIds: [m.threadId], action: m.flagged ? 'unpin' : 'pin', view: 'inbox' }); }}><Icon name="pin" size={16} />{m.flagged ? 'Unpin' : 'Pin'}</button>
                     {!me && (
                       <button className="sug" onClick={() => { setMenu(false); onBlock(); }}><Icon name="block" size={16} />Block {m.from.email}</button>
@@ -400,7 +401,7 @@ function MessageCard({ message: m, thread, accountColor, myEmails, expanded, sin
         )}
         {m.attachments.filter((a) => !a.inline).length > 0 && (
           <div className="atts">
-            {m.attachments.filter((a) => !a.inline).map((a) => <AttachmentChip key={a.id} a={a} />)}
+            {m.attachments.filter((a) => !a.inline).map((a) => <AttachmentChip key={a.id} a={a} all={m.attachments.filter((x) => !x.inline)} />)}
           </div>
         )}
         {m.listUnsubscribe && !me && (
@@ -414,20 +415,50 @@ function MessageCard({ message: m, thread, accountColor, myEmails, expanded, sin
   );
 }
 
-export function AttachmentChip({ a }: { a: Attachment }) {
+export function AttachmentChip({ a, all }: { a: Attachment; all?: Attachment[] }) {
+  const openViewer = useUI((s) => s.openViewer);
   const ext = (a.filename.split('.').pop() ?? '').toLowerCase();
   const cls = ext === 'pdf' ? 'pdf' : ['png', 'jpg', 'jpeg', 'gif', 'webp', 'heic'].includes(ext) ? 'img' : ['doc', 'docx', 'odt'].includes(ext) ? 'doc' : ['xls', 'xlsx', 'csv'].includes(ext) ? 'xls' : '';
-  const viewable = cls === 'pdf' || cls === 'img';
+  const list = all ?? [a];
   return (
-    <a className="att" href={viewable ? `${a.url}?inline=1` : a.url} target={viewable ? '_blank' : undefined} rel="noopener" download={viewable ? undefined : a.filename} title={a.filename}>
+    <button type="button" className="att" title={a.filename} onClick={() => openViewer(list, Math.max(0, list.findIndex((x) => x.id === a.id)))}>
       <span className={`att-ico ${cls}`}>{ext.slice(0, 4).toUpperCase() || 'FILE'}</span>
       <span className="att-name">
         <span>{a.filename}</span>
         <small>{formatBytes(a.size)}</small>
       </span>
-      <Icon name={viewable ? 'external' : 'download'} size={15} style={{ color: 'var(--faint)', flex: 'none' }} />
-    </a>
+      <Icon name="eye" size={15} style={{ color: 'var(--faint)', flex: 'none' }} />
+    </button>
   );
+}
+
+/** Print one message: its header plus the sanitized body, in a plain page. */
+export function printMessage(m: Message) {
+  const esc = (t: string) => t.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string));
+  const body = (m.body.html || '').replace(/\ssrc=""/g, '').replace(/data-remote-src=/g, 'src=');
+  const who = (a: { name: string; email: string }) => (a.name ? `${esc(a.name)} <${esc(a.email)}>` : esc(a.email));
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(m.subject || '(no subject)')}</title>
+    <style>body{font:14px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:#111;margin:32px}h1{font-size:20px;margin:0 0 12px}table.h td{padding:2px 10px 2px 0;color:#555;vertical-align:top}table.h td:first-child{font-weight:600;color:#222}hr{border:0;border-top:1px solid #ddd;margin:16px 0}img{max-width:100%}blockquote{border-left:2px solid #ccc;margin:0;padding-left:1ex;color:#555}</style></head>
+    <body><h1>${esc(m.subject || '(no subject)')}</h1>
+    <table class="h"><tr><td>From</td><td>${who(m.from)}</td></tr><tr><td>To</td><td>${m.to.map(who).join(', ')}</td></tr>${m.cc.length ? `<tr><td>Cc</td><td>${m.cc.map(who).join(', ')}</td></tr>` : ''}<tr><td>Date</td><td>${esc(new Date(m.date).toLocaleString())}</td></tr>${m.attachments.length ? `<tr><td>Attachments</td><td>${m.attachments.map((a) => esc(a.filename)).join(', ')}</td></tr>` : ''}</table>
+    <hr>${body || `<pre style="white-space:pre-wrap">${esc(m.body.text || '')}</pre>`}</body></html>`;
+  const frame = document.createElement('iframe');
+  frame.style.position = 'fixed';
+  frame.style.right = '0';
+  frame.style.bottom = '0';
+  frame.style.width = '0';
+  frame.style.height = '0';
+  frame.style.border = '0';
+  frame.srcdoc = html;
+  frame.onload = () => {
+    try {
+      frame.contentWindow?.focus();
+      frame.contentWindow?.print();
+    } finally {
+      window.setTimeout(() => frame.remove(), 60_000);
+    }
+  };
+  document.body.appendChild(frame);
 }
 
 const FRAME_CSS = `

@@ -264,6 +264,7 @@ if (!hasColumn('accounts', 'initial_sync_done')) {
 }
 if (!hasColumn('accounts', 'aliases')) db.exec(`ALTER TABLE accounts ADD COLUMN aliases TEXT NOT NULL DEFAULT '[]'`);
 if (!hasColumn('accounts', 'folder_overrides')) db.exec(`ALTER TABLE accounts ADD COLUMN folder_overrides TEXT NOT NULL DEFAULT '{}'`);
+if (!hasColumn('bodies', 'calendar_json')) db.exec(`ALTER TABLE bodies ADD COLUMN calendar_json TEXT`);
 if (!hasColumn('accounts', 'notify')) db.exec(`ALTER TABLE accounts ADD COLUMN notify TEXT NOT NULL DEFAULT 'default'`);
 
 // Plain-text signatures from the first release become rich signatures.
