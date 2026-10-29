@@ -45,7 +45,8 @@ export async function buildApp() {
 
   // Serve the built web app (SPA fallback to index.html).
   if (fs.existsSync(path.join(config.webDist, 'index.html'))) {
-    await app.register(fastifyStatic, { root: config.webDist, prefix: '/', wildcard: false, maxAge: '1h', immutable: false });
+    // wildcard: true serves whatever is on disk now, so a rebuilt web/dist works without a restart.
+    await app.register(fastifyStatic, { root: config.webDist, prefix: '/', wildcard: true, maxAge: '1h', immutable: false });
     app.setNotFoundHandler((req, reply) => {
       if (req.url.startsWith('/api/')) return reply.code(404).send({ error: 'not_found' });
       reply.header('Cache-Control', 'no-cache');
