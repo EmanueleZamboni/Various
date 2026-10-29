@@ -309,6 +309,10 @@ export class AccountSync {
     const tx = db.transaction((rows: ListResponse[]) => {
       for (const f of rows) {
         if (f.flags.has('\\Noselect') || f.flags.has('\\NonExistent')) continue;
+        // Gmail's "Starred" and "Important" are views over mail that already lives in the
+        // inbox / All Mail: syncing them would only download every message a second time.
+        const su = (f.specialUse || '').toLowerCase();
+        if (su === '\\flagged' || su === '\\important') continue;
         seen.add(f.path);
         let role = detectRole(f);
         const forced = byPath.get(f.path);
