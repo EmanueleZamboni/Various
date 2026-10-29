@@ -97,6 +97,21 @@ Open the site in Chrome on Android → menu → **Add to Home screen** (or
 "Install app"). In Postino → Settings → Notifications → **Enable**. New mail
 from people then shows up as a normal notification, even with the app closed.
 
+### 5. Google Drive (optional, once)
+
+"Save to Drive" and "Open in Google Docs / Sheets / Slides" need your own
+Google OAuth client (free, about 5 minutes). Settings → Google Drive in
+Postino shows the same steps with the exact redirect URI to paste:
+
+1. Open [console.cloud.google.com/apis/credentials](https://console.cloud.google.com/apis/credentials) in any project.
+2. APIs & Services → Library → enable the **Google Drive API**.
+3. Create credentials → **OAuth client ID** → type **Web application**; under
+   "Authorized redirect URIs" add `https://mail.yourdomain.it/api/google/callback`.
+4. If the consent screen is in "Testing", add your Google address as a test user.
+5. Paste the client ID and secret into Settings → Google Drive and press
+   **Connect Google account**. Postino only asks for access to files it creates
+   (`drive.file`), never to your whole Drive.
+
 ### Updating
 
 ```bash
