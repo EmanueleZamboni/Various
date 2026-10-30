@@ -47,7 +47,15 @@ export async function buildApp() {
     if (req.method !== 'GET' && req.method !== 'HEAD') {
       const origin = req.headers.origin;
       const host = req.host;
-      if (origin && host && new URL(origin).host !== host) {
+      let originHost: string | null = null;
+      if (origin) {
+        try {
+          originHost = new URL(origin).host;
+        } catch {
+          return reply.code(403).send({ error: 'forbidden', message: 'Cross-site request refused.' });
+        }
+      }
+      if (originHost !== null && host && originHost !== host) {
         return reply.code(403).send({ error: 'forbidden', message: 'Cross-site request refused.' });
       }
       const site = req.headers['sec-fetch-site'];
@@ -63,7 +71,8 @@ export async function buildApp() {
   app.addHook('onSend', async (req, reply) => {
     reply.header('X-Content-Type-Options', 'nosniff');
     reply.header('Referrer-Policy', 'no-referrer');
-    reply.header('X-Frame-Options', 'DENY');
+    // Pages are never framed (CSP frame-ancestors 'none'); inline attachments are framed by our own viewer.
+    reply.header('X-Frame-Options', req.routeOptions?.url === '/api/attachments/:id' ? 'SAMEORIGIN' : 'DENY');
     reply.header('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()');
     if (!req.url.startsWith('/api/')) {
       reply.header(

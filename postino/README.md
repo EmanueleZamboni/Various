@@ -153,7 +153,7 @@ is needed to read the stored account passwords.
 ## If something goes wrong
 
 - **Lost the setup code** (first start only): `docker compose logs postino | grep -i "setup code"`, or `cat data/setup-code.txt`.
-- **Forgot the Postino password**: `docker compose exec postino node scripts/reset-password.mjs` (signs every device out and turns 2FA off; passkeys keep working).
+- **Forgot the Postino password**: `docker compose exec postino node scripts/reset-password.mjs` (signs every device out, turns 2FA off and removes fingerprint sign-ins).
 - **An account shows "Login refused"**: open Settings → Accounts → Edit, re-enter the mailbox password. For Gmail/iCloud use an *app password*.
 - **"Certificate problem"** on a provider with a bad TLS certificate: add `POSTINO_TLS_INSECURE=1` to `.env` (only if you trust the network) and `docker compose up -d`.
 - **No notifications on the phone**: the site must be opened over HTTPS and added to the home screen; then Settings → Notifications → Enable, and allow notifications in Android's prompt. "Send test" shows whether the phone is registered.

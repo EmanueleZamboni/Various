@@ -8,7 +8,7 @@ import {
   type AuthenticationResponseJSON,
 } from '@simplewebauthn/server';
 import { db } from './db.js';
-import { issueSession } from './auth.js';
+import { issueSession, recentlyAuthenticated } from './auth.js';
 import { log } from './log.js';
 
 /**
@@ -51,7 +51,9 @@ export function listPasskeys() {
 export function registerPasskeyRoutes(app: FastifyInstance): void {
   app.get('/api/passkeys', async () => ({ passkeys: listPasskeys() }));
 
-  app.post('/api/passkeys/register/options', async (req) => {
+  app.post<{ Body: { password?: string } }>('/api/passkeys/register/options', async (req, reply) => {
+    // Adding a device that can unlock the mailbox needs a fresh sign-in or the password.
+    if (!recentlyAuthenticated(req, req.body?.password)) return reply.code(403).send({ error: 'reauth_required', message: 'Enter your Postino password to add a device.' });
     sweep();
     const { rpID } = relyingParty(req);
     const existing = db.prepare('SELECT id, transports FROM passkeys').all() as { id: string; transports: string }[];

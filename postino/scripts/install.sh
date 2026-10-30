@@ -9,6 +9,8 @@
 # (automatic HTTPS). Safe to run again: existing data and .env are kept.
 set -euo pipefail
 
+main() {
+
 REPO="${POSTINO_REPO:-https://github.com/emanuelezamboni/various.git}"
 BRANCH="${POSTINO_BRANCH:-main}"
 DIR="${POSTINO_DIR:-$HOME/various}"
@@ -103,6 +105,7 @@ EOF
   chmod 600 "$APP/.env"
 fi
 mkdir -p "$APP/data"
+sudo chown 1000:1000 "$APP/data" 2>/dev/null || true   # the container runs as uid 1000
 
 # ---- 6. Keep the server patched and backed up automatically -------------------------------
 if command -v apt-get >/dev/null; then
@@ -147,3 +150,7 @@ Useful later (from $APP):
   git pull && docker compose up -d --build   update
   scripts/backup.sh                   backup (see the comment inside for nightly cron)
 EOF
+}
+
+# Wrapped in a function so a half-downloaded script (curl | bash) runs nothing.
+main "$@"

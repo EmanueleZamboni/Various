@@ -30,6 +30,7 @@ const tx = db.transaction(() => {
   if (row) db.prepare('UPDATE auth SET password_hash = ?, totp_secret = NULL, totp_pending = NULL WHERE id = 1').run(stored);
   else db.prepare('INSERT INTO auth(id, password_hash) VALUES (1, ?)').run(stored);
   db.prepare('DELETE FROM sessions').run();
+  db.prepare('DELETE FROM passkeys').run();
 });
 tx();
-console.log('Password replaced. Every device was signed out and two-step verification is off. Passkeys still work.');
+console.log('Password replaced. Every device was signed out, two-step verification is off and fingerprint sign-ins were removed (add them again in Settings).');

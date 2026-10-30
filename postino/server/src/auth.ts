@@ -64,6 +64,21 @@ export function issueSession(req: FastifyRequest, reply: FastifyReply): void {
   reply.setCookie(COOKIE, token, { path: '/', httpOnly: true, sameSite: 'lax', secure: cookieSecure(req), expires });
 }
 
+/** Minutes since this session was created by a password or passkey sign-in (Infinity when unknown). */
+export function sessionAgeMinutes(req: FastifyRequest): number {
+  const token = req.cookies?.[COOKIE];
+  if (!token) return Infinity;
+  const row = db.prepare('SELECT created_at FROM sessions WHERE token_hash = ?').get(sha256(token)) as { created_at: string } | undefined;
+  return row ? (Date.now() - new Date(row.created_at).getTime()) / 60_000 : Infinity;
+}
+
+/** True when the caller proved the password just now (fresh session) or sent it with the request. */
+export function recentlyAuthenticated(req: FastifyRequest, password?: string): boolean {
+  if (sessionAgeMinutes(req) <= 15) return true;
+  const row = authRow();
+  return !!row && !!password && verifyPassword(password, row.password_hash);
+}
+
 export function isAuthenticated(req: FastifyRequest): boolean {
   const token = req.cookies?.[COOKIE];
   if (!token) return false;

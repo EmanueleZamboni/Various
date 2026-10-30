@@ -80,7 +80,7 @@ export const api = {
   },
   passkeys: {
     list: () => get<{ passkeys: Passkey[] }>('/api/passkeys'),
-    registerOptions: () => post<any>('/api/passkeys/register/options'),
+    registerOptions: (password?: string) => post<any>('/api/passkeys/register/options', password ? { password } : undefined),
     registerVerify: (response: unknown, name: string) => post<{ ok: true; passkeys: Passkey[] }>('/api/passkeys/register/verify', { response, name }),
     remove: (id: string) => del<void>(`/api/passkeys/${encodeURIComponent(id)}`),
     loginOptions: () => post<any>('/api/passkeys/login/options'),

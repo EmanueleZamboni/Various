@@ -659,12 +659,26 @@ function PasskeysCard() {
   const { data } = useQuery({ queryKey: ['passkeys'], queryFn: api.passkeys.list });
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  const [pw, setPw] = useState('');
+  const [needPw, setNeedPw] = useState(false);
   const supported = typeof window !== 'undefined' && browserSupportsWebAuthn();
   const add = async () => {
     setErr('');
     setBusy(true);
     try {
-      const options = await api.passkeys.registerOptions();
+      let options;
+      try {
+        options = await api.passkeys.registerOptions(pw || undefined);
+      } catch (e) {
+        if (e instanceof ApiError && e.code === 'reauth_required') {
+          setNeedPw(true);
+          if (pw) setErr('Wrong password.');
+          return;
+        }
+        throw e;
+      }
+      setNeedPw(false);
+      setPw('');
       const response = await startRegistration({ optionsJSON: options });
       const name = /Android/i.test(navigator.userAgent) ? 'Android phone' : /iPhone|iPad/i.test(navigator.userAgent) ? 'iPhone' : /Mac/i.test(navigator.userAgent) ? 'Mac' : /Windows/i.test(navigator.userAgent) ? 'Windows PC' : 'This device';
       await api.passkeys.registerVerify(response, name);
@@ -698,6 +712,12 @@ function PasskeysCard() {
         </div>
         {supported && <button className="btn btn-ghost" onClick={() => void add()} disabled={busy}>{busy ? 'Waiting…' : 'Add this device'}</button>}
       </div>
+      {needPw && (
+        <form className="row-inline" onSubmit={(e) => { e.preventDefault(); void add(); }}>
+          <input className="input" type="password" autoComplete="current-password" placeholder="Postino password" aria-label="Postino password" value={pw} onChange={(e) => setPw(e.target.value)} autoFocus />
+          <button type="submit" className="btn btn-primary" disabled={busy || !pw}>Confirm</button>
+        </form>
+      )}
       {list.length > 0 && (
         <ul className="plain-list">
           {list.map((p) => (
