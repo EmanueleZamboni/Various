@@ -42,12 +42,12 @@
   --faint: #9aa39e;
   --line: #e4e9e6;
   --line-strong: #cfd6d2;
-  --pine: #0a47b8;
-  --pine-ink: #06327f;
-  --pine-soft: #e3ebfa;
-  --pine-tint: #f2f6fd;
-  --postal: #ffd100;
-  --postal-ink: #0b2559;
+  --pine: #2b3d90;
+  --pine-ink: #14215c;
+  --pine-soft: #e6e9f6;
+  --pine-tint: #f3f5fb;
+  --postal: #f5e000;
+  --postal-ink: #14215c;
   --rose: #c9414f;
   --rose-soft: #fbe9eb;
   --amber: #b7791f;
@@ -3125,11 +3125,11 @@ textarea:focus-visible {
   background: var(--postal) !important;
   color: var(--postal-ink) !important;
   font-weight: 700;
-  box-shadow: 0 1px 0 rgba(11, 37, 89, 0.25), 0 6px 16px rgba(255, 190, 0, 0.35);
+  box-shadow: 0 1px 0 rgba(20, 33, 92, 0.3), 0 6px 16px rgba(220, 200, 0, 0.35);
 }
 .compose-btn:hover,
 .fab:hover {
-  background: #ffc400 !important;
+  background: #ecd600 !important;
 }
 .brand-name {
   color: var(--postal-ink);

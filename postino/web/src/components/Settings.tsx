@@ -879,6 +879,14 @@ function GoogleSettings() {
               <button className="btn btn-ghost" onClick={() => disconnect.mutate()} disabled={disconnect.isPending}>Disconnect</button>
             </div>
           </div>
+        ) : data?.managed ? (
+          <div className="card">
+            <b>Connect your Google account</b>
+            <p className="help" style={{ margin: 0 }}>Opens Google's sign-in. Postino only gets access to the files it saves, never to the rest of your Drive.</p>
+            <div className="row-inline">
+              <button type="button" className="btn btn-primary" onClick={() => void connect()}>Connect Google Drive</button>
+            </div>
+          </div>
         ) : (
           <>
             <div className="card">

@@ -1,23 +1,15 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <!-- Postino: a cheeky envelope in a postman's cap, in a hurry -->
-  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
-    <g stroke="#0a47b8" stroke-width="2.6" opacity=".6">
-      <path d="M3 36h7"/><path d="M5 43h6"/><path d="M8 50h5"/>
-    </g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <g stroke="#2b3d90" stroke-width="2.6"><path d="M2 35l8-1"/><path d="M4 42.5l7-1"/><path d="M7 50l6-1"/></g>
     <g transform="rotate(-10 34 38)">
-      <rect x="13" y="24" width="42" height="29" rx="6" fill="#ffd100" stroke="#0b2559" stroke-width="2.8"/>
-      <path d="M14.5 27 34 41l19.5-14" stroke="#0b2559" stroke-width="2.6"/>
-      <ellipse cx="24.5" cy="30" rx="2.1" ry="2.6" fill="#0b2559"/>
-      <ellipse cx="43.5" cy="30" rx="2.1" ry="2.6" fill="#0b2559"/>
-      <circle cx="25.2" cy="29.1" r=".7" fill="#fff"/>
-      <circle cx="44.2" cy="29.1" r=".7" fill="#fff"/>
-      <path d="M28.5 46.5q5.5 4 11 0" stroke="#0b2559" stroke-width="2.4"/>
-      <ellipse cx="21" cy="42" rx="2.6" ry="1.5" fill="#f59a7a" stroke="none"/>
-      <ellipse cx="47" cy="42" rx="2.6" ry="1.5" fill="#f59a7a" stroke="none"/>
-      <path d="M17 24.5c1.5-8.5 9-13 17-13s15.5 4.5 17 13z" fill="#0a47b8" stroke="#0b2559" stroke-width="2.6"/>
-      <path d="M17.5 21.5h33" stroke="#ffd100" stroke-width="3.2"/>
-      <path d="M45 24.5c4 0 9 .5 11.5 2" stroke="#0b2559" stroke-width="2.8"/>
-      <circle cx="34" cy="16.5" r="2.3" fill="#ffd100" stroke="#0b2559" stroke-width="1.6"/>
-    </g>
-  </g>
-</svg>
+      <rect x="13" y="24" width="42" height="29" rx="6" fill="#f5e000" stroke="#14215c" stroke-width="2.8"/>
+      <path d="M14.5 27 34 41l19.5-14" stroke="#14215c" stroke-width="2.6"/>
+      <ellipse cx="24.5" cy="30" rx="2.1" ry="2.6" fill="#14215c"/><ellipse cx="43.5" cy="30" rx="2.1" ry="2.6" fill="#14215c"/>
+      <circle cx="25.2" cy="29.1" r=".7" fill="#fff"/><circle cx="44.2" cy="29.1" r=".7" fill="#fff"/>
+      <path d="M28.5 46.5q5.5 4 11 0" stroke="#14215c" stroke-width="2.4"/>
+      <ellipse cx="21" cy="42" rx="2.6" ry="1.5" fill="#f39a7c" stroke="none"/><ellipse cx="47" cy="42" rx="2.6" ry="1.5" fill="#f39a7c" stroke="none"/>
+      <path d="M17 24.5c1.5-8.5 9-13 17-13s15.5 4.5 17 13z" fill="#2b3d90" stroke="#14215c" stroke-width="2.6"/>
+      <path d="M17.5 21.5h33" stroke="#f5e000" stroke-width="3.2"/>
+      <path d="M45 24.5c4 0 9 .5 11.5 2" stroke="#14215c" stroke-width="2.8"/>
+      <g transform="translate(34 16.6)" fill="none" stroke="#f5e000" stroke-linecap="round" stroke-linejoin="round">
+  <circle r="2.1" stroke-width="1.2"/><path d="M-2.1 0h-1.6M2.1 0c1.5 0 2.6-.9 3.3-2.2l.2 4.4C4.9 1 3.7 0 2.1 0" stroke-width="1.1"/></g>
+    </g></g></svg>

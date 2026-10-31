@@ -134,8 +134,14 @@ Postino shows the same steps with the exact redirect URI to paste:
 3. Create credentials → **OAuth client ID** → type **Web application**; under
    "Authorized redirect URIs" add `https://mail.yourdomain.it/api/google/callback`.
 4. If the consent screen is in "Testing", add your Google address as a test user.
-5. Paste the client ID and secret into Settings → Google Drive and press
-   **Connect Google account**. Postino only asks for access to files it creates
+5. Either paste the client ID and secret into Settings → Google Drive, or,
+   to make it a single **Connect Google Drive** button for you and your
+   colleagues, put them in `.env` as `POSTINO_GOOGLE_CLIENT_ID` and
+   `POSTINO_GOOGLE_CLIENT_SECRET` and run `docker compose up -d`. For a
+   colleague's server, add their `https://<their address>/api/google/callback`
+   to the same client's redirect URIs and give them the two values.
+   On the consent screen, set the app to **In production** so connections
+   don't expire after 7 days (`drive.file` needs no Google review). Postino only asks for access to files it creates
    (`drive.file`), never to your whole Drive.
 
 ### Updating

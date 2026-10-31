@@ -150,7 +150,7 @@ export const api = {
     update: (s: DeepPartial<Settings>) => put<Settings>('/api/settings', s),
   },
   google: {
-    status: () => get<{ configured: boolean; connected: boolean; email: string | null; clientId: string | null }>('/api/google/status'),
+    status: () => get<{ configured: boolean; managed?: boolean; connected: boolean; email: string | null; clientId: string | null }>('/api/google/status'),
     credentials: (clientId: string, clientSecret: string) => post<{ ok: true; redirectUri: string }>('/api/google/credentials', { clientId, clientSecret }),
     redirectUri: () => get<{ redirectUri: string }>('/api/google/redirect-uri'),
     connect: () => post<{ url: string }>('/api/google/connect'),

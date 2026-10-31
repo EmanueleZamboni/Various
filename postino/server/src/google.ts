@@ -23,7 +23,16 @@ const SCOPE = 'https://www.googleapis.com/auth/drive.file openid email';
 type Creds = { clientId: string; clientSecret: string }; // secret stored encrypted
 type Tokens = { access: string; refresh: string; expiresAt: number; email: string };
 
+/** Postino registered once with Google (POSTINO_GOOGLE_CLIENT_ID/SECRET in .env): connecting is then one button. */
+function managedCreds(): Creds | null {
+  const id = (process.env.POSTINO_GOOGLE_CLIENT_ID || '').trim();
+  const secret = (process.env.POSTINO_GOOGLE_CLIENT_SECRET || '').trim();
+  return id && secret ? { clientId: id, clientSecret: secret } : null;
+}
+
 function creds(): Creds | null {
+  const managed = managedCreds();
+  if (managed) return managed;
   const c = getSetting<{ clientId: string; secretEnc: string } | null>('google.creds', null);
   if (!c) return null;
   try {
@@ -104,7 +113,7 @@ export function registerGoogleRoutes(app: FastifyInstance): void {
   app.get('/api/google/status', async () => {
     const c = creds();
     const t = tokens();
-    return { configured: Boolean(c), connected: Boolean(c && t), email: t?.email || null, clientId: c?.clientId || null };
+    return { configured: Boolean(c), managed: Boolean(managedCreds()), connected: Boolean(c && t), email: t?.email || null, clientId: c?.clientId || null };
   });
 
   // Step 1: the OAuth client the user created in Google Cloud.
