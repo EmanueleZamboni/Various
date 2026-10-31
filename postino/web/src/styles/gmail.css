@@ -2198,3 +2198,194 @@ a.btn {
     width: 100% !important;
   }
 }
+
+/* ---------- Invitations: Going? Yes / Maybe / No ---------- */
+.rsvp {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+.rsvp-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.rsvp-q {
+  font-size: 14px;
+  color: var(--mute);
+  margin-right: 4px;
+}
+.rsvp-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 32px;
+  padding: 0 16px;
+  border-radius: 16px;
+  box-shadow: inset 0 0 0 1px var(--faint);
+  font: 500 14px/20px var(--font-display);
+  color: var(--mute);
+  background: #fff;
+}
+.rsvp-btn:hover:not(:disabled) {
+  background: rgba(68, 71, 70, 0.08);
+}
+.rsvp-btn.on {
+  background: var(--pine-soft);
+  color: #041e49;
+  box-shadow: none;
+}
+.rsvp-cal {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #188038;
+}
+.rsvp-cal.busy {
+  color: var(--amber);
+}
+
+/* ---------- Side panel (Google Tasks) ---------- */
+.side-panel {
+  position: fixed;
+  z-index: 35;
+  top: calc(64px + env(safe-area-inset-top, 0px));
+  right: 16px;
+  bottom: 16px;
+  width: 320px;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: var(--shadow-pop);
+  overflow: hidden;
+}
+@media (min-width: 1101px) {
+  .shell[data-tasks='open'] .main-card {
+    margin-right: 352px;
+  }
+  .shell[data-tasks='open'] .side-panel {
+    box-shadow: none;
+  }
+}
+.sp-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 8px 4px 20px;
+  font: 400 18px/24px var(--font-display);
+}
+.sp-head b {
+  font-weight: 400;
+}
+.sp-add {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 4px 12px 8px;
+  padding: 0 12px;
+  height: 40px;
+  border-radius: 20px;
+  color: var(--pine);
+}
+.sp-add:focus-within {
+  background: var(--pine-tint);
+}
+.sp-add input {
+  flex: 1;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font-size: 14px;
+  color: var(--ink);
+}
+.sp-add input::placeholder {
+  color: var(--pine);
+}
+.sp-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 12px 16px;
+}
+.sp-list .help {
+  padding: 8px;
+}
+.sp-task {
+  display: flex;
+  gap: 12px;
+  padding: 10px 8px;
+  border-radius: 8px;
+}
+.sp-task:hover {
+  background: var(--hover);
+}
+.sp-check {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 2px var(--mute);
+}
+.sp-check:hover {
+  box-shadow: inset 0 0 0 2px var(--pine);
+  background: var(--pine-tint);
+}
+.sp-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font-size: 14px;
+}
+.sp-text small {
+  color: var(--mute);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sp-due {
+  color: var(--pine) !important;
+}
+.top-right .ib.on {
+  background: var(--pine-soft);
+  color: #041e49;
+}
+@media (max-width: 760px) {
+  .side-panel {
+    inset: 0;
+    width: auto;
+    border-radius: 0;
+    z-index: 50;
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+  .top-right > .ib {
+    display: none;
+  }
+}
+
+/* Google features in Settings */
+.g-features {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+}
+.g-feat-list {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.g-feat {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 14px;
+  color: var(--faint);
+}
+.g-feat.on {
+  color: #188038;
+}

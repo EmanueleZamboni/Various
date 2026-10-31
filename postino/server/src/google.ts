@@ -19,10 +19,18 @@ import { log } from './log.js';
 const AUTH_BASE = process.env.POSTINO_GOOGLE_AUTH_BASE || 'https://accounts.google.com/o/oauth2/v2/auth';
 const TOKEN_URL = process.env.POSTINO_GOOGLE_TOKEN_URL || 'https://oauth2.googleapis.com/token';
 const API_BASE = process.env.POSTINO_GOOGLE_API_BASE || 'https://www.googleapis.com';
-const SCOPE = 'https://www.googleapis.com/auth/drive.file openid email';
+const SCOPE = [
+  'https://www.googleapis.com/auth/drive.file',
+  'https://www.googleapis.com/auth/calendar.events',
+  'https://www.googleapis.com/auth/contacts.readonly',
+  'https://www.googleapis.com/auth/contacts.other.readonly',
+  'https://www.googleapis.com/auth/tasks',
+  'openid',
+  'email',
+].join(' ');
 
 type Creds = { clientId: string; clientSecret: string }; // secret stored encrypted
-type Tokens = { access: string; refresh: string; expiresAt: number; email: string };
+type Tokens = { access: string; refresh: string; expiresAt: number; email: string; scope?: string };
 
 /** Postino registered once with Google (POSTINO_GOOGLE_CLIENT_ID/SECRET in .env): connecting is then one button. */
 function managedCreds(): Creds | null {
@@ -133,6 +141,35 @@ export async function gmailAccessToken(account: { id: number; password_enc: stri
   return access;
 }
 
+/** Which Google features the current connection allows (an older connection may only have Drive). */
+export function googleFeatures(): { drive: boolean; calendar: boolean; contacts: boolean; tasks: boolean } {
+  const t = tokens();
+  if (!t || !creds()) return { drive: false, calendar: false, contacts: false, tasks: false };
+  const s = t.scope ?? 'https://www.googleapis.com/auth/drive.file';
+  return { drive: s.includes('/auth/drive.file'), calendar: s.includes('/auth/calendar'), contacts: s.includes('/auth/contacts'), tasks: s.includes('/auth/tasks') };
+}
+
+/** A JSON call to a Google API with the connected account's token. */
+export async function googleApi<T = Record<string, unknown>>(url: string, init: RequestInit = {}): Promise<T> {
+  const token = await accessToken();
+  const headers: Record<string, string> = { authorization: `Bearer ${token}`, ...((init.headers as Record<string, string>) || {}) };
+  if (init.body && !headers['content-type']) headers['content-type'] = 'application/json';
+  const res = await fetch(url, { ...init, headers });
+  if (res.status === 204) return {} as T;
+  const json = (await res.json().catch(() => ({}))) as T & { error?: { message?: string } };
+  if (!res.ok) throw Object.assign(new Error((json as { error?: { message?: string } }).error?.message || `Google answered ${res.status}`), { statusCode: res.status === 401 || res.status === 403 ? 409 : 502 });
+  return json;
+}
+
+let connectedHook: () => Promise<void> = async () => undefined;
+/** Runs after Google is (re)connected, e.g. to pull Google Contacts straight away. */
+export function setGoogleConnectedHook(fn: () => Promise<void>): void {
+  connectedHook = fn;
+}
+function onGoogleConnected(): Promise<void> {
+  return connectedHook().catch((err) => log.warn({ err }, 'after-connect task failed'));
+}
+
 /** True when Drive is connected (so the nightly backup can go there). */
 export function driveConnected(): boolean {
   return Boolean(creds() && tokens());
@@ -216,7 +253,7 @@ export function registerGoogleRoutes(app: FastifyInstance): void {
   app.get('/api/google/status', async () => {
     const c = creds();
     const t = tokens();
-    return { configured: Boolean(c), managed: Boolean(managedCreds()), connected: Boolean(c && t), email: t?.email || null, clientId: c?.clientId || null };
+    return { configured: Boolean(c), managed: Boolean(managedCreds()), connected: Boolean(c && t), email: t?.email || null, clientId: c?.clientId || null, features: googleFeatures() };
   });
 
   // Step 1: the OAuth client the user created in Google Cloud.
@@ -291,7 +328,8 @@ export function registerGoogleRoutes(app: FastifyInstance): void {
       }
       if (!body.refresh_token) return back('Google did not give a refresh token. Remove Postino from your Google account permissions and connect again.');
       if (pending.purpose === 'gmail') return reply.redirect(connectGmail(email, String(body.refresh_token), String(body.access_token), Number(body.expires_in || 3600), pending.back || '/settings/accounts'));
-      saveTokens({ access: String(body.access_token), refresh: String(body.refresh_token), expiresAt: Date.now() + Number(body.expires_in || 3600) * 1000, email });
+      saveTokens({ access: String(body.access_token), refresh: String(body.refresh_token), expiresAt: Date.now() + Number(body.expires_in || 3600) * 1000, email, scope: String(body.scope || '') });
+      void onGoogleConnected();
       return back('connected');
     } catch (err) {
       log.warn({ err: (err as Error).message }, 'google oauth failed');

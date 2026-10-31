@@ -1,3 +1,4 @@
+import { InviteActions, useAddToTasks } from './GoogleApps';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
@@ -25,6 +26,7 @@ export function Reader({ view }: { view: string }) {
   };
   const ui = useUI();
   const act = useThreadActions();
+  const addToTasks = useAddToTasks();
   const accountMap = useAccountMap();
   const myEmails = useMyEmails();
   const qc = useQueryClient();
@@ -197,6 +199,7 @@ export function Reader({ view }: { view: string }) {
             <span className="div wide-only" />
             <button className="ib" onClick={() => { doAct('unread'); nav.closeThread(); }} title="Mark as unread (u)" aria-label="Mark as unread"><Icon name="mail" /></button>
             <button className="ib wide-only" onClick={() => ui.setMoveTarget({ threadIds: [thread.id], accountId: thread.accountId })} title="Move to" aria-label="Move to"><Icon name="move" /></button>
+            <button className="ib" onClick={() => void addToTasks(thread.id)} title="Add to Tasks" aria-label="Add to Tasks"><Icon name="addTask" /></button>
             <button className={`ib star-btn${thread.pinned ? ' on' : ''}`} onClick={() => doAct(thread.pinned ? 'unpin' : 'pin')} title={thread.pinned ? 'Remove star (s)' : 'Add star (s)'} aria-label={thread.pinned ? 'Remove star' : 'Add star'}><Icon name={thread.pinned ? 'starFilled' : 'star'} /></button>
             {canBlock && (
               <button className="ib wide-only" onClick={() => ui.setPendingBlock({ email: lastIncoming!.from.email, name: displayName(lastIncoming!.from), threadId: thread.id })} title={`Block ${lastIncoming!.from.email}`} aria-label="Block sender"><Icon name="block" /></button>
@@ -408,7 +411,7 @@ function MessageCard({ message: m, thread, accountColor, myEmails, expanded, sin
                 <button className="btn btn-ghost btn-sm" onClick={() => setShowImages(true)}>Load images</button>
               </div>
             )}
-            {m.calendar && <EventCard ev={m.calendar} attachments={m.attachments} />}
+            {m.calendar && <EventCard ev={m.calendar} attachments={m.attachments} messageId={m.id} mine={m.mine} />}
             {m.body.html ? <HtmlBody id={m.id} html={m.body.html} showImages={showImages} /> : <div className="msg-body text" style={{ padding: 0 }}>{m.body.text}</div>}
             {m.body.quoted && (
               <>
@@ -555,7 +558,7 @@ export function HtmlBody({ id, html, showImages }: { id: string; html: string; s
 
 
 /** Invitation card for a text/calendar part, with a one-click add to Google Calendar. */
-function EventCard({ ev, attachments }: { ev: NonNullable<Message['calendar']>; attachments: Attachment[] }) {
+function EventCard({ ev, attachments, messageId, mine }: { ev: NonNullable<Message['calendar']>; attachments: Attachment[]; messageId: string; mine: boolean }) {
   const start = ev.start ? new Date(ev.start) : null;
   const end = ev.end ? new Date(ev.end) : null;
   const when = !start
@@ -576,6 +579,7 @@ function EventCard({ ev, attachments }: { ev: NonNullable<Message['calendar']>; 
         {when && <span>{when}</span>}
         {ev.location && <span className="help">{ev.location}</span>}
         {ev.organizer && <span className="help">Organised by {ev.organizer.name || ev.organizer.email}</span>}
+        {ev.method === 'REQUEST' && !mine && <InviteActions messageId={messageId} organizer={ev.organizer?.email} />}
         <div className="row-inline" style={{ marginTop: 6 }}>
           {ev.googleLink && !cancelled && <a className="btn btn-primary btn-sm" href={ev.googleLink} target="_blank" rel="noopener"><Icon name="plus" size={14} />Add to Google Calendar</a>}
           {ics && <a className="btn btn-ghost btn-sm" href={ics.url} download={ics.filename}><Icon name="download" size={14} />.ics file</a>}

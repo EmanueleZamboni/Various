@@ -38,7 +38,7 @@ const NAV: { to: string; label: string; icon: IconName }[] = [
   { to: '/settings/reading', label: 'Reading', icon: 'mailOpen' },
   { to: '/settings/composing', label: 'Composing', icon: 'send' },
   { to: '/settings/notifications', label: 'Notifications', icon: 'bell' },
-  { to: '/settings/google', label: 'Google Drive', icon: 'folder' },
+  { to: '/settings/google', label: 'Google', icon: 'folder' },
   { to: '/settings/preferences', label: 'Swipes & look', icon: 'filter' },
   { to: '/settings/backup', label: 'Backup', icon: 'download' },
   { to: '/settings/security', label: 'Security', icon: 'shield' },
@@ -915,6 +915,48 @@ function SignatureForm({ accountId, signature, onDone }: { accountId: string; si
 
 // ---------- Google Drive ----------
 
+function GoogleFeatures({ features, onReconnect }: { features?: { drive: boolean; calendar: boolean; contacts: boolean; tasks: boolean }; onReconnect: () => void }) {
+  const toast = useUI((s) => s.toast);
+  const { data: cs, refetch } = useQuery({ queryKey: ['contacts-sync'], queryFn: api.google.contactsStatus });
+  const [busy, setBusy] = useState(false);
+  const f = features ?? { drive: true, calendar: false, contacts: false, tasks: false };
+  const missing = !f.calendar || !f.contacts || !f.tasks;
+  const items: [string, boolean][] = [['Drive', f.drive], ['Calendar', f.calendar], ['Contacts', f.contacts], ['Tasks', f.tasks]];
+  const sync = async () => {
+    setBusy(true);
+    try {
+      const r = await api.google.contactsSync();
+      toast({ text: `${r.count} contacts from Google`, kind: 'success' });
+      void refetch();
+    } catch (e) {
+      toast({ text: (e as Error).message, kind: 'error' });
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="g-features">
+      <div className="g-feat-list">
+        {items.map(([name, on]) => (
+          <span key={name} className={`g-feat${on ? ' on' : ''}`}><Icon name={on ? 'check' : 'x'} size={16} />{name}</span>
+        ))}
+      </div>
+      {missing && (
+        <div className="row-inline">
+          <span className="help" style={{ margin: 0 }}>Connect again to allow the missing ones.</span>
+          <button className="btn btn-primary btn-sm" onClick={onReconnect}>Connect again</button>
+        </div>
+      )}
+      {f.contacts && (
+        <div className="row-inline">
+          <span className="help" style={{ margin: 0 }}>{cs ? `${cs.count} contacts, updated ${new Date(cs.at).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}. Updated daily.` : 'Contacts are read once a day.'}</span>
+          <button className="btn btn-ghost btn-sm" onClick={() => void sync()} disabled={busy}>{busy ? 'Reading…' : 'Update now'}</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function GoogleSettings() {
   const qc = useQueryClient();
   const toast = useUI((s) => s.toast);
@@ -947,8 +989,8 @@ function GoogleSettings() {
   const disconnect = useMutation({ mutationFn: () => api.google.disconnect(), onSuccess: () => { qc.invalidateQueries({ queryKey: ['google'] }); toast({ text: 'Google Drive disconnected' }); } });
   return (
     <>
-      <h2>Google Drive</h2>
-      <p className="help">Save attachments to Drive and open Word, Excel and PowerPoint files straight in Google Docs, Sheets and Slides, like Gmail does. Postino only ever sees the files it uploads (the "drive.file" permission).</p>
+      <h2>Google</h2>
+      <p className="help">One Google connection for Drive (save attachments, open them in Docs/Sheets/Slides), Calendar (answer invitations), Contacts (names and photos when writing) and Tasks. In Drive, Postino only sees the files it saves itself.</p>
       <div className="settings-section">
         {data?.connected ? (
           <div className="card">
@@ -959,6 +1001,7 @@ function GoogleSettings() {
               </div>
               <button className="btn btn-ghost" onClick={() => disconnect.mutate()} disabled={disconnect.isPending}>Disconnect</button>
             </div>
+            <GoogleFeatures features={data.features} onReconnect={() => void connect()} />
           </div>
         ) : data?.managed ? (
           <div className="card">
@@ -974,7 +1017,7 @@ function GoogleSettings() {
               <b>1. Create a Google OAuth client (once, about 5 minutes). It is also used for "Sign in with Google" on Gmail mailboxes.</b>
               <ol className="help" style={{ margin: '6px 0 0', paddingLeft: 18, lineHeight: 1.7 }}>
                 <li>Open <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">console.cloud.google.com/apis/credentials</a> (any project; the one from your YouTube scripts is fine).</li>
-                <li>Enable the <b>Google Drive API</b> under "APIs & Services → Library".</li>
+                <li>Under "APIs & Services → Library" enable <b>Google Drive API</b>, <b>Google Calendar API</b>, <b>People API</b> and <b>Google Tasks API</b>.</li>
                 <li>"Create credentials → OAuth client ID", type <b>Web application</b>.</li>
                 <li>Under "Authorized redirect URIs" add exactly: <code style={{ userSelect: 'all' }}>{redirect?.redirectUri ?? '…'}</code></li>
                 <li>On the <b>OAuth consent screen</b> (Audience), press <b>Publish app</b> so it is "In production". In "Testing", Google signs Gmail out every 7 days.</li>

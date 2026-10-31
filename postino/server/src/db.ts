@@ -287,6 +287,14 @@ addColumn('drafts', 'from_address', "TEXT NOT NULL DEFAULT ''");
 addColumn('auth', 'totp_last_step', 'INTEGER NOT NULL DEFAULT 0');
 // 'password', or 'google' (password_enc then holds the Google refresh token).
 addColumn('accounts', 'auth_type', "TEXT NOT NULL DEFAULT 'password'");
+// Google Contacts: in your address book, and their photo.
+addColumn('contacts', 'in_google', 'INTEGER NOT NULL DEFAULT 0');
+addColumn('contacts', 'photo_url', 'TEXT');
+db.exec(`CREATE TABLE IF NOT EXISTS rsvps (
+  message_row INTEGER PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE,
+  response TEXT NOT NULL,
+  at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+)`);
 
 // Plain-text signatures from the first release become rich signatures.
 {

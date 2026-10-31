@@ -38,7 +38,7 @@ export function registerMiscRoutes(app: FastifyInstance): void {
     const q = String(req.query.q || '').trim().toLowerCase();
     const term = q.replace(/^(from|to|cc):/i, '');
     const contacts = term
-      ? (db.prepare('SELECT email, name FROM contacts WHERE lower(email) LIKE ? OR lower(name) LIKE ? ORDER BY count DESC LIMIT 6').all(`%${term}%`, `%${term}%`) as Address[])
+      ? (db.prepare('SELECT email, name FROM contacts WHERE lower(email) LIKE ? OR lower(name) LIKE ? ORDER BY in_google DESC, count DESC LIMIT 6').all(`%${term}%`, `%${term}%`) as Address[])
       : [];
     const recent = (db.prepare('SELECT query FROM recent_searches WHERE query LIKE ? ORDER BY used_at DESC LIMIT 6').all(`%${q}%`) as { query: string }[]).map((r) => r.query);
     return { contacts, recent };

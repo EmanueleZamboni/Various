@@ -27,6 +27,7 @@ type Props = {
   /** Extra actions for the right-click menu. */
   onMove?: () => void;
   onBlock?: () => void;
+  onAddTask?: () => void;
 };
 
 type MenuItem = { label: string; icon: IconName; run: () => void; danger?: boolean } | 'sep';
@@ -77,7 +78,7 @@ const SWIPE_META: Record<SwipeAction, { label: (t: ThreadSummary) => string; ico
   read: { label: (t) => (t.unread ? 'Mark read' : 'Mark unread'), icon: 'mailOpen', removes: false, tone: 'blue' },
 };
 
-export function ThreadRow({ thread: t, account, myEmails, selected, focused, highlight, compact, previewLines = 1, showAvatar = true, showAccount, accountLabel, onOpen, onSwipe, onAction, onPrefetch, swipeActions, onMove, onBlock, checked = false, onCheck }: Props) {
+export function ThreadRow({ thread: t, account, myEmails, selected, focused, highlight, compact, previewLines = 1, showAvatar = true, showAccount, accountLabel, onOpen, onSwipe, onAction, onPrefetch, swipeActions, onMove, onBlock, checked = false, onCheck, onAddTask }: Props) {
   const [ctx, setCtx] = useState<{ x: number; y: number } | null>(null);
   const longPress = useRef<number | undefined>(undefined);
   const menuItems: MenuItem[] = [
@@ -87,6 +88,7 @@ export function ThreadRow({ thread: t, account, myEmails, selected, focused, hig
     { label: t.pinned ? 'Remove star' : 'Add star', icon: t.pinned ? 'starFilled' : 'star', run: () => onAction(t.pinned ? 'unpin' : 'pin') },
     { label: 'Archive', icon: 'archive', run: () => onAction('archive') },
     ...(onMove ? [{ label: 'Move to folder…', icon: 'move' as IconName, run: onMove }] : []),
+    ...(onAddTask ? [{ label: 'Add to Tasks', icon: 'addTask' as IconName, run: onAddTask }] : []),
     'sep',
     { label: 'Mark as spam', icon: 'spam', run: () => onAction('junk') },
     ...(onBlock ? [{ label: 'Block sender', icon: 'block' as IconName, run: onBlock, danger: true }] : []),

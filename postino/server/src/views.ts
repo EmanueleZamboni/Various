@@ -146,7 +146,7 @@ export function messageView(m: MessageRow, folder: FolderRow | undefined, body?:
     snippet: m.snippet,
     attachments: atts.filter((a) => !a.is_inline || !a.content_id).map(attachmentView),
     listUnsubscribe: m.list_unsubscribe,
-    knownSender: Boolean(db.prepare('SELECT 1 FROM contacts WHERE email = ? AND count >= 3').get(m.from_email)),
+    knownSender: Boolean(db.prepare('SELECT 1 FROM contacts WHERE email = ? AND (count >= 3 OR in_google = 1)').get(m.from_email)),
     calendar: calendar ? { ...calendar, googleLink: googleCalendarLink(calendar) } : null,
     body: {
       html: body?.html ?? null,

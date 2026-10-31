@@ -130,7 +130,7 @@ Google OAuth client (free, about 5 minutes). Settings → Google Drive in
 Postino shows the same steps with the exact redirect URI to paste:
 
 1. Open [console.cloud.google.com/apis/credentials](https://console.cloud.google.com/apis/credentials) in any project.
-2. APIs & Services → Library → enable the **Google Drive API**.
+2. APIs & Services → Library → enable **Google Drive API**, **Google Calendar API**, **People API** and **Google Tasks API** (Drive, invitations, contacts and tasks).
 3. Create credentials → **OAuth client ID** → type **Web application**; under
    "Authorized redirect URIs" add `https://mail.yourdomain.it/api/google/callback`.
 4. If the consent screen is in "Testing", add your Google address as a test user.

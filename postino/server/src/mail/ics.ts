@@ -14,6 +14,7 @@ export type CalendarEvent = {
   attendees: { name: string; email: string; status: string }[];
   uid: string;
   url: string;
+  sequence?: number;
 };
 
 function unfold(text: string): string[] {
@@ -89,6 +90,7 @@ export function parseIcs(text: string): CalendarEvent | null {
       case 'DESCRIPTION': ev.description = unescape(value).slice(0, 4000); break;
       case 'LOCATION': ev.location = unescape(value); break;
       case 'UID': ev.uid = value.trim(); break;
+      case 'SEQUENCE': ev.sequence = Number.parseInt(value, 10) || 0; break;
       case 'URL': ev.url = value.trim(); break;
       case 'DTSTART': { const d = parseDate(value, params); ev.start = d.iso; ev.allDay = d.allDay; break; }
       case 'DTEND': ev.end = parseDate(value, params).iso; break;

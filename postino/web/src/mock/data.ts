@@ -108,6 +108,7 @@ type MsgSpec = {
   seen?: boolean;
   flagged?: boolean;
   quoted?: string;
+  calendar?: Record<string, unknown>;
   unsub?: string | null;
 };
 
@@ -146,6 +147,7 @@ function addThread(opts: { accountId: string; subject: string; category?: Catego
       snippet: paragraphs[0].slice(0, 160),
       attachments: m.att ?? [],
       listUnsubscribe: m.unsub ?? (opts.category === 'newsletter' ? `https://example.com/unsubscribe?u=${account.id}` : null),
+      ...(m.calendar ? { calendar: m.calendar as unknown as Message['calendar'] } : {}),
       body: { html, text: m.text, hasRemoteImages: !!m.remote, quoted: m.quoted ?? null, fetched: true },
     };
   });
@@ -266,6 +268,12 @@ const drive = P('Dario Valastro (via Google Drive)', 'drive-shares-dm-noreply@go
 addThread({ accountId: 'a4', category: 'notification', subject: 'Folder shared with you: "NEW Vettorializzato"', msgs: [{ from: drive, date: daysAgo(0, 7, 18), text: 'Dario Valastro (dario.valastro@gmail.com) has shared the following folder:\n\nNEW Vettorializzato\n\nOpen in Drive: https://drive.google.com/drive/folders/1xyz', remote: true, html: '<div style="font-family:Arial,sans-serif;color:#222"><p>Dario Valastro (dario.valastro@gmail.com) has shared the following folder:</p><p style="font-size:18px"><b>NEW Vettorializzato</b></p><p><a href="https://drive.google.com/drive/folders/1xyz">Open in Drive</a></p><img data-remote-src="https://www.gstatic.com/images/branding/product/2x/drive_2020q4_48dp.png" src="" width="48" height="48" alt="Google Drive"></div>', seen: false }] });
 addThread({ accountId: 'a4', category: 'notification', subject: 'Spreadsheet shared with you: "SAIE B 2026 - Videomaker"', msgs: [{ from: P('Ivan Mariani (via Google Sheets)', 'drive-shares-dm-noreply@google.com'), date: daysAgo(22, 18, 45), text: 'Ivan Mariani has shared a spreadsheet with you: SAIE B 2026 - Videomaker.', remote: true }] });
 addThread({ accountId: 'a1', category: 'notification', subject: 'Your parcel DHL 4471 0021 is out for delivery', msgs: [{ from: P('DHL Express', 'noreply@dhl.com'), date: minutesAgo(45), text: 'Your shipment from Shenzhen is out for delivery today between 13:00 and 17:00. Track: https://dhl.com/track/44710021', seen: false, remote: true }] });
+{
+  const start = new Date(Date.now() + 3 * 86400_000);
+  start.setHours(10, 0, 0, 0);
+  const end = new Date(start.getTime() + 3600_000);
+  addThread({ accountId: 'a1', subject: 'Invitation: Call Thinborne × Ema @ ' + start.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }), msgs: [{ from: P('Christina Rossi', 'christina@thinborne.com'), date: daysAgo(0, 8, 30), seen: false, text: 'Christina Rossi has invited you to a video call to go over the sponsorship brief.', calendar: { method: 'REQUEST', summary: 'Call Thinborne × Ema', description: '', location: 'Google Meet', start: start.toISOString(), end: end.toISOString(), allDay: false, organizer: { name: 'Christina Rossi', email: 'christina@thinborne.com' }, attendees: [], uid: 'mock-invite-1', url: '', googleLink: 'https://calendar.google.com/' } }] });
+}
 addThread({ accountId: 'a8', subject: 'Cena sabato?', msgs: [{ from: P('Marco Bellini', 'marco.bellini@gmail.com'), date: daysAgo(0, 9, 20), text: 'Ciao Ema!\n\nSabato sera siamo da Giulia, vieni anche tu? Porta qualcosa da bere se riesci.\n\nMarco', seen: false }] });
 addThread({ accountId: 'a8', category: 'notification', subject: 'Avviso di sicurezza: nuovo accesso su Mac', msgs: [{ from: P('Google', 'no-reply@accounts.google.com'), date: daysAgo(0, 7, 5), text: 'Abbiamo rilevato un nuovo accesso al tuo Account Google su un dispositivo Mac. Se sei stato tu, non devi fare nulla.', seen: true }] });
 addThread({ accountId: 'a8', category: 'newsletter', subject: 'Le offerte della settimana', msgs: [{ from: P('Decathlon', 'news@decathlon.it'), date: daysAgo(2, 10, 0), text: 'Scopri le offerte della settimana su bici, running e outdoor.', seen: true, unsub: 'https://www.decathlon.it/unsubscribe' }] });

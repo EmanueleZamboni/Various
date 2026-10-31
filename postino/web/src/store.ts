@@ -56,6 +56,9 @@ type UIState = {
   replyOpen: boolean;
   setReplyOpen: (v: boolean) => void;
   shortcutsOpen: boolean;
+  /** Google Tasks side panel */
+  tasksOpen: boolean;
+  setTasksOpen: (v: boolean) => void;
   setShortcuts: (v: boolean) => void;
   viewer: { attachments: Attachment[]; index: number } | null;
   openViewer: (attachments: Attachment[], index: number) => void;
@@ -87,6 +90,8 @@ export const useUI = create<UIState>((set, get) => ({
     set({ smart: v });
   },
   drawerOpen: false,
+  tasksOpen: false,
+  setTasksOpen: (v) => set({ tasksOpen: v }),
   setDrawer: (v) => set({ drawerOpen: v }),
   selectedId: null,
   setSelected: (id) => set({ selectedId: id }),

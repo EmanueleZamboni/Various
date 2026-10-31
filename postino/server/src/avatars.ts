@@ -240,6 +240,9 @@ async function lookup(email: string): Promise<AvatarResult> {
   const file = path.join(dir, k);
   const domain = email.split('@')[1] || '';
   const tries: { name: string; run: () => Promise<{ bytes: Buffer; contentType: string } | null> }[] = [{ name: 'gravatar', run: () => fromGravatar(email) }];
+  // Their photo from your Google Contacts comes first.
+  const googlePhoto = (db.prepare('SELECT photo_url FROM contacts WHERE email = ? AND in_google = 1').get(email) as { photo_url: string | null } | undefined)?.photo_url;
+  if (googlePhoto && /^https:\/\/[a-z0-9-]+\.googleusercontent\.com\//i.test(googlePhoto)) tries.unshift({ name: 'google', run: () => fetchImage(googlePhoto) });
   // Fetching a stranger's web site would tell them the address is live (per-recipient
   // subdomains are a known trick), so logos are looked up only for people you already deal with.
   const known = (db.prepare('SELECT count FROM contacts WHERE email = ?').get(email) as { count: number } | undefined)?.count ?? 0;

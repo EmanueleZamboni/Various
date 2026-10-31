@@ -243,3 +243,6 @@ export type PendingMailbox = {
   smtp: { host: string; port: number; secure: boolean };
 };
 export type BackupStatus = { driveConnected: boolean; lastDrive: string | null; lastDriveError: string | null; pendingMailboxes: PendingMailbox[] };
+
+export type RsvpResponse = 'accepted' | 'tentative' | 'declined';
+export type GoogleTask = { id: string; title: string; notes: string; due: string | null };

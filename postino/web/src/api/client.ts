@@ -3,6 +3,8 @@ import type {
   AccountInput,
   Address,
   BackupStatus,
+  GoogleTask,
+  RsvpResponse,
   BlockedSender,
   PendingMailbox,
   Draft,
@@ -119,6 +121,14 @@ export const api = {
     replyPrefill: (id: string, mode: 'reply' | 'replyAll' | 'forward') =>
       get<ReplyPrefill>(`/api/messages/${id}/reply${qs({ mode })}`),
     unsubscribe: (id: string) => post<{ ok: true; method: 'mailto' | 'http' | 'none'; url?: string }>(`/api/messages/${id}/unsubscribe`),
+    invite: (id: string) => get<{ rsvp: RsvpResponse | null; calendarConnected: boolean; conflicts: { summary: string; start: string | null }[] | null }>(`/api/messages/${id}/invite`),
+    rsvp: (id: string, response: RsvpResponse) => post<{ ok: true; response: RsvpResponse; calendar: boolean; organizerTold: boolean }>(`/api/messages/${id}/rsvp`, { response }),
+  },
+  tasks: {
+    list: () => get<{ tasks: GoogleTask[] }>('/api/tasks'),
+    add: (body: { title?: string; threadId?: string }) => post<{ id: string; title: string }>('/api/tasks', body),
+    update: (id: string, body: { done?: boolean; title?: string }) => patch<{ ok: true }>(`/api/tasks/${encodeURIComponent(id)}`, body),
+    remove: (id: string) => del<void>(`/api/tasks/${encodeURIComponent(id)}`),
   },
   blocked: {
     list: () => get<{ senders: BlockedSender[] }>('/api/blocked'),
@@ -158,7 +168,9 @@ export const api = {
     update: (s: DeepPartial<Settings>) => put<Settings>('/api/settings', s),
   },
   google: {
-    status: () => get<{ configured: boolean; managed?: boolean; connected: boolean; email: string | null; clientId: string | null }>('/api/google/status'),
+    status: () => get<{ configured: boolean; managed?: boolean; connected: boolean; email: string | null; clientId: string | null; features?: { drive: boolean; calendar: boolean; contacts: boolean; tasks: boolean } }>('/api/google/status'),
+    contactsSync: () => post<{ count: number }>('/api/google/contacts/sync'),
+    contactsStatus: () => get<{ at: string; count: number } | null>('/api/google/contacts/status'),
     credentials: (clientId: string, clientSecret: string) => post<{ ok: true; redirectUri: string }>('/api/google/credentials', { clientId, clientSecret }),
     redirectUri: () => get<{ redirectUri: string }>('/api/google/redirect-uri'),
     connect: () => post<{ url: string }>('/api/google/connect'),

@@ -8,6 +8,7 @@ import { useUI } from '../store';
 import { useSettings } from '../api/hooks';
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
+import { TasksPanel } from './GoogleApps';
 import { ThreadList } from './ThreadList';
 import { Reader } from './Reader';
 import { Compose } from './Compose';
@@ -173,7 +174,7 @@ export function Shell({ me, forcedView, onLogout }: { me?: Me; forcedView?: stri
     });
   };
   return (
-    <div className={`shell${resizing ? ' resizing' : ''}`} data-mini={mini ? 'on' : 'off'} style={sideBySide ? ({ ['--list-w' as string]: `${listW}px` } as React.CSSProperties) : undefined} data-view={phoneView} data-reading={settings?.appearance.readingPane ?? 'full'} data-open={nav.threadId ? 'thread' : 'list'} data-drawer={ui.drawerOpen ? 'open' : 'closed'} data-density={settings?.appearance.density ?? 'comfortable'} data-text={settings?.appearance.textSize ?? 'normal'}>
+    <div className={`shell${resizing ? ' resizing' : ''}`} data-mini={mini ? 'on' : 'off'} data-tasks={ui.tasksOpen ? 'open' : 'closed'} style={sideBySide ? ({ ['--list-w' as string]: `${listW}px` } as React.CSSProperties) : undefined} data-view={phoneView} data-reading={settings?.appearance.readingPane ?? 'full'} data-open={nav.threadId ? 'thread' : 'list'} data-drawer={ui.drawerOpen ? 'open' : 'closed'} data-density={settings?.appearance.density ?? 'comfortable'} data-text={settings?.appearance.textSize ?? 'normal'}>
       {!online && (
         <div className="offline-bar" role="status">
           <Icon name="alert" size={16} />
@@ -202,6 +203,7 @@ export function Shell({ me, forcedView, onLogout }: { me?: Me; forcedView?: stri
           <span>Compose</span>
         </button>
       )}
+      {ui.tasksOpen && <TasksPanel onClose={() => ui.setTasksOpen(false)} />}
       {ui.compose && !ui.compose.inline && <Compose key={ui.composeSeq} />}
       {ui.pendingBlock && <BlockConfirm />}
       {ui.moveTarget && <MovePicker view={view} />}

@@ -34,6 +34,7 @@ export function Sidebar() {
   const { data: blocked } = useBlocked();
   const openCompose = useUI((s) => s.openCompose);
   const setDrawer = useUI((s) => s.setDrawer);
+  const setTasksOpen = useUI((s) => s.setTasksOpen);
   const [more, setMoreState] = useState(readMore);
   const setMore = (v: boolean) => {
     setMoreState(v);
@@ -127,6 +128,10 @@ export function Sidebar() {
         })}
       </nav>
       <div className="sidebar-foot">
+        <button className="nav-item" onClick={() => { close(); setTasksOpen(true); }}>
+          <Icon name="taskAlt" size={20} />
+          <span className="nav-label">Tasks</span>
+        </button>
         <Link to="/settings" className={`nav-item${nav.isSettings ? ' on' : ''}`} onClick={close}>
           <Icon name="settings" size={20} />
           <span className="nav-label">Settings</span>

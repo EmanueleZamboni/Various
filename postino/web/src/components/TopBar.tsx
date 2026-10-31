@@ -9,6 +9,8 @@ import { SearchBar } from './SearchBar';
 /** Gmail's top bar: menu, logo, search, then help, settings and the account circle. */
 export function TopBar({ onMenu, onLogout }: { me?: Me; onMenu: () => void; onLogout: () => void }) {
   const setShortcuts = useUI((s) => s.setShortcuts);
+  const tasksOpen = useUI((s) => s.tasksOpen);
+  const setTasksOpen = useUI((s) => s.setTasksOpen);
   const { data: accounts } = useAccounts();
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
@@ -31,6 +33,9 @@ export function TopBar({ onMenu, onLogout }: { me?: Me; onMenu: () => void; onLo
       </Link>
       <SearchBar />
       <div className="top-right">
+        <button className={`ib${tasksOpen ? ' on' : ''}`} onClick={() => setTasksOpen(!tasksOpen)} aria-label="Google Tasks" title="Tasks" aria-pressed={tasksOpen}>
+          <Icon name="taskAlt" size={24} />
+        </button>
         <button className="ib" onClick={() => setShortcuts(true)} aria-label="Keyboard shortcuts" title="Keyboard shortcuts">
           <Icon name="help" size={24} />
         </button>

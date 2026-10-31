@@ -1,3 +1,4 @@
+import { useAddToTasks } from './GoogleApps';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { InfiniteData } from '@tanstack/react-query';
 import { useAccountMap, useAccounts, useBlocked, useDrafts, useMyEmails, useOutbox, useSearch, useSettings, useThreadList, useThreadActions } from '../api/hooks';
@@ -21,6 +22,7 @@ export function ThreadList({ view }: { view: string }) {
   const accountMap = useAccountMap();
   const myEmails = useMyEmails();
   const act = useThreadActions();
+  const addToTasks = useAddToTasks();
   const qc = useQueryClient();
   const account = nav.accountId ? accountMap.get(nav.accountId) : undefined;
 
@@ -190,6 +192,7 @@ export function ThreadList({ view }: { view: string }) {
       swipeActions={{ left: settings?.swipe.left ?? 'archive', right: settings?.swipe.right ?? 'pin' }}
       onAction={(action) => void act({ threadIds: [t.id], action, view })}
       onMove={() => ui.setMoveTarget({ threadIds: [t.id], accountId: t.accountId })}
+      onAddTask={() => void addToTasks(t.id)}
       onBlock={t.lastFrom?.email && !myEmails.has(t.lastFrom.email.toLowerCase()) ? () => ui.setPendingBlock({ email: t.lastFrom.email, name: t.lastFrom.name || t.lastFrom.email, threadId: t.id }) : undefined}
       onPrefetch={() => void qc.prefetchQuery({ queryKey: ['thread', t.id], queryFn: () => api.threads.get(t.id), staleTime: 10_000 })}
     />

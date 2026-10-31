@@ -316,8 +316,8 @@ export function registerComposeRoutes(app: FastifyInstance): void {
     const q = String(req.query.q || '').trim().toLowerCase();
     const limit = Math.min(Number(req.query.limit) || 8, 30);
     const rows = q
-      ? (db.prepare('SELECT email, name FROM contacts WHERE lower(email) LIKE ? OR lower(name) LIKE ? ORDER BY count DESC, last_seen DESC LIMIT ?').all(`%${q}%`, `%${q}%`, limit) as Address[])
-      : (db.prepare('SELECT email, name FROM contacts ORDER BY count DESC, last_seen DESC LIMIT ?').all(limit) as Address[]);
+      ? (db.prepare('SELECT email, name FROM contacts WHERE lower(email) LIKE ? OR lower(name) LIKE ? ORDER BY in_google DESC, count DESC, last_seen DESC LIMIT ?').all(`%${q}%`, `%${q}%`, limit) as Address[])
+      : (db.prepare('SELECT email, name FROM contacts ORDER BY in_google DESC, count DESC, last_seen DESC LIMIT ?').all(limit) as Address[]);
     return rows;
   });
 

@@ -326,11 +326,22 @@ on('GET', '/api/me', () => json({ ok: true, totpEnabled: false, passkeys: 0, vap
 on('GET', '/api/passkeys', () => json({ passkeys: [] }));
 on('GET', '/api/blocked/import', () => json({ candidates: [{ email: 'iscreenofficial@gmail.com', count: 3 }, { email: 'talent@ahacreatorsgrowth.digital', count: 1 }] }));
 on('POST', '/api/blocked/import', () => json({ added: 2 }));
+const mockTasks = [
+  { id: 'k1', title: 'Send the wedding quote to Luca and Sara', notes: 'From Luca Ferrarini', due: null as string | null },
+  { id: 'k2', title: 'Renew emazamboni.com', notes: 'From VHosting', due: new Date(Date.now() + 5 * 86400_000).toISOString() },
+];
+on('GET', '/api/tasks', () => json({ tasks: mockTasks }));
+on('POST', '/api/tasks', () => { mockTasks.unshift({ id: `k${Date.now()}`, title: 'New task from email', notes: '', due: null }); return json({ id: 'k', title: 'x' }); });
+on('PATCH', '/api/tasks/:id', ({ params }) => { const i = mockTasks.findIndex((t) => t.id === params.id); if (i >= 0) mockTasks.splice(i, 1); return json({ ok: true }); });
+on('GET', '/api/messages/:id/invite', () => json({ rsvp: null, calendarConnected: true, conflicts: [] }));
+on('POST', '/api/messages/:id/rsvp', () => json({ ok: true, response: 'accepted', calendar: true, organizerTold: true }));
+on('GET', '/api/google/contacts/status', () => json({ at: new Date().toISOString(), count: 312 }));
+on('POST', '/api/google/contacts/sync', () => json({ count: 312 }));
 on('GET', '/api/backup/status', () => json({ driveConnected: true, lastDrive: new Date(Date.now() - 5 * 3600_000).toISOString(), lastDriveError: null, pendingMailboxes: [] }));
 on('POST', '/api/backup/drive-now', () => json({ ok: true }));
 on('POST', '/api/backup/restore', () => json({ mailboxes: [] }));
 on('POST', '/api/backup/forget-pending', () => json({ ok: true }));
-on('GET', '/api/google/status', () => json({ configured: false, connected: false, email: null, clientId: null }));
+on('GET', '/api/google/status', () => json({ configured: true, managed: true, connected: true, email: 'ezamboni96@gmail.com', clientId: null, features: { drive: true, calendar: true, contacts: true, tasks: true } }));
 on('GET', '/api/google/redirect-uri', () => json({ redirectUri: 'https://mail.example.com/api/google/callback' }));
 on('POST', '/api/google/credentials', () => fail(400, 'demo', 'Google Drive connects on the real server, not in the demo.'));
 on('POST', '/api/google/connect', () => fail(409, 'demo', 'Google Drive connects on the real server, not in the demo.'));

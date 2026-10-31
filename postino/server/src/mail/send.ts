@@ -67,6 +67,8 @@ export type Outgoing = {
   quote?: { html: string | null; text: string; inline?: OutgoingAttachment[] } | null;
   /** Send as one of the account's aliases instead of its main address. */
   fromAddress?: string;
+  /** An iCalendar part (e.g. an invitation reply) sent as text/calendar alongside the text. */
+  icalEvent?: { method: string; content: string };
 };
 
 export function formatAddress(a: Address): string {
@@ -151,6 +153,7 @@ export async function sendMail(msg: Outgoing): Promise<{ messageId: string; raw:
     references: msg.inReplyTo ? [...msg.inReplyTo.references, msg.inReplyTo.messageId].map((r) => `<${r}>`).join(' ') : undefined,
     attachments: [...msg.attachments, ...(msg.quote?.inline ?? []), ...inline].map((a) => ({ filename: a.filename, contentType: a.contentType, path: a.path, content: a.content, cid: a.cid })),
     date: new Date(),
+    icalEvent: msg.icalEvent ? { method: msg.icalEvent.method, content: msg.icalEvent.content, filename: 'invite.ics' } : undefined,
   };
   const composer = new MailComposer(mail as never);
   const compiled = composer.compile();
