@@ -110,20 +110,7 @@ export function Reader({ view }: { view: string }) {
     return (
       <section className="reader blank" aria-label="Conversation">
         <div className="empty">
-          {view === 'blocked' ? (
-            <div className="big"><Icon name="block" size={24} /></div>
-          ) : (
-            <svg className="letterbox" viewBox="0 0 88 110" aria-hidden="true">
-              <rect x="6" y="8" width="76" height="98" rx="10" fill="#c8102e" />
-              <rect x="6" y="8" width="76" height="14" rx="6" fill="#a50d26" />
-              <text x="44" y="19" textAnchor="middle" fontFamily="Arial, sans-serif" fontWeight="700" fontSize="9" letterSpacing="2" fill="#fff">POSTE</text>
-              <rect x="14" y="28" width="60" height="12" rx="3" fill="#7d0a1d" />
-              <rect x="20" y="33" width="48" height="3" rx="1.5" fill="#2a0309" />
-              <rect x="22" y="50" width="44" height="30" rx="3" fill="#ffe500" />
-              <path d="M26 56h24M26 62h30M26 68h18" stroke="#1d46a8" strokeWidth="2.4" strokeLinecap="round" />
-              <circle cx="44" cy="92" r="3" fill="#7d0a1d" />
-            </svg>
-          )}
+          <div className="big"><Icon name={view === 'blocked' ? 'block' : 'mailOpen'} size={24} /></div>
           {view === 'blocked' ? (
             <>
               <h2>Blocked senders</h2>
