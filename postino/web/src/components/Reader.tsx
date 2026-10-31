@@ -486,40 +486,66 @@ const FRAME_CSS = `
   :root{color-scheme:light;scrollbar-width:thin;scrollbar-color:#cdd3dc transparent}
   ::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-track{background:transparent}
   ::-webkit-scrollbar-thumb{background:#cdd3dc;border-radius:10px;border:3px solid #fff}::-webkit-scrollbar-thumb:hover{background:#aab2be}
-  html,body{margin:0;padding:0;background:#fff;color:#17201c}
+  html,body{margin:0;padding:0;background:#fff;color:#1f1f1f}
+  html{overflow-y:hidden}body{overflow-x:auto}
   body{font:14px/1.5 Arial,Helvetica,sans-serif;word-wrap:break-word;overflow-wrap:anywhere;padding:2px 0 4px}
   img{max-width:100%!important;height:auto}
   table{max-width:100%}
-  a{color:#2b3d90}
+  a{color:#0b57d0}
   blockquote{margin:0 0 0 .6em;padding-left:.9em;border-left:2px solid #cfd6d2;color:#6b7571}
   pre{white-space:pre-wrap}
 `;
-/** The frame's script lives in public/frame.js: the app's CSP allows only files from its own origin. */
-const frameScriptUrl = () => new URL(`${import.meta.env.BASE_URL}frame.js`, location.href).href;
-
+/**
+ * An email's HTML in a sandboxed frame, always shown at its full height (never a box that scrolls).
+ * The frame may not run scripts at all (no allow-scripts, and its CSP says script-src 'none'),
+ * so it is safe to let it share our origin: that only lets the app read its size from outside.
+ */
 export function HtmlBody({ id, html, showImages }: { id: string; html: string; showImages: boolean }) {
+  const ref = useRef<HTMLIFrameElement>(null);
   const [height, setHeight] = useState(80);
-  useEffect(() => {
-    const on = (e: MessageEvent) => {
-      const d = e.data;
-      if (d && d.postino === 'h' && d.id === id && typeof d.h === 'number') setHeight(Math.min(Math.max(d.h, 24), 20000));
-    };
-    window.addEventListener('message', on);
-    return () => window.removeEventListener('message', on);
-  }, [id]);
   const doc = useMemo(() => {
     let body = html;
     if (showImages) body = body.replace(/\ssrc=""/g, '').replace(/data-remote-src=/g, 'src=');
-    // Only scripts from our own origin may run (the mail body cannot reference any: the sanitizer drops script tags).
-    const script = frameScriptUrl();
-    const csp = `default-src 'none'; img-src data: blob: ${showImages ? 'https: http:' : ''} ${location.origin}; style-src 'unsafe-inline'; font-src https://fonts.gstatic.com; script-src ${location.origin}`;
-    return `<!doctype html><html data-id="${id}"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${csp}"><base target="_blank"><style>${FRAME_CSS}</style></head><body>${body}<script src="${script}"></script></body></html>`;
+    const csp = `default-src 'none'; img-src data: blob: ${showImages ? 'https: http:' : ''} ${location.origin === 'null' ? '' : location.origin}; style-src 'unsafe-inline'; font-src https://fonts.gstatic.com; script-src 'none'; form-action 'none'`;
+    return `<!doctype html><html data-id="${id}"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${csp}"><base target="_blank"><style>${FRAME_CSS}</style></head><body>${body}</body></html>`;
   }, [html, id, showImages]);
+  useEffect(() => {
+    const frame = ref.current;
+    if (!frame) return;
+    let ro: ResizeObserver | null = null;
+    let timers: number[] = [];
+    const measure = () => {
+      const d = frame.contentDocument;
+      if (!d?.body) return;
+      // The body's own height, not the document's: that one never shrinks below the frame.
+      const h = Math.ceil(Math.max(d.body.scrollHeight, d.body.getBoundingClientRect().height));
+      setHeight(Math.min(Math.max(h, 24), 30000));
+    };
+    const attach = () => {
+      const d = frame.contentDocument;
+      if (!d?.body) return;
+      measure();
+      ro?.disconnect();
+      ro = new ResizeObserver(measure);
+      ro.observe(d.body);
+      // Images and web fonts can change the size after load.
+      for (const img of Array.from(d.images)) if (!img.complete) img.addEventListener('load', measure, { once: true });
+      timers = [150, 600, 1500].map((t) => window.setTimeout(measure, t));
+    };
+    frame.addEventListener('load', attach);
+    if (frame.contentDocument?.readyState === 'complete') attach();
+    return () => {
+      frame.removeEventListener('load', attach);
+      ro?.disconnect();
+      timers.forEach((t) => window.clearTimeout(t));
+    };
+  }, [doc]);
   return (
     <iframe
+      ref={ref}
       className="html-frame"
       title="Message"
-      sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
+      sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
       referrerPolicy="no-referrer"
       srcDoc={doc}
       style={{ height }}
