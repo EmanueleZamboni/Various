@@ -54,24 +54,23 @@ export function SettingsPage({ me, onLogout }: { me?: Me; onLogout: () => void }
   };
   return (
     <section className="settings" aria-label="Settings">
-      <nav className="settings-nav">
-        <div className="settings-head">
-          <Link to="/inbox" className="ib back" aria-label="Back to inbox"><Icon name="back" /></Link>
-          <h1>Settings</h1>
-        </div>
+      <div className="settings-top">
+        <Link to="/inbox" className="ib back" aria-label="Back to inbox"><Icon name="back" /></Link>
+        <h1>Settings</h1>
+        <button className="btn btn-quiet btn-sm settings-signout" onClick={() => void logout()}>
+          <Icon name="logout" size={18} />
+          Sign out
+        </button>
+      </div>
+      <nav className="settings-tabs" aria-label="Settings sections">
         {NAV.map((n) => {
           const on = loc.pathname === n.to || (loc.pathname === '/settings' && n.to === '/settings/accounts');
           return (
-            <Link key={n.to} to={n.to} className={`nav-item${on ? ' on' : ''}`} aria-current={on ? 'page' : undefined}>
-              <Icon name={n.icon} size={18} />
-              <span>{n.label}</span>
+            <Link key={n.to} to={n.to} className={`tab${on ? ' on' : ''}`} aria-current={on ? 'page' : undefined} ref={on ? (el) => el?.scrollIntoView({ block: 'nearest', inline: 'nearest' }) : undefined}>
+              {n.label}
             </Link>
           );
         })}
-        <button className="nav-item signout" onClick={() => void logout()}>
-          <Icon name="logout" size={18} />
-          <span>Sign out</span>
-        </button>
       </nav>
       <div className="settings-main">
         <Routes>

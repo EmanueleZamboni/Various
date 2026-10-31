@@ -2120,3 +2120,81 @@ a.btn {
   color: var(--mute) !important;
   border-radius: 4px !important;
 }
+
+/* Settings header and tabs (replaces the earlier nav styles) */
+.settings-top {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 16px 4px 12px;
+  flex: none;
+}
+.settings-top h1 {
+  flex: 1;
+  margin: 0;
+  font: 400 22px/28px var(--font-display);
+  color: var(--ink);
+  padding-left: 4px;
+}
+.settings-top .back {
+  display: inline-grid;
+}
+.settings-tabs {
+  display: flex;
+  flex: none;
+  gap: 0;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.settings-tabs::-webkit-scrollbar {
+  display: none;
+}
+.settings-tabs .tab {
+  position: relative;
+  flex: none;
+  display: flex;
+  align-items: center;
+  height: 44px;
+  padding: 0 14px;
+  color: var(--mute);
+  text-decoration: none;
+  font-size: 14px;
+  white-space: nowrap;
+}
+.settings-tabs .tab:hover {
+  background: rgba(31, 31, 31, 0.06);
+  color: var(--ink);
+}
+.settings-tabs .tab.on {
+  color: var(--pine);
+  font-weight: 500;
+}
+.settings-tabs .tab.on::after {
+  content: '';
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 0;
+  height: 3px;
+  border-radius: 3px 3px 0 0;
+  background: var(--pine);
+}
+@media (max-width: 760px) {
+  .settings-top h1 {
+    font-size: 20px;
+  }
+  .settings .settings-main {
+    padding: 4px 16px 48px;
+  }
+  /* Rows with a dropdown: the dropdown goes under the text */
+  .toggle-row:has(select) {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .toggle-row:has(select) > select {
+    justify-self: stretch;
+    width: 100% !important;
+  }
+}
