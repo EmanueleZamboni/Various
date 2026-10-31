@@ -7,8 +7,8 @@ import type { Account, AccountInput, Category, Me, SwipeAction } from '../api/ty
 import { SignatureEditor } from './SignatureEditor';
 import { startRegistration, browserSupportsWebAuthn } from '@simplewebauthn/browser';
 import type { Passkey } from '../api/types';
-import { useSignatures, useFolders } from '../api/hooks';
-import type { Signature } from '../api/types';
+import { useSignatures, useFolders, useTemplates } from '../api/hooks';
+import type { Signature, Template } from '../api/types';
 import { Icon, type IconName } from '../icons';
 import { useUI } from '../store';
 import { currentSubscription, disablePush, enablePush, pushSupported } from '../push';
@@ -19,6 +19,7 @@ export const COLORS = ['#3B6FE0', '#D9486B', '#2E9E6B', '#8A5BD6', '#E07C2A', '#
 const NAV: { to: string; label: string; icon: IconName }[] = [
   { to: '/settings/accounts', label: 'Accounts', icon: 'people' },
   { to: '/settings/signatures', label: 'Signatures', icon: 'pen' },
+  { to: '/settings/templates', label: 'Templates', icon: 'draft' },
   { to: '/settings/inbox', label: 'Inbox', icon: 'inbox' },
   { to: '/settings/reading', label: 'Reading', icon: 'mailOpen' },
   { to: '/settings/composing', label: 'Composing', icon: 'send' },
@@ -62,6 +63,7 @@ export function SettingsPage({ me, onLogout }: { me?: Me; onLogout: () => void }
           <Route index element={<AccountsSettings />} />
           <Route path="accounts" element={<AccountsSettings />} />
           <Route path="signatures" element={<SignaturesSettings />} />
+          <Route path="templates" element={<TemplatesSettings />} />
           <Route path="notifications" element={<NotificationSettings me={me} />} />
           <Route path="google" element={<GoogleSettings />} />
           <Route path="inbox" element={<InboxSettings />} />
@@ -576,6 +578,7 @@ function PreferenceSettings() {
           <Row title="Swipe right" hint="Drag a conversation to the right"><Select value={s.swipe.right} label="Swipe right action" width={170} options={SWIPES} onChange={(v) => update.mutate({ swipe: { right: v } })} /></Row>
         </div>
         <div className="card">
+          <Row title="Reading" hint="How an email opens on a computer"><Select value={s.appearance.readingPane} label="Reading pane" width={200} options={[{ id: 'full', label: 'Full window (like Gmail)' }, { id: 'side', label: 'Next to the list (like Spark)' }]} onChange={(v) => update.mutate({ appearance: { readingPane: v } })} /></Row>
           <Row title="Density" hint="Space between conversations"><Select value={s.appearance.density} label="Density" width={170} options={[{ id: 'comfortable', label: 'Comfortable' }, { id: 'compact', label: 'Compact' }]} onChange={(v) => update.mutate({ appearance: { density: v } })} /></Row>
           <Row title="Text size"><Select value={s.appearance.textSize} label="Text size" width={170} options={[{ id: 'normal', label: 'Normal' }, { id: 'large', label: 'Large' }]} onChange={(v) => update.mutate({ appearance: { textSize: v } })} /></Row>
         </div>
@@ -738,6 +741,62 @@ function PasskeysCard() {
   );
 }
 
+
+// ---------- Templates ----------
+
+function TemplatesSettings() {
+  const qc = useQueryClient();
+  const toast = useUI((s) => s.toast);
+  const { data: templates } = useTemplates();
+  const [editing, setEditing] = useState<string | null>(null);
+  const [form, setForm] = useState({ name: '', subject: '', text: '' });
+  const start = (t?: Template) => {
+    setEditing(t?.id ?? 'new');
+    setForm({ name: t?.name ?? '', subject: t?.subject ?? '', text: t?.text ?? '' });
+  };
+  const save = useMutation({
+    mutationFn: () => (editing && editing !== 'new' ? api.templates.update(editing, form) : api.templates.create(form)),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['templates'] }); setEditing(null); toast({ text: 'Template saved', kind: 'success' }); },
+    onError: (e) => toast({ text: (e as Error).message, kind: 'error' }),
+  });
+  const remove = useMutation({
+    mutationFn: (id: string) => api.templates.remove(id),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['templates'] }); toast({ text: 'Template deleted' }); },
+  });
+  return (
+    <div className="settings-section">
+      <h2>Templates</h2>
+      <p className="help">Ready-made emails for things you write often. Insert one with the template button while writing. <code>{'{nome}'}</code> becomes the recipient's first name.</p>
+      {(templates ?? []).map((t) =>
+        editing === t.id ? null : (
+          <div className="card tpl-card" key={t.id}>
+            <div className="row-inline" style={{ justifyContent: 'space-between' }}>
+              <div><b>{t.name}</b>{t.subject && <small className="help"> · {t.subject}</small>}</div>
+              <div className="row-inline">
+                <button className="btn btn-ghost btn-sm" onClick={() => start(t)}>Edit</button>
+                <button className="ib" aria-label={`Delete ${t.name}`} onClick={() => { if (window.confirm(`Delete the template "${t.name}"?`)) remove.mutate(t.id); }}><Icon name="trash" size={16} /></button>
+              </div>
+            </div>
+            <p className="tpl-preview">{t.text}</p>
+          </div>
+        ),
+      )}
+      {editing ? (
+        <form className="card" onSubmit={(e) => { e.preventDefault(); save.mutate(); }}>
+          <div className="field"><label htmlFor="tpl-name">Name</label><input id="tpl-name" className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Preventivo" autoFocus /></div>
+          <div className="field"><label htmlFor="tpl-subject">Subject (optional)</label><input id="tpl-subject" className="input" value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })} /></div>
+          <div className="field"><label htmlFor="tpl-text">Text</label><textarea id="tpl-text" className="input" rows={8} value={form.text} onChange={(e) => setForm({ ...form, text: e.target.value })} placeholder={'Ciao {nome},\n\n…'} /></div>
+          <div className="row-inline">
+            <button type="button" className="btn btn-ghost" onClick={() => setEditing(null)}>Cancel</button>
+            <button type="submit" className="btn btn-primary" disabled={!form.name.trim() || save.isPending}>Save template</button>
+          </div>
+        </form>
+      ) : (
+        <button className="btn btn-ghost" style={{ alignSelf: 'flex-start' }} onClick={() => start()}><Icon name="plus" size={15} />New template</button>
+      )}
+    </div>
+  );
+}
 
 // ---------- Signatures ----------
 

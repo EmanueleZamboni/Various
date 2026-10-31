@@ -176,6 +176,8 @@ export function ThreadList({ view }: { view: string }) {
       onSwipe={(dir) => swipe(t, dir)}
       swipeActions={{ left: settings?.swipe.left ?? 'archive', right: settings?.swipe.right ?? 'pin' }}
       onAction={(action) => void act({ threadIds: [t.id], action, view })}
+      onMove={() => ui.setMoveTarget({ threadIds: [t.id], accountId: t.accountId })}
+      onBlock={t.lastFrom?.email && !myEmails.has(t.lastFrom.email.toLowerCase()) ? () => ui.setPendingBlock({ email: t.lastFrom.email, name: t.lastFrom.name || t.lastFrom.email, threadId: t.id }) : undefined}
       onPrefetch={() => void qc.prefetchQuery({ queryKey: ['thread', t.id], queryFn: () => api.threads.get(t.id), staleTime: 10_000 })}
     />
   );
@@ -245,12 +247,6 @@ export function ThreadList({ view }: { view: string }) {
             <h1 className="list-title">{title}</h1>
             {subtitle && <div className="list-sub">{subtitle}</div>}
           </div>
-          {view === 'inbox' && (
-            <div className="seg" role="group" aria-label="Inbox layout">
-              <button className={ui.smart ? 'on' : ''} onClick={() => ui.setSmart(true)} aria-pressed={ui.smart}>Smart</button>
-              <button className={!ui.smart ? 'on' : ''} onClick={() => ui.setSmart(false)} aria-pressed={!ui.smart}>All</button>
-            </div>
-          )}
         </div>
         {view !== 'blocked' && <SearchBar />}
         {isSearch && nav.q && (

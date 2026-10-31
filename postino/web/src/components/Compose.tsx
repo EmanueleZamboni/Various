@@ -9,6 +9,7 @@ import { Icon } from '../icons';
 import { useUI } from '../store';
 import { formatBytes, isValidEmail, parseAddressList } from '../util/format';
 import { AddressInput } from './AddressInput';
+import { TemplatePicker, fillTemplate } from './Templates';
 
 const MAX_TOTAL = 25 * 1024 * 1024;
 
@@ -326,6 +327,14 @@ export function Compose() {
             <Icon name="clip" size={18} />
             <input type="file" multiple hidden onChange={(e) => e.target.files && addFiles(e.target.files)} />
           </label>
+          <TemplatePicker
+            current={{ subject, text }}
+            onPick={(t) => {
+              if (!subject.trim() && t.subject.trim()) setSubject(t.subject);
+              const body = fillTemplate(t.text, to);
+              setText((cur) => (cur.trim() ? `${body}\n\n${cur}` : body));
+            }}
+          />
           <SignaturePicker signatures={signatures ?? []} accountId={accountId} value={signatureId || 'none'} onChange={setSignatureId} compact={narrow} />
           {hasContent && (
             <button type="button" className="ib danger" title="Discard" aria-label="Discard draft" onClick={() => void discard()}><Icon name="trash" size={18} /></button>

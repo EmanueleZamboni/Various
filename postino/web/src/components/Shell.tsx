@@ -120,7 +120,7 @@ export function Shell({ me, forcedView, onLogout }: { me?: Me; forcedView?: stri
 
   const online = useOnline();
   return (
-    <div className="shell" data-view={phoneView} data-drawer={ui.drawerOpen ? 'open' : 'closed'} data-density={settings?.appearance.density ?? 'comfortable'} data-text={settings?.appearance.textSize ?? 'normal'}>
+    <div className="shell" data-view={phoneView} data-reading={settings?.appearance.readingPane ?? 'full'} data-open={nav.threadId ? 'thread' : 'list'} data-drawer={ui.drawerOpen ? 'open' : 'closed'} data-density={settings?.appearance.density ?? 'comfortable'} data-text={settings?.appearance.textSize ?? 'normal'}>
       {!online && (
         <div className="offline-bar" role="status">
           <Icon name="alert" size={16} />

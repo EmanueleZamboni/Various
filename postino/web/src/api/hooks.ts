@@ -1,7 +1,7 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query';
 import { useCallback, useMemo } from 'react';
 import { api } from './client';
-import type { Account, DeepPartial, OutboxItem, Settings, Signature, ThreadAction, ThreadDetail, ThreadSummary, ThreadsResponse, Draft } from './types';
+import type { Account, DeepPartial, OutboxItem, Settings, Signature, ThreadAction, ThreadDetail, ThreadSummary, ThreadsResponse, Draft, Template } from './types';
 import { useUI } from '../store';
 
 export const useMe = (enabled = true) =>
@@ -199,6 +199,10 @@ export function useUpdateSettings() {
     mutationFn: (s: DeepPartial<Settings>) => api.settings.update(s),
     onSuccess: (data) => qc.setQueryData(['settings'], data),
   });
+}
+
+export function useTemplates() {
+  return useQuery<Template[]>({ queryKey: ['templates'], queryFn: api.templates.list, staleTime: 60_000 });
 }
 
 export function useSignatures() {

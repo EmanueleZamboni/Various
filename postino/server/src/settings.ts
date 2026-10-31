@@ -31,7 +31,7 @@ export type UiSettings = {
     confirmNoSubject: boolean;
   };
   swipe: { left: string; right: string };
-  appearance: { density: 'comfortable' | 'compact'; textSize: 'normal' | 'large' };
+  appearance: { density: 'comfortable' | 'compact'; textSize: 'normal' | 'large'; readingPane: 'full' | 'side' };
   // kept for older clients
   smartInbox: boolean;
   signaturePerAccount: boolean;
@@ -39,11 +39,11 @@ export type UiSettings = {
 
 export const defaults: UiSettings = {
   notifications: { enabled: true, categories: ['person'], sound: true },
-  inbox: { smart: true, groupNotifications: true, groupNewsletters: true, previewLines: 1, showAvatars: true, showAccountTag: true, pinnedOnTop: true },
+  inbox: { smart: false, groupNotifications: true, groupNewsletters: true, previewLines: 1, showAvatars: true, showAccountTag: true, pinnedOnTop: true },
   reading: { markRead: 'open', markReadDelay: 2, remoteImages: 'ask', afterAction: 'next', confirmDelete: false, showQuoted: false },
   compose: { defaultAccount: 'lastUsed', replyFromRecipient: true, defaultReply: 'reply', includeQuote: true, undoSendSec: 10, sendAndArchive: false, bccMyself: false, confirmNoSubject: true },
   swipe: { left: 'archive', right: 'pin' },
-  appearance: { density: 'comfortable', textSize: 'normal' },
+  appearance: { density: 'comfortable', textSize: 'normal', readingPane: 'full' },
   smartInbox: true,
   signaturePerAccount: true,
 };
@@ -78,6 +78,7 @@ function clampSettings(s: UiSettings): UiSettings {
   s.notifications.categories = s.notifications.categories.filter((c) => ['person', 'notification', 'newsletter'].includes(c));
   s.appearance.density = pick(s.appearance.density, ['comfortable', 'compact'] as const, 'comfortable');
   s.appearance.textSize = pick(s.appearance.textSize, ['normal', 'large'] as const, 'normal');
+  s.appearance.readingPane = pick(s.appearance.readingPane, ['full', 'side'] as const, 'full');
   return s;
 }
 

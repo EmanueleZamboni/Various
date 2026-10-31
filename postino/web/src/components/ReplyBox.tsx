@@ -9,6 +9,7 @@ import { Icon } from '../icons';
 import { useUI } from '../store';
 import { firstName, formatBytes, isValidEmail, parseAddressList } from '../util/format';
 import { AddressInput } from './AddressInput';
+import { TemplatePicker, fillTemplate } from './Templates';
 
 export type ReplyMode = 'reply' | 'replyAll' | 'forward';
 
@@ -267,6 +268,13 @@ export function ReplyBox({ message: m, mode, onModeChange, onClose, onSent }: {
           <Icon name="clip" size={18} />
           <input type="file" multiple hidden onChange={(e) => setFiles((fs) => [...fs, ...Array.from(e.target.files ?? [])])} />
         </label>
+        <TemplatePicker
+          current={{ subject: prefill?.subject ?? '', text }}
+          onPick={(t) => {
+            const body = fillTemplate(t.text, to || (m.from.name ? `${m.from.name} <${m.from.email}>` : m.from.email));
+            setText((cur) => (cur.trim() ? `${body}\n\n${cur}` : body));
+          }}
+        />
         <SignaturePicker signatures={signatures ?? []} accountId={prefill?.accountId ?? m.accountId} value={signatureId || 'none'} onChange={setSignatureId} compact />
         <span className="help" style={{ fontSize: 12 }}>{saved ? `Draft saved ${saved}` : ''}</span>
         <span className="sp" />

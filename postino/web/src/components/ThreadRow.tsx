@@ -1,4 +1,4 @@
-import { useRef, useState, type PointerEvent } from 'react';
+import { useEffect, useRef, useState, type PointerEvent } from 'react';
 import type { Account, ThreadAction, ThreadSummary, SwipeAction } from '../api/types';
 import { Icon, type IconName } from '../icons';
 import { displayName, formatListDate, participantsLabel } from '../util/format';
@@ -22,7 +22,48 @@ type Props = {
   swipeActions?: { left: SwipeAction; right: SwipeAction };
   onAction: (a: ThreadAction) => void;
   onPrefetch: () => void;
+  /** Extra actions for the right-click menu. */
+  onMove?: () => void;
+  onBlock?: () => void;
 };
+
+type MenuItem = { label: string; icon: IconName; run: () => void; danger?: boolean } | 'sep';
+
+/** Right-click (or long-press) menu for one conversation. */
+function RowMenu({ x, y, items, onClose }: { x: number; y: number; items: MenuItem[]; onClose: () => void }) {
+  useEffect(() => {
+    const off = () => onClose();
+    const key = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    window.addEventListener('mousedown', off);
+    window.addEventListener('scroll', off, true);
+    window.addEventListener('resize', off);
+    window.addEventListener('keydown', key);
+    return () => {
+      window.removeEventListener('mousedown', off);
+      window.removeEventListener('scroll', off, true);
+      window.removeEventListener('resize', off);
+      window.removeEventListener('keydown', key);
+    };
+  }, [onClose]);
+  const w = 230;
+  const h = items.length * 38;
+  const left = Math.min(x, window.innerWidth - w - 8);
+  const top = Math.min(y, window.innerHeight - h - 8);
+  return (
+    <div className="ctx-menu" role="menu" style={{ left, top, width: w }} onMouseDown={(e) => e.stopPropagation()} onContextMenu={(e) => e.preventDefault()}>
+      {items.map((it, i) =>
+        it === 'sep' ? (
+          <div key={`s${i}`} className="ctx-sep" />
+        ) : (
+          <button key={it.label} role="menuitem" className={it.danger ? 'danger' : ''} onClick={() => { onClose(); it.run(); }}>
+            <Icon name={it.icon} size={16} />
+            {it.label}
+          </button>
+        ),
+      )}
+    </div>
+  );
+}
 
 const THRESHOLD = 88;
 
@@ -34,7 +75,21 @@ const SWIPE_META: Record<SwipeAction, { label: (t: ThreadSummary) => string; ico
   read: { label: (t) => (t.unread ? 'Mark read' : 'Mark unread'), icon: 'mailOpen', removes: false, tone: 'blue' },
 };
 
-export function ThreadRow({ thread: t, account, myEmails, selected, focused, highlight, compact, previewLines = 1, showAvatar = true, showAccount, accountLabel, onOpen, onSwipe, onAction, onPrefetch, swipeActions }: Props) {
+export function ThreadRow({ thread: t, account, myEmails, selected, focused, highlight, compact, previewLines = 1, showAvatar = true, showAccount, accountLabel, onOpen, onSwipe, onAction, onPrefetch, swipeActions, onMove, onBlock }: Props) {
+  const [ctx, setCtx] = useState<{ x: number; y: number } | null>(null);
+  const longPress = useRef<number | undefined>(undefined);
+  const menuItems: MenuItem[] = [
+    { label: 'Open', icon: 'mailOpen', run: onOpen },
+    'sep',
+    { label: t.unread ? 'Mark as read' : 'Mark as unread', icon: t.unread ? 'mailOpen' : 'unread', run: () => onAction(t.unread ? 'read' : 'unread') },
+    { label: t.pinned ? 'Unpin (not important)' : 'Pin as important', icon: 'pin', run: () => onAction(t.pinned ? 'unpin' : 'pin') },
+    { label: 'Archive', icon: 'archive', run: () => onAction('archive') },
+    ...(onMove ? [{ label: 'Move to folder…', icon: 'move' as IconName, run: onMove }] : []),
+    'sep',
+    { label: 'Mark as spam', icon: 'spam', run: () => onAction('junk') },
+    ...(onBlock ? [{ label: 'Block sender', icon: 'block' as IconName, run: onBlock, danger: true }] : []),
+    { label: 'Delete', icon: 'trash', run: () => onAction('trash'), danger: true },
+  ];
   const leftMeta = SWIPE_META[swipeActions?.left ?? 'archive'];
   const rightMeta = SWIPE_META[swipeActions?.right ?? 'pin'];
   const [dx, setDx] = useState(0);
@@ -96,6 +151,7 @@ export function ThreadRow({ thread: t, account, myEmails, selected, focused, hig
 
   return (
     <div className="row-wrap" role="listitem">
+      {ctx && <RowMenu x={ctx.x} y={ctx.y} items={menuItems} onClose={() => setCtx(null)} />}
       {dir && (
         <div className={`swipe-bg ${dir} tone-${(dir === 'right' ? rightMeta : leftMeta).tone}`} aria-hidden="true">
           <span style={{ transform: armed ? 'scale(1.08)' : undefined }}>
@@ -131,7 +187,25 @@ export function ThreadRow({ thread: t, account, myEmails, selected, focused, hig
         }}
         onMouseEnter={onPrefetch}
         onFocus={onPrefetch}
-        onPointerDown={onPointerDown}
+        onPointerDown={(e) => {
+          onPointerDown(e);
+          // Long-press on touch screens opens the same menu as a right-click.
+          if (e.pointerType === 'touch') {
+            const { clientX, clientY } = e;
+            window.clearTimeout(longPress.current);
+            longPress.current = window.setTimeout(() => {
+              suppress.current = Date.now() + 600;
+              setCtx({ x: clientX, y: clientY });
+              navigator.vibrate?.(10);
+            }, 520);
+          }
+        }}
+        onPointerMoveCapture={() => window.clearTimeout(longPress.current)}
+        onPointerUpCapture={() => window.clearTimeout(longPress.current)}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          setCtx({ x: e.clientX, y: e.clientY });
+        }}
         onPointerMove={onPointerMove}
         onPointerUp={end}
         onPointerCancel={end}

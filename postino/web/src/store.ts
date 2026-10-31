@@ -73,7 +73,7 @@ let toastSeq = 0;
 export const useUI = create<UIState>((set, get) => ({
   smart: (() => {
     try {
-      return localStorage.getItem('postino.smart') !== '0';
+      return localStorage.getItem('postino.smart') === '1';
     } catch {
       return true;
     }

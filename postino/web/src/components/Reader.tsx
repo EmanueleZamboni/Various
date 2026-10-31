@@ -215,10 +215,7 @@ export function Reader({ view }: { view: string }) {
             <h2 className="r-subj">{thread.subject || '(no subject)'}</h2>
             <div className="r-meta">
               {account && (
-                <span className="acct-chip" style={{ ['--c' as string]: account.color }}>
-                  <i className="dot" />
-                  {account.email}
-                </span>
+                <span className="acct-tag" style={{ ['--c' as string]: account.color }}>{account.email}</span>
               )}
               <span>{messages.length > 1 ? `${messages.length} messages` : formatFullDate(messages[0]?.date ?? thread.lastDate)}</span>
               {thread.pinned && <span className="tag pin"><Icon name="pin" size={13} />Pinned</span>}
@@ -302,6 +299,7 @@ function MessageCard({ message: m, thread, accountColor, myEmails, expanded, sin
     if (imagesPolicy === 'always' || (imagesPolicy === 'contacts' && m.knownSender)) setShowImages(true);
   }, [imagesPolicy, m.knownSender, m.id]);
   const [menu, setMenu] = useState(false);
+  const [unsub, setUnsub] = useState<'idle' | 'busy' | 'done'>('idle');
   const toast = useUI((s) => s.toast);
   const act = useThreadActions();
   void thread;
@@ -324,12 +322,17 @@ function MessageCard({ message: m, thread, accountColor, myEmails, expanded, sin
   }
 
   const unsubscribe = async () => {
+    setUnsub('busy');
     try {
       const r = await api.messages.unsubscribe(m.id);
       if (r.method === 'http' && r.url) window.open(r.url, '_blank', 'noopener');
-      toast({ text: r.method === 'none' ? 'This sender gives no unsubscribe link' : 'Unsubscribe request sent' });
+      if (r.method === 'none') {
+        toast({ text: 'This sender gives no unsubscribe link. Block them instead.' });
+        setUnsub('idle');
+      } else setUnsub('done');
     } catch (e) {
       toast({ text: (e as Error).message, kind: 'error' });
+      setUnsub('idle');
     }
   };
 
@@ -381,6 +384,23 @@ function MessageCard({ message: m, thread, accountColor, myEmails, expanded, sin
         </div>
       )}
       <div className="msg-body">
+        {m.listUnsubscribe && !me && expanded && (
+          <div className={`unsub-bar${unsub === 'done' ? ' done' : ''}`}>
+            {unsub === 'done' ? (
+              <>
+                <Icon name="check" size={16} />
+                <span>Unsubscribed. Some senders take a few days; block them to stop it right now.</span>
+                <button className="btn btn-ghost btn-sm" onClick={onBlock}>Block sender</button>
+              </>
+            ) : (
+              <>
+                <Icon name="news" size={16} />
+                <span>Mailing list from <b>{displayName(m.from)}</b></span>
+                <button className="btn btn-primary btn-sm" onClick={() => void unsubscribe()} disabled={unsub === 'busy'}>{unsub === 'busy' ? 'Unsubscribing…' : 'Unsubscribe'}</button>
+              </>
+            )}
+          </div>
+        )}
         {!m.body.fetched ? (
           <div className="help">Downloading this message</div>
         ) : (
@@ -410,12 +430,7 @@ function MessageCard({ message: m, thread, accountColor, myEmails, expanded, sin
             {m.attachments.filter((a) => !a.inline && !(m.calendar && /calendar|\/ics$/i.test(a.contentType))).map((a, _i, list) => <AttachmentChip key={a.id} a={a} all={list} />)}
           </div>
         )}
-        {m.listUnsubscribe && !me && (
-          <div style={{ marginTop: 14, display: 'flex', gap: 14, alignItems: 'center' }}>
-            <button className="unsub" onClick={unsubscribe}><Icon name="x" size={14} />Unsubscribe</button>
-            <button className="unsub" onClick={onRefetch} hidden><Icon name="refresh" size={14} /></button>
-          </div>
-        )}
+
       </div>
     </article>
   );

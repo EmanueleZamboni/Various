@@ -138,6 +138,8 @@ export type Draft = {
   updatedAt: string;
 };
 
+export type Template = { id: string; name: string; subject: string; text: string; updatedAt: string };
+
 export type Signature = {
   id: string;
   accountId: string;
@@ -168,7 +170,7 @@ export type Settings = {
   reading: { markRead: 'open' | 'delay' | 'manual'; markReadDelay: number; remoteImages: 'ask' | 'always' | 'contacts'; afterAction: 'next' | 'previous' | 'list'; confirmDelete: boolean; showQuoted: boolean };
   compose: { defaultAccount: string; replyFromRecipient: boolean; defaultReply: 'reply' | 'replyAll'; includeQuote: boolean; undoSendSec: 0 | 5 | 10 | 20 | 30; sendAndArchive: boolean; bccMyself: boolean; confirmNoSubject: boolean };
   swipe: { left: SwipeAction; right: SwipeAction };
-  appearance: { density: 'comfortable' | 'compact'; textSize: 'normal' | 'large' };
+  appearance: { density: 'comfortable' | 'compact'; textSize: 'normal' | 'large'; readingPane: 'full' | 'side' };
   smartInbox: boolean;
   signaturePerAccount: boolean;
 };

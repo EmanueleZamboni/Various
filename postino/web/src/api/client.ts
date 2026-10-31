@@ -13,7 +13,7 @@ import type {
   ThreadAction,
   ThreadDetail,
   ThreadsResponse,
- Signature, Passkey, DeepPartial, OutboxItem } from './types';
+ Signature, Passkey, DeepPartial, OutboxItem, Template } from './types';
 
 export class ApiError extends Error {
   status: number;
@@ -143,6 +143,12 @@ export const api = {
     create: (s: { accountId: string; name: string; html: string; isDefault?: boolean }) => post<Signature>('/api/signatures', s),
     update: (id: string, s: { name?: string; html?: string; isDefault?: boolean }) => put<Signature>(`/api/signatures/${id}`, s),
     remove: (id: string) => del<void>(`/api/signatures/${id}`),
+  },
+  templates: {
+    list: () => get<Template[]>('/api/templates'),
+    create: (t: { name: string; subject: string; text: string }) => post<Template>('/api/templates', t),
+    update: (id: string, t: { name: string; subject: string; text: string }) => put<Template>(`/api/templates/${id}`, t),
+    remove: (id: string) => del<void>(`/api/templates/${id}`),
   },
   contacts: (q: string, limit = 8) => get<Address[]>(`/api/contacts${qs({ q, limit })}`),
   settings: {

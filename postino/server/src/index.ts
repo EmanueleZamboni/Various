@@ -14,6 +14,7 @@ import { registerBlockedRoutes } from './routes/blocked.js';
 import { registerComposeRoutes } from './routes/compose.js';
 import { registerMiscRoutes } from './routes/misc.js';
 import { registerSignatureRoutes } from './routes/signatures.js';
+import { registerTemplateRoutes } from './routes/templates.js';
 import { registerPasskeyRoutes } from './passkeys.js';
 import { registerGoogleRoutes } from './google.js';
 import { manager } from './mail/manager.js';
@@ -114,6 +115,7 @@ export async function buildApp() {
   registerComposeRoutes(app);
   registerMiscRoutes(app);
   registerSignatureRoutes(app);
+  registerTemplateRoutes(app);
   registerPasskeyRoutes(app);
   registerGoogleRoutes(app);
 

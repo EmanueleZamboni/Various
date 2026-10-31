@@ -57,6 +57,28 @@ export function AttachmentViewer() {
 
   if (!viewer || !a) return null;
   const many = viewer.attachments.length > 1;
+  // Nothing to show: a small "download it?" prompt instead of a full-screen viewer.
+  if (kind === 'none' || (kind === 'pdf' && !pdfInline)) {
+    return (
+      <div className="viewer compact" role="dialog" aria-modal="true" aria-label={a.filename} onMouseDown={(e) => { if (e.target === e.currentTarget) close(); }}>
+        <div className="viewer-ask">
+          <span className="att-ico big">{(a.filename.split('.').pop() ?? 'file').slice(0, 4).toUpperCase()}</span>
+          <b className="ask-name">{a.filename}</b>
+          <small>{formatBytes(a.size)}</small>
+          <p>{kind === 'pdf' ? 'Open it in your phone\'s PDF viewer?' : 'No preview for this file. Download it?'}</p>
+          <div className="ask-actions">
+            <button type="button" className="btn btn-ghost" onClick={close}>Cancel</button>
+            {kind === 'pdf' ? (
+              <a className="btn btn-primary" href={`${a.url}?inline=1`} target="_blank" rel="noopener" onClick={() => window.setTimeout(close, 100)}><Icon name="external" size={15} />Open</a>
+            ) : (
+              <a className="btn btn-primary" href={a.url} download={a.filename} onClick={() => window.setTimeout(close, 100)}><Icon name="download" size={15} />Download</a>
+            )}
+          </div>
+          <DriveActions attachment={a} />
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="viewer" role="dialog" aria-modal="true" aria-label={a.filename} onMouseDown={(e) => { if (e.target === e.currentTarget) close(); }}>
       <div className="viewer-top">
@@ -67,26 +89,15 @@ export function AttachmentViewer() {
         <div className="viewer-actions">
           <DriveActions attachment={a} compact />
           <a className="btn btn-ghost btn-sm" href={a.url} download={a.filename}><Icon name="download" size={15} />Download</a>
-          {kind !== 'none' && <a className="btn btn-ghost btn-sm" href={`${a.url}?inline=1`} target="_blank" rel="noopener"><Icon name="external" size={15} />Open in tab</a>}
+          <a className="btn btn-ghost btn-sm" href={`${a.url}?inline=1`} target="_blank" rel="noopener"><Icon name="external" size={15} />Open in tab</a>
           <button className="ib" aria-label="Close" onClick={close}><Icon name="x" /></button>
         </div>
       </div>
-      <div className="viewer-body">
+      <div className="viewer-body" onMouseDown={(e) => { if (e.target === e.currentTarget) close(); }}>
         {many && <button className="viewer-nav prev" aria-label="Previous file" disabled={viewer.index === 0} onClick={() => setIndex(viewer.index - 1)}><Icon name="chevronRight" size={22} style={{ transform: 'rotate(180deg)' }} /></button>}
         {kind === 'image' && <img className="viewer-img" src={`${a.url}?inline=1`} alt={a.filename} />}
         {kind === 'pdf' && pdfInline && <iframe className="viewer-frame" src={`${a.url}?inline=1#toolbar=1`} title={a.filename} />}
         {kind === 'text' && <pre className="viewer-text">{text ?? 'Loading'}</pre>}
-        {(kind === 'none' || (kind === 'pdf' && !pdfInline)) && (
-          <div className="viewer-none">
-            <span className="att-ico big">{(a.filename.split('.').pop() ?? 'file').slice(0, 4).toUpperCase()}</span>
-            <p>{kind === 'pdf' ? 'This phone opens PDFs in its own viewer.' : 'No preview for this type of file.'}</p>
-            <div className="row-inline" style={{ justifyContent: 'center' }}>
-              {kind === 'pdf' && <a className="btn btn-primary" href={`${a.url}?inline=1`} target="_blank" rel="noopener"><Icon name="external" size={15} />Open</a>}
-              <a className={`btn ${kind === 'pdf' ? 'btn-ghost' : 'btn-primary'}`} href={a.url} download={a.filename}><Icon name="download" size={15} />Download</a>
-              <DriveActions attachment={a} />
-            </div>
-          </div>
-        )}
         {many && <button className="viewer-nav next" aria-label="Next file" disabled={viewer.index === viewer.attachments.length - 1} onClick={() => setIndex(viewer.index + 1)}><Icon name="chevronRight" size={22} /></button>}
       </div>
     </div>
