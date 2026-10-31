@@ -25,6 +25,15 @@ command -v sudo >/dev/null || die "sudo is required"
 # ---- 1. Questions -------------------------------------------------------------
 if [ -f "$APP/.env" ]; then
   DOMAIN="$(grep -E '^POSTINO_DOMAIN=' "$APP/.env" | cut -d= -f2- || true)"
+  # A new address given on the command line (e.g. a re-run with another domain) wins.
+  NEW="${POSTINO_DOMAIN:-}"; NEW="${NEW#https://}"; NEW="${NEW#http://}"; NEW="${NEW%/}"
+  if [ -n "$NEW" ] && [ "$NEW" != "$DOMAIN" ]; then
+    case "$NEW" in *[!A-Za-z0-9.-]*) die "that does not look like a domain name: $NEW" ;; esac
+    say "Changing the address from ${DOMAIN:-none} to $NEW"
+    cp "$APP/.env" "$APP/.env.bak"
+    sed -i -e "s|^POSTINO_DOMAIN=.*|POSTINO_DOMAIN=$NEW|" -e "s|^POSTINO_BASE_URL=.*|POSTINO_BASE_URL=https://$NEW|" "$APP/.env"
+    DOMAIN="$NEW"
+  fi
 fi
 if [ -z "${DOMAIN:-}" ]; then
   DOMAIN="${POSTINO_DOMAIN:-}"
