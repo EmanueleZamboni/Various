@@ -270,11 +270,12 @@ export function registerGoogleRoutes(app: FastifyInstance): void {
   app.get('/api/google/redirect-uri', async (req) => ({ redirectUri: redirectUri(req) }));
 
   // Step 2: send the user to Google.
-  app.post('/api/google/connect', async (req, reply) => {
+  app.post<{ Body: { back?: string } }>('/api/google/connect', async (req, reply) => {
     const c = creds();
     if (!c) return reply.code(409).send({ error: 'not_configured', message: 'Add the Google client ID and secret first.' });
     const state = randomToken(16);
-    pendingStates.set(state, { redirect: redirectUri(req), expires: Date.now() + 10 * 60_000 });
+    const back = req.body?.back === '/welcome?step=google' ? '/welcome?step=google' : '/settings/google';
+    pendingStates.set(state, { redirect: redirectUri(req), expires: Date.now() + 10 * 60_000, purpose: 'drive', back });
     const url = new URL(AUTH_BASE);
     url.searchParams.set('client_id', c.clientId);
     url.searchParams.set('redirect_uri', redirectUri(req));
@@ -310,7 +311,8 @@ export function registerGoogleRoutes(app: FastifyInstance): void {
   app.get<{ Querystring: { code?: string; state?: string; error?: string } }>('/api/google/callback', async (req, reply) => {
     const pending = req.query.state ? pendingStates.get(req.query.state) : undefined;
     if (req.query.state) pendingStates.delete(req.query.state);
-    const back = (msg: string) => reply.redirect(`${pending?.purpose === 'gmail' ? pending.back || '/settings/accounts' : '/settings/google'}?${new URLSearchParams({ result: msg }).toString()}`);
+    const target = pending?.back || (pending?.purpose === 'gmail' ? '/settings/accounts' : '/settings/google');
+    const back = (msg: string) => reply.redirect(`${target}${target.includes('?') ? '&' : '?'}${new URLSearchParams({ result: msg }).toString()}`);
     if (req.query.error) return back(`Google said: ${req.query.error}`);
     if (!pending || pending.expires < Date.now() || !req.query.code) return back('The sign-in took too long. Try again.');
     const c = creds();

@@ -1,4 +1,4 @@
-import { GoogleSignInButton, useGoogleResult } from './GoogleSignIn';
+import { GoogleSignInButton, useGoogleReady, useGoogleResult } from './GoogleSignIn';
 import { BackupSettings } from './Backup';
 import { type ReactNode, useEffect, useState, type FormEvent } from 'react';
 import { Link, Route, Routes, useLocation } from 'react-router-dom';
@@ -100,6 +100,7 @@ function AccountsSettings() {
   const [adding, setAdding] = useState(() => new URLSearchParams(loc.search).get('add') === '1');
   const [editing, setEditing] = useState<string | null>(null);
   useGoogleResult();
+  const googleReady = useGoogleReady();
   return (
     <>
       <div className="sec-head">
@@ -127,7 +128,7 @@ function AccountsSettings() {
               <Icon name="plus" size={16} />
               Add account
             </button>
-            <GoogleSignInButton back="/settings/accounts" />
+            {googleReady && <GoogleSignInButton back="/settings/accounts" />}
           </div>
         )}
       </div>
@@ -957,7 +958,7 @@ function GoogleFeatures({ features, onReconnect }: { features?: { drive: boolean
   );
 }
 
-function GoogleSettings() {
+export function GoogleSettings({ back, embedded }: { back?: string; embedded?: boolean } = {}) {
   const qc = useQueryClient();
   const toast = useUI((s) => s.toast);
   const loc = useLocation();
@@ -970,7 +971,7 @@ function GoogleSettings() {
   useEffect(() => {
     if (!result) return;
     qc.invalidateQueries({ queryKey: ['google'] });
-    toast({ text: result === 'connected' ? 'Google Drive connected' : result, kind: result === 'connected' ? 'success' : 'error' });
+    toast({ text: result === 'connected' ? 'Google connected' : result, kind: result === 'connected' ? 'success' : 'error' });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [result]);
   const saveCreds = useMutation({
@@ -980,7 +981,7 @@ function GoogleSettings() {
   });
   const connect = async () => {
     try {
-      const r = await api.google.connect();
+      const r = await api.google.connect(back);
       window.location.href = r.url;
     } catch (e) {
       setErr((e as Error).message);
@@ -989,7 +990,7 @@ function GoogleSettings() {
   const disconnect = useMutation({ mutationFn: () => api.google.disconnect(), onSuccess: () => { qc.invalidateQueries({ queryKey: ['google'] }); toast({ text: 'Google Drive disconnected' }); } });
   return (
     <>
-      <h2>Google</h2>
+      {!embedded && <h2>Google</h2>}
       <p className="help">One Google connection for Drive (save attachments, open them in Docs/Sheets/Slides), Calendar (answer invitations), Contacts (names and photos when writing) and Tasks. In Drive, Postino only sees the files it saves itself.</p>
       <div className="settings-section">
         {data?.connected ? (

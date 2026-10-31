@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
 import { useUI } from '../store';
 
@@ -52,4 +52,10 @@ export function useGoogleResult() {
     navigate(loc.pathname, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loc.search]);
+}
+
+/** True when this server has a Google sign-in key (Settings → Google), so the button can work. */
+export function useGoogleReady(): boolean {
+  const { data } = useQuery({ queryKey: ['google'], queryFn: api.google.status, retry: false, staleTime: 60_000 });
+  return Boolean(data?.configured);
 }
