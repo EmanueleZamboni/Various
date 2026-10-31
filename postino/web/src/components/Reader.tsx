@@ -487,6 +487,9 @@ export function printMessage(m: Message, showImages = false) {
 }
 
 const FRAME_CSS = `
+  :root{color-scheme:light;scrollbar-width:thin;scrollbar-color:#cdd3dc transparent}
+  ::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:#cdd3dc;border-radius:10px;border:3px solid #fff}::-webkit-scrollbar-thumb:hover{background:#aab2be}
   html,body{margin:0;padding:0;background:#fff;color:#17201c}
   body{font:15px/1.6 'Instrument Sans',-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;word-wrap:break-word;overflow-wrap:anywhere;padding:2px 0 4px}
   img{max-width:100%!important;height:auto}

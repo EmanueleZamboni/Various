@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { Me } from '../api/types';
 import { useThreadActions } from '../api/hooks';
@@ -119,8 +119,40 @@ export function Shell({ me, forcedView, onLogout }: { me?: Me; forcedView?: stri
   const phoneView = nav.threadId ? 'reader' : 'list';
 
   const online = useOnline();
+  const sideBySide = (settings?.appearance.readingPane ?? 'full') === 'side';
+  const [listW, setListW] = useState<number>(() => {
+    try {
+      return Number(localStorage.getItem('postino.listW')) || 400;
+    } catch {
+      return 400;
+    }
+  });
+  const [resizing, setResizing] = useState(false);
+  const startResize = (e: React.PointerEvent) => {
+    e.preventDefault();
+    const shell = (e.currentTarget as HTMLElement).parentElement!;
+    const sidebarW = (shell.querySelector('.sidebar') as HTMLElement | null)?.offsetWidth ?? 240;
+    setResizing(true);
+    let last = listW;
+    const move = (ev: PointerEvent) => {
+      last = Math.round(Math.min(Math.max(ev.clientX - shell.getBoundingClientRect().left - sidebarW, 280), Math.min(760, window.innerWidth - sidebarW - 360)));
+      setListW(last);
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      setResizing(false);
+      try {
+        localStorage.setItem('postino.listW', String(last));
+      } catch {
+        /* ignore */
+      }
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
   return (
-    <div className="shell" data-view={phoneView} data-reading={settings?.appearance.readingPane ?? 'full'} data-open={nav.threadId ? 'thread' : 'list'} data-drawer={ui.drawerOpen ? 'open' : 'closed'} data-density={settings?.appearance.density ?? 'comfortable'} data-text={settings?.appearance.textSize ?? 'normal'}>
+    <div className={`shell${resizing ? ' resizing' : ''}`} style={sideBySide ? ({ ['--list-w' as string]: `${listW}px` } as React.CSSProperties) : undefined} data-view={phoneView} data-reading={settings?.appearance.readingPane ?? 'full'} data-open={nav.threadId ? 'thread' : 'list'} data-drawer={ui.drawerOpen ? 'open' : 'closed'} data-density={settings?.appearance.density ?? 'comfortable'} data-text={settings?.appearance.textSize ?? 'normal'}>
       {!online && (
         <div className="offline-bar" role="status">
           <Icon name="alert" size={16} />
@@ -128,6 +160,9 @@ export function Shell({ me, forcedView, onLogout }: { me?: Me; forcedView?: stri
         </div>
       )}
       <Sidebar />
+      {sideBySide && !nav.isSettings && (
+        <div className={`pane-resizer${resizing ? ' dragging' : ''}`} role="separator" aria-orientation="vertical" aria-label="Resize the list" title="Drag to resize" onPointerDown={startResize} onDoubleClick={() => { setListW(400); try { localStorage.removeItem('postino.listW'); } catch { /* ignore */ } }} />
+      )}
       <div className="drawer-scrim" onClick={() => ui.setDrawer(false)} />
       {nav.isSettings ? (
         <SettingsPage me={me} onLogout={onLogout} />

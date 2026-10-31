@@ -3162,10 +3162,19 @@ textarea:focus-visible {
 .unsub-bar.done { background: #edf8f1; border-color: #cdebd8; }
 
 /* ---------- Full-window reading (Gmail-like), computers and tablets ---------- */
-@media (min-width: 761px) {
+@media (min-width: 1101px) {
   .shell[data-reading='full'] {
     grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
   }
+}
+/* Tablet widths: the menu is a drawer outside the grid, so the list or the email gets the whole width. */
+@media (min-width: 761px) and (max-width: 1100px) {
+  .shell[data-reading='full'] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .pane-resizer { display: none; }
+}
+@media (min-width: 761px) {
   .shell[data-reading='full'][data-open='list'] .reader {
     display: none;
   }
@@ -3212,3 +3221,30 @@ textarea:focus-visible {
 .pv-table th { position: sticky; left: 0; background: var(--sheet-2); color: var(--mute); font-weight: 500; text-align: right; }
 .viewer-media { max-width: 100%; max-height: 100%; border-radius: 8px; background: #000; }
 .viewer-audio { width: min(520px, 100%); }
+
+/* ---------- Scrollbars: thin and light everywhere ---------- */
+:root { color-scheme: light; }
+* { scrollbar-width: thin; scrollbar-color: #cdd3dc transparent; }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: #cdd3dc; border-radius: 10px; border: 3px solid transparent; background-clip: padding-box; }
+*::-webkit-scrollbar-thumb:hover { background: #aab2be; background-clip: padding-box; border: 3px solid transparent; }
+.chips { scrollbar-width: none; }
+
+/* ---------- Resizable list / reading pane ---------- */
+.shell { position: relative; }
+.pane-resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--sidebar-w) + var(--list-w) - 4px);
+  width: 8px;
+  cursor: col-resize;
+  z-index: 15;
+  touch-action: none;
+}
+.pane-resizer::after { content: ''; position: absolute; top: 0; bottom: 0; left: 3px; width: 2px; background: transparent; transition: background .15s; }
+.pane-resizer:hover::after, .pane-resizer.dragging::after { background: var(--pine); }
+.shell.resizing { cursor: col-resize; user-select: none; }
+.shell.resizing iframe { pointer-events: none; }
+@media (max-width: 760px) { .pane-resizer { display: none; } }
