@@ -56,7 +56,8 @@ main() {
 
   # ---- SSH key (kept in Cloud Shell) -------------------------------------------------
   mkdir -p ~/.ssh
-  [ -f ~/.ssh/postino ] || ssh-keygen -t ed25519 -f ~/.ssh/postino -N "" -q -C postino
+  # RSA: Oracle Cloud Shell runs in FIPS mode, which refuses ED25519 keys.
+  [ -f ~/.ssh/postino ] || ssh-keygen -t rsa -b 4096 -f ~/.ssh/postino -N "" -q -C postino
 
   # ---- server ----------------------------------------------------------------------------
   INST="$(q compute instance list -c "$C" --display-name postino --lifecycle-state RUNNING --query 'data[0].id' --raw-output)"
