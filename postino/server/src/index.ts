@@ -17,6 +17,7 @@ import { registerSignatureRoutes } from './routes/signatures.js';
 import { registerTemplateRoutes } from './routes/templates.js';
 import { registerBackupRoutes, startDriveBackups } from './backup.js';
 import { registerGoogleAppRoutes, startGoogleContacts } from './googleApps.js';
+import { registerLegalRoutes } from './legal.js';
 import { registerPasskeyRoutes } from './passkeys.js';
 import { registerGoogleRoutes } from './google.js';
 import { manager } from './mail/manager.js';
@@ -120,6 +121,7 @@ export async function buildApp() {
   registerTemplateRoutes(app);
   registerBackupRoutes(app);
   registerGoogleAppRoutes(app);
+  registerLegalRoutes(app);
   registerPasskeyRoutes(app);
   registerGoogleRoutes(app);
 

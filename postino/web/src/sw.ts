@@ -13,7 +13,7 @@ cleanupOutdatedCaches();
 precacheAndRoute(self.__WB_MANIFEST);
 
 // App shell for navigations, except API and attachment URLs.
-registerRoute(new NavigationRoute(createHandlerBoundToURL('/index.html'), { denylist: [/^\/api\//] }));
+registerRoute(new NavigationRoute(createHandlerBoundToURL('/index.html'), { denylist: [/^\/api\//, /^\/(privacy|terms)\/?$/] }));
 
 // Session state is never served from cache: after signing out, nothing must look signed in.
 const NEVER_CACHE = ['/api/me/', '/api/setup', '/api/login', '/api/logout', '/api/events', '/api/attachments', '/api/passkeys', '/api/google'];
