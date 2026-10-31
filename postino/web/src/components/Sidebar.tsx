@@ -109,7 +109,7 @@ export function Sidebar() {
       <nav className="nav labels" aria-label="Accounts">
         <div className="nav-title">
           <span className="nav-label">Accounts</span>
-          <Link to="/settings/accounts" className="ib" aria-label="Add a mailbox" title="Add a mailbox" onClick={close}>
+          <Link to="/welcome" className="ib" aria-label="Add a mailbox" title="Add a mailbox" onClick={close}>
             <Icon name="plus" size={20} />
           </Link>
         </div>

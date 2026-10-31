@@ -57,7 +57,7 @@ export function TopBar({ onMenu, onLogout }: { me?: Me; onMenu: () => void; onLo
                 ))}
               </div>
               <div className="me-actions">
-                <Link to="/settings/accounts" className="btn btn-ghost btn-sm" onClick={() => setOpen(false)}>
+                <Link to="/welcome" className="btn btn-ghost btn-sm" onClick={() => setOpen(false)}>
                   <Icon name="plus" size={18} />
                   Add mailbox
                 </Link>

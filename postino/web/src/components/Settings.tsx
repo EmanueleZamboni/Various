@@ -68,7 +68,7 @@ export function SettingsPage({ me, onLogout }: { me?: Me; onLogout: () => void }
             </Link>
           );
         })}
-        <button className="nav-item" onClick={() => void logout()} style={{ marginTop: 'auto' }}>
+        <button className="nav-item signout" onClick={() => void logout()}>
           <Icon name="logout" size={18} />
           <span>Sign out</span>
         </button>
@@ -103,7 +103,10 @@ function AccountsSettings() {
   useGoogleResult();
   return (
     <>
-      <h2>Accounts</h2>
+      <div className="sec-head">
+        <h2>Accounts</h2>
+        <Link to="/welcome" className="btn btn-ghost btn-sm"><Icon name="sparkle" size={16} />Open the setup wizard</Link>
+      </div>
       <p className="help">Every mailbox you add shows up in the unified inbox. Passwords are stored encrypted on your server and never leave it.</p>
       <div className="settings-section">
         <div className="card" style={{ gap: 0 }}>

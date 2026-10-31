@@ -70,6 +70,12 @@ export function Welcome({ onFinish }: { onFinish: () => void }) {
           <span className="brand-mark"><img src={`${import.meta.env.BASE_URL}icon.svg`} alt="" width={36} height={36} /></span>
         <span className="brand-name">Postino</span>
           <span className="wizard-count">{Math.min(idx + 1, STEPS.length - 1)} of {STEPS.length - 1}</span>
+          {(accounts?.length ?? 0) > 0 && (
+            <button type="button" className="btn btn-quiet btn-sm wizard-close" onClick={onFinish}>
+              <Icon name="x" size={16} />
+              Close
+            </button>
+          )}
         </div>
         <ol className="wizard-steps" aria-label="Setup steps">
           {STEPS.slice(0, -1).map((s, i) => (

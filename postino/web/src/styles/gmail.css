@@ -1887,3 +1887,236 @@ a.btn {
 .google-row .help {
   margin: 0;
 }
+
+/* ---------- Settings, Gmail style: title, a row of tabs, plain rows with lines ---------- */
+.main-card > .settings {
+  flex-direction: column;
+}
+.settings .settings-nav {
+  width: auto;
+  flex: none;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0;
+  padding: 0 16px;
+  border-right: 0;
+  border-bottom: 1px solid var(--line);
+}
+.settings .settings-head {
+  width: 100%;
+  padding: 16px 8px 8px;
+}
+.settings .settings-head h1,
+.settings .settings-nav h1 {
+  display: block;
+  padding: 0;
+  font: 400 22px/28px var(--font-display);
+  color: var(--ink);
+}
+.settings .settings-nav .nav-item {
+  position: relative;
+  height: 44px;
+  gap: 8px;
+  padding: 0 14px;
+  border-radius: 0;
+  background: none;
+  color: var(--mute);
+  font-weight: 400;
+  white-space: nowrap;
+}
+.settings .settings-nav .nav-item svg {
+  display: none;
+}
+.settings .settings-nav .nav-item:hover {
+  background: rgba(31, 31, 31, 0.06);
+  color: var(--ink);
+}
+.settings .settings-nav .nav-item.on {
+  background: none;
+  color: var(--pine);
+  font-weight: 500;
+}
+.settings .settings-nav .nav-item.on::after {
+  content: '';
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 0;
+  height: 3px;
+  border-radius: 3px 3px 0 0;
+  background: var(--pine);
+}
+.settings .settings-nav .nav-item.signout {
+  margin-left: auto;
+  margin-top: 0;
+}
+.settings .settings-main {
+  padding: 8px 24px 48px;
+}
+.settings-main h2 {
+  font: 400 16px/24px var(--font-display);
+  color: var(--ink);
+  margin: 16px 0 4px;
+}
+.settings-main .help {
+  color: var(--mute);
+}
+.settings-section {
+  max-width: 900px;
+}
+.sec-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  max-width: 900px;
+  margin-top: 8px;
+}
+.sec-head h2 {
+  margin: 8px 0;
+}
+/* Groups of options: no boxes, just rows separated by lines */
+.settings-main .card:has(> .toggle-row) {
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  gap: 0;
+  border-top: 1px solid var(--line);
+}
+.settings-main .card {
+  border-radius: 8px;
+  border-color: var(--line);
+}
+.toggle-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 280px) 1fr;
+  align-items: center;
+  gap: 24px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line);
+}
+.toggle-row:last-child {
+  border-bottom: 1px solid var(--line);
+}
+.toggle-row .t span {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--ink);
+}
+.toggle-row .t small {
+  font-size: 12px;
+  color: var(--mute);
+}
+.toggle-row > :not(.t) {
+  justify-self: start;
+}
+/* Switches become Gmail's checkboxes */
+.switch {
+  width: 18px;
+  height: 18px;
+  border-radius: 2px;
+  background: transparent;
+  box-shadow: inset 0 0 0 2px var(--mute);
+  flex: none;
+}
+.switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 6px;
+  width: 5px;
+  height: 10px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  transform: rotate(45deg) scale(0);
+  transition: transform 0.12s;
+}
+.switch[aria-checked='true'] {
+  background: var(--pine);
+  box-shadow: none;
+}
+.switch[aria-checked='true']::after {
+  transform: rotate(45deg) scale(1);
+}
+/* Quiet labels instead of coloured pills */
+.status-pill {
+  padding: 0;
+  background: none !important;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--mute);
+}
+.status-pill.ok {
+  color: #188038;
+}
+.status-pill.err {
+  color: var(--rose);
+}
+.status-pill.sync {
+  color: var(--amber);
+}
+.settings-main .pill {
+  background: #e8eaed;
+  color: var(--mute);
+  border-radius: 4px;
+  font-weight: 500;
+}
+.wizard-close {
+  margin-left: 8px;
+}
+@media (max-width: 760px) {
+  .settings .settings-nav {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding: 0 8px;
+  }
+  .settings .settings-head {
+    position: sticky;
+    left: 0;
+    width: auto;
+    flex: none;
+    display: flex;
+    align-items: center;
+    padding: 8px 8px 8px 0;
+  }
+  .settings .settings-head h1 {
+    display: none;
+  }
+  .toggle-row {
+    grid-template-columns: 1fr auto;
+    gap: 12px;
+  }
+  .toggle-row > :not(.t) {
+    justify-self: end;
+  }
+}
+@media (min-width: 761px) {
+  .settings .settings-head {
+    width: auto;
+    flex: 1 0 calc(100% - 140px);
+  }
+  .settings .settings-nav .nav-item.signout {
+    order: -1;
+    align-self: center;
+    height: 36px;
+    margin-top: 8px;
+  }
+  .settings .settings-nav .nav-item {
+    padding: 0 11px;
+  }
+}
+@media (min-width: 761px) {
+  .settings .settings-head {
+    order: -2;
+  }
+}
+.sig-default {
+  background: #e8eaed !important;
+  color: var(--mute) !important;
+  border-radius: 4px !important;
+}
