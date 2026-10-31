@@ -285,6 +285,8 @@ addColumn('bodies', 'calendar_json', 'TEXT');
 addColumn('accounts', 'notify', "TEXT NOT NULL DEFAULT 'default'");
 addColumn('drafts', 'from_address', "TEXT NOT NULL DEFAULT ''");
 addColumn('auth', 'totp_last_step', 'INTEGER NOT NULL DEFAULT 0');
+// 'password', or 'google' (password_enc then holds the Google refresh token).
+addColumn('accounts', 'auth_type', "TEXT NOT NULL DEFAULT 'password'");
 
 // Plain-text signatures from the first release become rich signatures.
 {

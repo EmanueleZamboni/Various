@@ -7,6 +7,7 @@ const addAccount = (id: number, email: string) =>
 
 describe('backup', () => {
   it('round-trips templates, blocked senders, signatures and drafts, never passwords', () => {
+    db.exec("DELETE FROM accounts WHERE email = 'one@bk.test'; DELETE FROM templates");
     addAccount(501, 'one@bk.test');
     db.prepare("INSERT INTO signatures(account_id, name, html, text, is_default) VALUES (501, 'Main', '<b>Ema</b>', 'Ema', 1)").run();
     db.prepare("INSERT INTO drafts(account_id, to_text, subject, text) VALUES (501, 'a@b.test', 'Hello', 'Body')").run();
@@ -15,7 +16,7 @@ describe('backup', () => {
     const b = buildBackup();
     const json = JSON.stringify(b);
     expect(json).not.toContain('secret-enc');
-    expect(json).not.toContain('password');
+    expect(json).not.toContain('password_enc');
     expect(b.accounts.find((a) => a.email === 'one@bk.test')?.imap.host).toBe('imap.x.test');
 
     // A fresh server: wipe everything the backup should bring back.

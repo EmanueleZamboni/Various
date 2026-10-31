@@ -136,7 +136,7 @@ export function registerAccountRoutes(app: FastifyInstance): void {
       refolder = true;
     }
     let reconnect = false;
-    if (typeof b.password === 'string' && b.password) { sets.push('password_enc = ?'); params.push(encrypt(b.password)); reconnect = true; }
+    if (typeof b.password === 'string' && b.password) { sets.push('password_enc = ?', "auth_type = 'password'"); params.push(encrypt(b.password)); reconnect = true; }
     const imap = server(b.imap, 993);
     if (imap) { sets.push('imap_host = ?, imap_port = ?, imap_secure = ?'); params.push(imap.host, imap.port, imap.secure ? 1 : 0); reconnect = true; }
     const smtp = server(b.smtp, 465);

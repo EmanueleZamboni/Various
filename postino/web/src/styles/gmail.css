@@ -1866,3 +1866,24 @@ h3 {
 a.btn {
   text-decoration: none;
 }
+
+/* Google's sign-in button (white, grey outline, coloured G) */
+.google-btn {
+  background: #fff;
+  color: #1f1f1f;
+  box-shadow: inset 0 0 0 1px #747775;
+  font-family: 'Google Sans', var(--font-display);
+}
+.google-btn:hover:not(:disabled) {
+  background: #f8fafd;
+}
+.google-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 4px 0 14px;
+}
+.google-row .help {
+  margin: 0;
+}

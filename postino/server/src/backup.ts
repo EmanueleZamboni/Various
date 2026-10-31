@@ -26,6 +26,7 @@ type AccountOut = {
   aliases: string[];
   folderOverrides: Record<string, string>;
   notify: string;
+  authType?: 'password' | 'google';
 };
 type SignatureOut = { account: string; name: string; html: string; text: string; isDefault: boolean; sortOrder: number };
 type DraftOut = { account: string; fromAddress: string; to: string; cc: string; bcc: string; subject: string; text: string; updatedAt: string };
@@ -69,6 +70,7 @@ export function buildBackup(): Backup {
       aliases: parseJson<string[]>(a.aliases as string, []),
       folderOverrides: parseJson<Record<string, string>>(a.folder_overrides as string, {}),
       notify: String(a.notify ?? 'default'),
+      authType: a.auth_type === 'google' ? 'google' : 'password',
     })),
     templates: (db.prepare('SELECT name, subject, text, sort_order FROM templates ORDER BY sort_order, id').all() as { name: string; subject: string; text: string; sort_order: number }[]).map((t) => ({ name: t.name, subject: t.subject, text: t.text, sortOrder: t.sort_order })),
     signatures: (db.prepare('SELECT * FROM signatures ORDER BY account_id, sort_order, id').all() as Record<string, unknown>[])
@@ -115,6 +117,7 @@ function clean(raw: unknown): Backup {
         aliases: arr(a.aliases).map(email).filter(isEmail).slice(0, 50),
         folderOverrides: Object.fromEntries(Object.entries(obj(a.folderOverrides)).filter(([k, v]) => typeof v === 'string' && k.length < 100 && (v as string).length < 500)) as Record<string, string>,
         notify: ['default', 'all', 'people', 'none'].includes(str(a.notify, 20)) ? str(a.notify, 20) : 'default',
+        authType: a.authType === 'google' ? ('google' as const) : ('password' as const),
       }))
       .filter((a) => isEmail(a.email)),
     templates: arr(b.templates).map(obj).map((t) => ({ name: str(t.name, 80), subject: str(t.subject, 300), text: str(t.text, 20000), sortOrder: Number.isInteger(t.sortOrder) ? (t.sortOrder as number) : 0 })).filter((t) => t.name),

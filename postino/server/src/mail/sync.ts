@@ -1,3 +1,4 @@
+import { gmailAccessToken } from '../google.js';
 import { ImapFlow, type FetchMessageObject, type ListResponse, type MessageStructureObject, type MailboxObject, type MessageEnvelopeObject } from 'imapflow';
 import { simpleParser } from 'mailparser';
 import fs from 'node:fs';
@@ -185,11 +186,14 @@ export class AccountSync {
     this.connectPromise = (async () => {
       this.refreshAccount();
       if (!this.account.enabled) return;
+      const auth = this.account.auth_type === 'google'
+        ? { user: this.account.username, accessToken: await gmailAccessToken(this.account) }
+        : { user: this.account.username, pass: decrypt(this.account.password_enc) };
       const client = new ImapFlow({
         host: this.account.imap_host,
         port: this.account.imap_port,
         secure: Boolean(this.account.imap_secure),
-        auth: { user: this.account.username, pass: decrypt(this.account.password_enc) },
+        auth,
         logger: false,
         clientInfo: { name: 'Postino', version: '0.1' },
         socketTimeout: 5 * 60_000,

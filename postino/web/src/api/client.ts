@@ -162,6 +162,7 @@ export const api = {
     credentials: (clientId: string, clientSecret: string) => post<{ ok: true; redirectUri: string }>('/api/google/credentials', { clientId, clientSecret }),
     redirectUri: () => get<{ redirectUri: string }>('/api/google/redirect-uri'),
     connect: () => post<{ url: string }>('/api/google/connect'),
+    gmail: (back: string, email?: string) => post<{ url: string }>('/api/google/gmail', { back, email }),
     disconnect: () => post<void>('/api/google/disconnect'),
     save: (attachmentId: string, convertTo?: string) => post<{ ok: true; id: string; webViewLink: string; converted: boolean }>('/api/google/save', { attachmentId, convertTo }),
   },

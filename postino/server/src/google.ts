@@ -4,7 +4,8 @@ import { db, getSetting, setSetting } from './db.js';
 import { encrypt, decrypt, randomToken } from './crypto.js';
 import { manager } from './mail/manager.js';
 import { attachmentPath } from './mail/store.js';
-import type { AttachmentRow } from './views.js';
+import type { AccountRow, AttachmentRow } from './views.js';
+import { applyPendingFor } from './backup.js';
 import { log } from './log.js';
 
 /**
@@ -63,7 +64,7 @@ function redirectUri(req: FastifyRequest): string {
   return `${proto}://${host}/api/google/callback`;
 }
 
-const pendingStates = new Map<string, { redirect: string; expires: number }>();
+const pendingStates = new Map<string, { redirect: string; expires: number; purpose?: 'drive' | 'gmail'; back?: string; accountId?: number }>();
 
 async function tokenRequest(params: Record<string, string>): Promise<Record<string, unknown>> {
   const res = await fetch(TOKEN_URL, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(params).toString() });
@@ -107,6 +108,29 @@ async function uploadToDrive(opts: { name: string; contentType: string; bytes: B
   const json = (await res.json().catch(() => ({}))) as { id?: string; webViewLink?: string; error?: { message?: string } };
   if (!res.ok || !json.id) throw new Error(json.error?.message || `Google Drive answered ${res.status}`);
   return { id: json.id, webViewLink: json.webViewLink || `https://drive.google.com/file/d/${json.id}/view` };
+}
+
+const GMAIL_SCOPE = 'https://mail.google.com/ openid email profile';
+const gmailTokens = new Map<number, { access: string; expiresAt: number }>();
+
+/**
+ * An access token for a Gmail mailbox that was connected with "Sign in with Google"
+ * (IMAP and SMTP then log in with XOAUTH2; the stored secret is the refresh token).
+ */
+export async function gmailAccessToken(account: { id: number; password_enc: string }): Promise<string> {
+  const cached = gmailTokens.get(account.id);
+  if (cached && cached.expiresAt - Date.now() > 60_000) return cached.access;
+  const c = creds();
+  if (!c) throw new Error('Google sign-in is not set up on this server any more (Settings → Google Drive).');
+  let body: Record<string, unknown>;
+  try {
+    body = await tokenRequest({ client_id: c.clientId, client_secret: c.clientSecret, refresh_token: decrypt(account.password_enc), grant_type: 'refresh_token' });
+  } catch (err) {
+    throw new Error(`Google sign-in expired or was revoked: sign in with Google again for this mailbox (${(err as Error).message})`);
+  }
+  const access = String(body.access_token);
+  gmailTokens.set(account.id, { access, expiresAt: Date.now() + Number(body.expires_in || 3600) * 1000 });
+  return access;
 }
 
 /** True when Drive is connected (so the nightly backup can go there). */
@@ -164,6 +188,30 @@ export async function saveBackupToDrive(name: string, bytes: Buffer, keepDays = 
   }
 }
 
+/** Create (or switch to Google sign-in) the Gmail mailbox; returns where to send the browser. */
+function connectGmail(email: string, refresh: string, access: string, expiresIn: number, back: string): string {
+  const e = email.trim().toLowerCase();
+  const done = (msg: string) => `${back}?${new URLSearchParams({ result: msg }).toString()}`;
+  if (!/^[^@\s]+@[^@\s]+$/.test(e)) return done('Google did not say which address you signed in with. Try again.');
+  const existing = db.prepare('SELECT id FROM accounts WHERE lower(email) = ?').get(e) as { id: number } | undefined;
+  let id: number;
+  if (existing) {
+    db.prepare("UPDATE accounts SET auth_type = 'google', password_enc = ?, username = ?, imap_host = 'imap.gmail.com', imap_port = 993, imap_secure = 1, smtp_host = 'smtp.gmail.com', smtp_port = 465, smtp_secure = 1, last_error = NULL WHERE id = ?").run(encrypt(refresh), e, existing.id);
+    id = existing.id;
+  } else {
+    const count = (db.prepare('SELECT count(*) AS n FROM accounts').get() as { n: number }).n;
+    const info = db
+      .prepare("INSERT INTO accounts(email, name, color, sort_order, username, password_enc, imap_host, imap_port, imap_secure, smtp_host, smtp_port, smtp_secure, auth_type) VALUES (?, ?, '#C5221F', ?, ?, ?, 'imap.gmail.com', 993, 1, 'smtp.gmail.com', 465, 1, 'google')")
+      .run(e, e.split('@')[0], count, e, encrypt(refresh));
+    id = Number(info.lastInsertRowid);
+    applyPendingFor(id);
+  }
+  gmailTokens.set(id, { access, expiresAt: Date.now() + expiresIn * 1000 });
+  if (existing) void manager.restart(id);
+  else manager.start(db.prepare('SELECT * FROM accounts WHERE id = ?').get(id) as AccountRow);
+  return done('gmail-connected');
+}
+
 export function registerGoogleRoutes(app: FastifyInstance): void {
   app.get('/api/google/status', async () => {
     const c = creds();
@@ -201,11 +249,31 @@ export function registerGoogleRoutes(app: FastifyInstance): void {
     return { url: url.toString() };
   });
 
+  // "Sign in with Google" for a Gmail mailbox (instead of an app password).
+  app.post<{ Body: { back?: string; email?: string } }>('/api/google/gmail', async (req, reply) => {
+    const c = creds();
+    if (!c) return reply.code(409).send({ error: 'not_configured', message: 'Google sign-in is not set up on this server yet. Use an app password, or set up Google in Settings → Google Drive first.' });
+    const back = req.body?.back === '/welcome' ? '/welcome' : '/settings/accounts';
+    const state = randomToken(16);
+    pendingStates.set(state, { redirect: redirectUri(req), expires: Date.now() + 10 * 60_000, purpose: 'gmail', back });
+    const url = new URL(AUTH_BASE);
+    url.searchParams.set('client_id', c.clientId);
+    url.searchParams.set('redirect_uri', redirectUri(req));
+    url.searchParams.set('response_type', 'code');
+    url.searchParams.set('scope', GMAIL_SCOPE);
+    url.searchParams.set('access_type', 'offline');
+    url.searchParams.set('prompt', 'consent select_account');
+    url.searchParams.set('state', state);
+    const hint = String(req.body?.email || '').trim();
+    if (/^[^@\s]+@[^@\s]+$/.test(hint)) url.searchParams.set('login_hint', hint);
+    return { url: url.toString() };
+  });
+
   // Step 3: Google sends the user back here.
   app.get<{ Querystring: { code?: string; state?: string; error?: string } }>('/api/google/callback', async (req, reply) => {
     const pending = req.query.state ? pendingStates.get(req.query.state) : undefined;
     if (req.query.state) pendingStates.delete(req.query.state);
-    const back = (msg: string) => reply.redirect(`/settings/google?${new URLSearchParams({ result: msg }).toString()}`);
+    const back = (msg: string) => reply.redirect(`${pending?.purpose === 'gmail' ? pending.back || '/settings/accounts' : '/settings/google'}?${new URLSearchParams({ result: msg }).toString()}`);
     if (req.query.error) return back(`Google said: ${req.query.error}`);
     if (!pending || pending.expires < Date.now() || !req.query.code) return back('The sign-in took too long. Try again.');
     const c = creds();
@@ -222,6 +290,7 @@ export function registerGoogleRoutes(app: FastifyInstance): void {
         }
       }
       if (!body.refresh_token) return back('Google did not give a refresh token. Remove Postino from your Google account permissions and connect again.');
+      if (pending.purpose === 'gmail') return reply.redirect(connectGmail(email, String(body.refresh_token), String(body.access_token), Number(body.expires_in || 3600), pending.back || '/settings/accounts'));
       saveTokens({ access: String(body.access_token), refresh: String(body.refresh_token), expiresAt: Date.now() + Number(body.expires_in || 3600) * 1000, email });
       return back('connected');
     } catch (err) {

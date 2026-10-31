@@ -12,6 +12,7 @@ export type AccountRow = {
   signature: string;
   username: string;
   password_enc: string;
+  auth_type?: string;
   imap_host: string;
   imap_port: number;
   imap_secure: number;
@@ -59,6 +60,7 @@ export function accountView(a: AccountRow) {
     imap: { host: a.imap_host, port: a.imap_port, secure: Boolean(a.imap_secure) },
     smtp: { host: a.smtp_host, port: a.smtp_port, secure: Boolean(a.smtp_secure) },
     username: a.username,
+    authType: a.auth_type === 'google' ? 'google' : 'password',
   };
 }
 

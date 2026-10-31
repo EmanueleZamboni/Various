@@ -1,3 +1,4 @@
+import { GoogleSignInButton, useGoogleResult } from './GoogleSignIn';
 import { PendingMailboxes, RestoreButton } from './Backup';
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -107,7 +108,7 @@ function providerFor(email: string): Provider | null {
       name: 'Gmail',
       hint: (
         <>
-          Gmail needs an <b>app password</b>, not your normal one: open{' '}
+          Easiest: use <b>Sign in with Google</b> above. Or use an <b>app password</b> (not your normal one): open{' '}
           <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener">myaccount.google.com/apppasswords</a>, create one named
           “Postino” and paste the 16 letters here. Two-step verification must be on for that page to exist.
         </>
@@ -123,6 +124,7 @@ function providerFor(email: string): Provider | null {
 
 function MailStep({ accounts, onNext }: { accounts: Account[]; onNext: () => void }) {
   const [adding, setAdding] = useState(accounts.length === 0);
+  useGoogleResult();
   return (
     <>
       <StepHeader
@@ -140,6 +142,10 @@ function MailStep({ accounts, onNext }: { accounts: Account[]; onNext: () => voi
         </ul>
       )}
       <PendingMailboxes />
+      <div className="google-row">
+        <GoogleSignInButton back="/welcome" />
+        <span className="help">For Gmail addresses: connect with your Google account instead of a password.</span>
+      </div>
       {accounts.length === 0 && (
         <div className="wizard-restore">
           <span>Moving to a new server?</span>
@@ -267,6 +273,12 @@ function MailboxForm({ index, onAdded, onCancel }: { index: number; onAdded: () 
         <input id="w-email" className="input input-lg" type="email" inputMode="email" autoComplete="off" autoCapitalize="none" spellCheck={false} value={email} onChange={(e) => setEmail(e.target.value)} onBlur={() => void lookup()} placeholder="name@yourdomain.it" autoFocus />
         <span className="help lookup">{looking ? 'Looking up the server settings…' : found ? <><Icon name="check" size={12} /> {found}</> : ''}</span>
       </div>
+      {provider?.name === 'Gmail' && (
+        <div className="google-row">
+          <GoogleSignInButton back="/welcome" email={email} />
+          <span className="help">No password to type: Google asks you to confirm.</span>
+        </div>
+      )}
       {provider && <p className="wizard-hint"><Icon name="alert" size={14} /><span>{provider.hint}</span></p>}
       <div className="field">
         <label htmlFor="w-pw">Mailbox password</label>

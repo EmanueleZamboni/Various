@@ -1,3 +1,4 @@
+import { gmailAccessToken } from '../google.js';
 import nodemailer from 'nodemailer';
 import MailComposer from 'nodemailer/lib/mail-composer';
 import { db } from '../db.js';
@@ -89,12 +90,15 @@ export function parseAddressList(s: string): Address[] {
   return out;
 }
 
-export function smtpTransport(account: AccountRow) {
+export async function smtpTransport(account: AccountRow) {
+  const auth = account.auth_type === 'google'
+    ? { type: 'OAuth2' as const, user: account.username, accessToken: await gmailAccessToken(account) }
+    : { user: account.username, pass: decrypt(account.password_enc) };
   return nodemailer.createTransport({
     host: account.smtp_host,
     port: account.smtp_port,
     secure: Boolean(account.smtp_secure),
-    auth: { user: account.username, pass: decrypt(account.password_enc) },
+    auth,
     tls: { rejectUnauthorized: process.env.POSTINO_TLS_INSECURE !== '1' },
     connectionTimeout: 20_000,
     // Plain ports (587/25) must upgrade to TLS before the login is sent.
@@ -152,7 +156,7 @@ export async function sendMail(msg: Outgoing): Promise<{ messageId: string; raw:
   const compiled = composer.compile();
   const raw = await compiled.build();
   const messageId = (compiled.messageId() as string).replace(/^<|>$/g, '');
-  const transport = smtpTransport(msg.account);
+  const transport = await smtpTransport(msg.account);
   try {
     await transport.sendMail({ envelope: { from: fromEmail, to: [...parseAddressList(msg.to), ...parseAddressList(msg.cc || ''), ...parseAddressList(msg.bcc || '')].map((a) => a.email) }, raw });
     msg.onDelivered?.();
@@ -173,7 +177,7 @@ export async function sendMail(msg: Outgoing): Promise<{ messageId: string; raw:
 }
 
 export async function verifySmtp(account: AccountRow): Promise<void> {
-  const t = smtpTransport(account);
+  const t = await smtpTransport(account);
   try {
     await t.verify();
   } finally {

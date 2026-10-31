@@ -1,3 +1,4 @@
+import { GoogleSignInButton, useGoogleResult } from './GoogleSignIn';
 import { BackupSettings } from './Backup';
 import { type ReactNode, useEffect, useState, type FormEvent } from 'react';
 import { Link, Route, Routes, useLocation } from 'react-router-dom';
@@ -99,6 +100,7 @@ function AccountsSettings() {
   const loc = useLocation();
   const [adding, setAdding] = useState(() => new URLSearchParams(loc.search).get('add') === '1');
   const [editing, setEditing] = useState<string | null>(null);
+  useGoogleResult();
   return (
     <>
       <h2>Accounts</h2>
@@ -118,10 +120,13 @@ function AccountsSettings() {
         {adding ? (
           <AddAccount onDone={() => setAdding(false)} />
         ) : (
-          <button className="btn btn-primary" style={{ alignSelf: 'flex-start' }} onClick={() => setAdding(true)}>
-            <Icon name="plus" size={16} />
-            Add account
-          </button>
+          <div className="google-row">
+            <button className="btn btn-primary" onClick={() => setAdding(true)}>
+              <Icon name="plus" size={16} />
+              Add account
+            </button>
+            <GoogleSignInButton back="/settings/accounts" />
+          </div>
         )}
       </div>
     </>
@@ -964,13 +969,14 @@ function GoogleSettings() {
         ) : (
           <>
             <div className="card">
-              <b>1. Create a Google OAuth client (once, about 5 minutes)</b>
+              <b>1. Create a Google OAuth client (once, about 5 minutes). It is also used for "Sign in with Google" on Gmail mailboxes.</b>
               <ol className="help" style={{ margin: '6px 0 0', paddingLeft: 18, lineHeight: 1.7 }}>
                 <li>Open <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">console.cloud.google.com/apis/credentials</a> (any project; the one from your YouTube scripts is fine).</li>
                 <li>Enable the <b>Google Drive API</b> under "APIs & Services → Library".</li>
                 <li>"Create credentials → OAuth client ID", type <b>Web application</b>.</li>
                 <li>Under "Authorized redirect URIs" add exactly: <code style={{ userSelect: 'all' }}>{redirect?.redirectUri ?? '…'}</code></li>
-                <li>If the consent screen asks, add your own Google address as a test user.</li>
+                <li>On the <b>OAuth consent screen</b> (Audience), press <b>Publish app</b> so it is "In production". In "Testing", Google signs Gmail out every 7 days.</li>
+                <li>When you then sign in, Google says <i>"Google hasn't verified this app"</i>: that is normal for your own private app. Click <b>Advanced → Go to Postino</b>.</li>
                 <li>Copy the client ID and client secret below.</li>
               </ol>
             </div>
