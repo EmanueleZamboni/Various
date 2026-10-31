@@ -64,8 +64,8 @@ export function Welcome({ onFinish }: { onFinish: () => void }) {
     <div className="auth wizard-page">
       <div className="auth-card wizard">
         <div className="brand">
-          <span className="brand-mark"><Icon name="mail" size={15} /></span>
-          <span className="brand-name">Postino</span>
+          <span className="brand-mark"><img src={`${import.meta.env.BASE_URL}mascot.svg`} alt="" width={34} height={34} /></span>
+        <span className="brand-name">Postino</span>
           <span className="wizard-count">{Math.min(idx + 1, STEPS.length - 1)} of {STEPS.length - 1}</span>
         </div>
         <ol className="wizard-steps" aria-label="Setup steps">
@@ -131,8 +131,7 @@ function MailStep({ accounts, onNext }: { accounts: Account[]; onNext: () => voi
         <ul className="wizard-accounts">
           {accounts.map((a) => (
             <li key={a.id}>
-              <i className="dot" style={{ ['--c' as string]: a.color }} />
-              <span className="wa-email">{a.email}</span>
+              <span className="wa-email"><span className="acct-tag" style={{ ['--c' as string]: a.color }}>{a.email}</span></span>
               <SyncState a={a} />
             </li>
           ))}

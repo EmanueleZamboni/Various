@@ -153,10 +153,7 @@ export function ThreadRow({ thread: t, account, myEmails, selected, focused, hig
           {!compact && (
             <div className="row-meta">
               {showAccount && account && (
-                <span className="tag">
-                  <i className="dot" style={{ ['--c' as string]: account.color }} />
-                  {accountLabel}
-                </span>
+                <span className="acct-tag" style={{ ['--c' as string]: account.color }}>{accountLabel}</span>
               )}
               {t.hasAttachments && (
                 <span className="tag" title="Has attachments">

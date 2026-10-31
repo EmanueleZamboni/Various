@@ -223,7 +223,7 @@ export function ReplyBox({ message: m, mode, onModeChange, onClose, onSent }: {
           <button type="button" className={mode === 'forward' ? 'on' : ''} onClick={() => onModeChange('forward')}>Forward</button>
         </div>
         <span>
-          {target ? `to ${firstName(target)} ` : ''}from <i className="dot" style={{ ['--c' as string]: sendingAccount?.color, verticalAlign: -1 }} /> <b>{sendingAddress}</b>
+          {target ? `to ${firstName(target)} ` : ''}from <span className="acct-tag" style={{ ['--c' as string]: sendingAccount?.color }}>{sendingAddress}</span>
         </span>
         <button type="button" className="ib" style={{ marginLeft: 'auto', width: 28, height: 28 }} aria-label="Close reply" onClick={() => void discard()}>
           <Icon name="x" size={16} />

@@ -443,9 +443,9 @@ textarea:focus-visible {
   font-weight: 500;
 }
 .dot {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
   background: var(--c, var(--pine));
   flex: none;
   display: inline-block;
@@ -3049,4 +3049,70 @@ textarea:focus-visible {
   .search-box .ib { width: 40px; height: 40px; }
   .op { padding: 9px 12px; font-size: 13px; }
   .sig-toolbar button, .sig-tool { min-width: 40px; height: 40px; }
+}
+
+/* ---------- Brand & account tags ---------- */
+.brand-mark {
+  background: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 0;
+}
+.brand-mark img {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.brand-name,
+.list-title,
+.wizard-head h1,
+.auth-card h1,
+.settings-nav h1 {
+  font-family: 'Fraunces', Georgia, serif;
+  font-style: italic;
+  font-variation-settings: 'SOFT' 100, 'WONK' 1;
+  letter-spacing: -0.02em;
+}
+.brand-name {
+  font-weight: 800;
+  font-size: 21px;
+  display: inline-block;
+  transform: skewX(-6deg);
+}
+.list-title {
+  font-weight: 700;
+  font-size: 24px;
+}
+.wizard-head h1,
+.auth-card h1 {
+  font-weight: 700;
+  font-size: 27px;
+}
+.acct-tag {
+  --c: var(--pine);
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  padding: 1px 8px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 18px;
+  color: color-mix(in srgb, var(--c) 72%, #000);
+  background: color-mix(in srgb, var(--c) 14%, #fff);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 22%, transparent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.chip.acct-chip {
+  color: color-mix(in srgb, var(--c) 72%, #000);
+  background: color-mix(in srgb, var(--c) 10%, #fff);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 28%, transparent);
+  font-weight: 600;
+}
+.chip.acct-chip.on {
+  color: #fff;
+  background: var(--c);
+  box-shadow: none;
 }

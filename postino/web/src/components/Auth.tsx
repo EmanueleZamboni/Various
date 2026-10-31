@@ -6,10 +6,8 @@ import { Icon } from '../icons';
 function Brand() {
   return (
     <div className="brand">
-      <span className="brand-mark">
-        <Icon name="mail" size={15} />
-      </span>
-      <span className="brand-name">Postino</span>
+      <span className="brand-mark"><img src={`${import.meta.env.BASE_URL}mascot.svg`} alt="" width={34} height={34} /></span>
+        <span className="brand-name">Postino</span>
     </div>
   );
 }

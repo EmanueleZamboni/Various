@@ -269,8 +269,7 @@ export function ThreadList({ view }: { view: string }) {
           <div className="chips" role="group" aria-label="Filter by account">
             <button className={`chip${!nav.accountId ? ' on' : ''}`} onClick={() => nav.setAccount(null)}>All</button>
             {accounts!.map((a) => (
-              <button key={a.id} className={`chip${nav.accountId === a.id ? ' on' : ''}`} onClick={() => nav.setAccount(a.id)}>
-                <i className="dot" style={{ ['--c' as string]: a.color }} />
+              <button key={a.id} className={`chip acct-chip${nav.accountId === a.id ? ' on' : ''}`} style={{ ['--c' as string]: a.color }} onClick={() => nav.setAccount(a.id)}>
                 {accountLabel(a.email, accounts!)}
               </button>
             ))}

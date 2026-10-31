@@ -38,9 +38,7 @@ export function Sidebar() {
   return (
     <aside className="sidebar" aria-label="Mailboxes">
       <Link to="/inbox" className="brand" onClick={() => setDrawer(false)}>
-        <span className="brand-mark">
-          <Icon name="mail" size={15} />
-        </span>
+        <span className="brand-mark"><img src={`${import.meta.env.BASE_URL}mascot.svg`} alt="" width={34} height={34} /></span>
         <span className="brand-name">Postino</span>
       </Link>
       <button className="compose-btn" onClick={() => openCompose({ mode: 'new', accountId: nav.accountId ?? undefined })}>
