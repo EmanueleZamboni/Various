@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { GoogleSignInButton, useGoogleReady, useGoogleResult } from './GoogleSignIn';
 import { PendingMailboxes, RestoreButton } from './Backup';
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
@@ -70,8 +71,12 @@ export function Welcome({ onFinish }: { onFinish: () => void }) {
           <span className="brand-mark"><img src={`${import.meta.env.BASE_URL}icon.svg`} alt="" width={36} height={36} /></span>
         <span className="brand-name">Postino</span>
           <span className="wizard-count">{Math.min(idx + 1, STEPS.length - 1)} of {STEPS.length - 1}</span>
+          <Link to="/settings" className="btn btn-quiet btn-sm wizard-close" title="Settings">
+            <Icon name="settings" size={16} />
+            Settings
+          </Link>
           {(accounts?.length ?? 0) > 0 && (
-            <button type="button" className="btn btn-quiet btn-sm wizard-close" onClick={onFinish}>
+            <button type="button" className="btn btn-quiet btn-sm" onClick={onFinish}>
               <Icon name="x" size={16} />
               Close
             </button>
