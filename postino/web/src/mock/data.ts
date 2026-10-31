@@ -5,13 +5,13 @@ import type { Account, Address, Attachment, Category, Draft, Folder, FolderRole,
 export const ME: Record<string, Address> = {};
 
 export const accounts: Account[] = [
-  { id: 'a1', email: 'collab@emazamboni.com', name: 'Emanuele Zamboni (@emazamboni)', color: '#3B6FE0', order: 0, signature: 'Ema Zamboni\nyoutube.com/@emazamboni', status: 'connected', error: null, unread: 0, initialSync: { done: true, fetched: 1298, total: 1298 } },
-  { id: 'a2', email: 'info@emazamboni.com', name: 'Emanuele Zamboni', color: '#D9486B', order: 1, signature: '', status: 'connected', error: null, unread: 0, initialSync: { done: true, fetched: 412, total: 412 } },
-  { id: 'a3', email: 'admin@emazamboni.com', name: 'Emanuele Zamboni', color: '#2E9E6B', order: 2, signature: '', status: 'connected', error: null, unread: 0, initialSync: { done: true, fetched: 88, total: 88 } },
-  { id: 'a4', email: 'emanuele.zamboni@stostudio.it', name: 'Emanuele Zamboni | STOSTUDIO', color: '#8A5BD6', order: 3, signature: 'Emanuele Zamboni\nSTOSTUDIO · stostudio.it', status: 'connected', error: null, unread: 0, initialSync: { done: true, fetched: 66, total: 66 } },
-  { id: 'a5', email: 'info@stostudio.it', name: 'STOSTUDIO', color: '#E07C2A', order: 4, signature: '', status: 'syncing', error: null, unread: 0, initialSync: { done: false, fetched: 140, total: 530 } },
-  { id: 'a6', email: 'admin@stostudio.it', name: 'STOSTUDIO', color: '#1AA3B5', order: 5, signature: '', status: 'connected', error: null, unread: 0, initialSync: { done: true, fetched: 23, total: 23 } },
-  { id: 'a7', email: 'info@emanuelezamboni.com', name: 'Emanuele Zamboni', color: '#9A8A1E', order: 6, signature: '', status: 'error', error: 'IMAP login failed: authentication rejected by mailserver2.vhosting-it.com', unread: 0, initialSync: { done: true, fetched: 310, total: 310 } },
+  { id: 'a1', email: 'collab@emazamboni.com', name: 'Emanuele Zamboni (@emazamboni)', color: '#2B3D90', order: 0, signature: 'Ema Zamboni\nyoutube.com/@emazamboni', status: 'connected', error: null, unread: 0, initialSync: { done: true, fetched: 1298, total: 1298 } },
+  { id: 'a2', email: 'info@emazamboni.com', name: 'Emanuele Zamboni', color: '#3F6FB0', order: 1, signature: '', status: 'connected', error: null, unread: 0, initialSync: { done: true, fetched: 412, total: 412 } },
+  { id: 'a3', email: 'admin@emazamboni.com', name: 'Emanuele Zamboni', color: '#56657E', order: 2, signature: '', status: 'connected', error: null, unread: 0, initialSync: { done: true, fetched: 88, total: 88 } },
+  { id: 'a4', email: 'emanuele.zamboni@stostudio.it', name: 'Emanuele Zamboni | STOSTUDIO', color: '#B4593C', order: 3, signature: 'Emanuele Zamboni\nSTOSTUDIO · stostudio.it', status: 'connected', error: null, unread: 0, initialSync: { done: true, fetched: 66, total: 66 } },
+  { id: 'a5', email: 'info@stostudio.it', name: 'STOSTUDIO', color: '#A3821C', order: 4, signature: '', status: 'syncing', error: null, unread: 0, initialSync: { done: false, fetched: 140, total: 530 } },
+  { id: 'a6', email: 'admin@stostudio.it', name: 'STOSTUDIO', color: '#8C6A4A', order: 5, signature: '', status: 'connected', error: null, unread: 0, initialSync: { done: true, fetched: 23, total: 23 } },
+  { id: 'a7', email: 'info@emanuelezamboni.com', name: 'Emanuele Zamboni', color: '#2F7F78', order: 6, signature: '', status: 'error', error: 'IMAP login failed: authentication rejected by mailserver2.vhosting-it.com', unread: 0, initialSync: { done: true, fetched: 310, total: 310 } },
 ];
 for (const a of accounts) ME[a.id] = { name: a.name, email: a.email };
 

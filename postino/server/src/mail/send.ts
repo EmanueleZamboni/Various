@@ -4,7 +4,47 @@ import { db } from '../db.js';
 import { decrypt } from '../crypto.js';
 import type { AccountRow } from '../views.js';
 import { manager } from './manager.js';
-import { textToHtml } from './sanitize.js';
+// (plain-text bodies are converted with textToMailHtml below)
+
+const escHtml = (t: string) => t.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] as string);
+
+/**
+ * The typed text as email-safe HTML: real paragraphs and <br> line breaks.
+ * (white-space: pre-wrap is ignored by Outlook on Windows, which would run the
+ * whole email together on one line.)
+ */
+export function textToMailHtml(text: string): string {
+  return text
+    .replace(/\r\n/g, '\n')
+    .split(/\n{2,}/)
+    .map((para) => {
+      const body = escHtml(para)
+        .replace(/\b(https?:\/\/[^\s<>"']+[^\s<>"'.,;:!?)\]])/g, (m) => `<a href="${m}">${m}</a>`)
+        .replace(/\n/g, '<br>');
+      return `<p style="margin:0 0 1em 0">${body || '&nbsp;'}</p>`;
+    })
+    .join('');
+}
+
+/** One font and size for every client (Gmail, Outlook and Apple Mail otherwise each pick their own). */
+const wrapMail = (inner: string) => `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.5;color:#222222">${inner}</div>`;
+
+/** Pixel width of a PNG, GIF or JPEG, so Outlook (which ignores CSS max-width) shows it at the right size. */
+export function imageWidth(buf: Buffer): number | null {
+  if (buf.length > 24 && buf.readUInt32BE(0) === 0x89504e47) return buf.readUInt32BE(16);
+  if (buf.length > 10 && buf.toString('ascii', 0, 3) === 'GIF') return buf.readUInt16LE(6);
+  if (buf.length > 4 && buf[0] === 0xff && buf[1] === 0xd8) {
+    let i = 2;
+    while (i + 9 < buf.length) {
+      if (buf[i] !== 0xff) return null;
+      const marker = buf[i + 1];
+      const len = buf.readUInt16BE(i + 2);
+      if (marker >= 0xc0 && marker <= 0xcf && ![0xc4, 0xc8, 0xcc].includes(marker)) return buf.readUInt16BE(i + 7);
+      i += 2 + len;
+    }
+  }
+  return null;
+}
 import type { Address } from './parse.js';
 
 export type OutgoingAttachment = { filename: string; contentType: string; path?: string; content?: Buffer; cid?: string };
@@ -68,18 +108,30 @@ export async function sendMail(msg: Outgoing): Promise<{ messageId: string; raw:
   const from = formatAddress({ name: msg.account.name, email: fromEmail });
   const sig = msg.signature && (msg.signature.html.trim() || msg.signature.text.trim()) ? msg.signature : null;
   const text = [msg.text, sig ? `-- \n${sig.text}` : '', msg.quote ? msg.quote.text : ''].filter((p) => p && p.trim()).join('\n\n');
-  const html = msg.html || [
-    textToHtml(msg.text),
+  const html = msg.html || wrapMail([
+    textToMailHtml(msg.text),
     sig ? `<div style="margin-top:16px">${sig.html}</div>` : '',
-    msg.quote ? `<div style="margin-top:16px">${msg.quote.html || textToHtml(msg.quote.text)}</div>` : '',
-  ].filter(Boolean).join('');
+    msg.quote ? `<div style="margin-top:16px">${msg.quote.html || textToMailHtml(msg.quote.text)}</div>` : '',
+  ].filter(Boolean).join(''));
   // Inline data: images (signature logos) become cid: attachments; mail clients do not render data URLs.
   const inline: OutgoingAttachment[] = [];
   let n = 0;
-  const htmlWithCids = html.replace(/src=(["'])data:(image\/[a-z0-9.+-]+);base64,([A-Za-z0-9+/=\s]+)\1/gi, (_m, q: string, type: string, b64: string) => {
+  const htmlWithCids = html.replace(/<img\b[^>]*>/gi, (tag) => {
+    const m = /src=(["'])data:(image\/[a-z0-9.+-]+);base64,([A-Za-z0-9+/=\s]+)\1/i.exec(tag);
+    if (!m) return tag;
+    const [, q, type, b64] = m;
+    const content = Buffer.from(b64.replace(/\s+/g, ''), 'base64');
     const cid = `img${++n}.${Date.now()}@postino`;
-    inline.push({ filename: `image${n}.${type.split('/')[1] === 'jpeg' ? 'jpg' : type.split('/')[1]}`, contentType: type, content: Buffer.from(b64.replace(/\s+/g, ''), 'base64'), cid });
-    return `src=${q}cid:${cid}${q}`;
+    inline.push({ filename: `image${n}.${type.split('/')[1] === 'jpeg' ? 'jpg' : type.split('/')[1]}`, contentType: type, content, cid });
+    let out = tag.replace(m[0], `src=${q}cid:${cid}${q}`);
+    // Outlook ignores CSS sizes: give the image an explicit width (its CSS max-width, else its own, at most 600).
+    if (!/\swidth=/i.test(out)) {
+      const cssMax = /max-width:\s*(\d+)px/i.exec(out)?.[1];
+      const natural = imageWidth(content);
+      const w = Math.min(...[cssMax ? Number(cssMax) : Infinity, natural ?? Infinity, 600]);
+      if (Number.isFinite(w)) out = out.replace(/^<img/i, `<img width="${Math.round(w)}"`);
+    }
+    return out;
   });
   const headers: Record<string, string> = {};
   const mail = {

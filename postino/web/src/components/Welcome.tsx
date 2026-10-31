@@ -6,7 +6,8 @@ import { useAccounts, useMe, useSettings, useUpdateSettings } from '../api/hooks
 import type { Account, AccountInput } from '../api/types';
 import { Icon, type IconName } from '../icons';
 import { useUI } from '../store';
-import { COLORS, ColorPicker, ServerFields } from './Settings';
+import { ColorPicker, ServerFields, suggestColor } from './Settings';
+import { useAccounts as useAccountsList } from '../api/hooks';
 import { canPromptInstall, isInstalled, onInstallChange, platform, promptInstall } from '../install';
 import { enablePush, pushSupported, currentSubscription } from '../push';
 
@@ -165,7 +166,13 @@ function MailboxForm({ index, onAdded, onCancel }: { index: number; onAdded: () 
   const [username, setUsername] = useState('');
   const [imap, setImap] = useState({ host: '', port: 993, secure: true });
   const [smtp, setSmtp] = useState({ host: '', port: 465, secure: true });
-  const [color, setColor] = useState(COLORS[index % COLORS.length]);
+  const { data: existing } = useAccountsList();
+  const [color, setColor] = useState(() => suggestColor('', []));
+  const [colorTouched, setColorTouched] = useState(false);
+  useEffect(() => {
+    if (!colorTouched) setColor(suggestColor(email, existing ?? []));
+  }, [email, existing, colorTouched]);
+  void index;
   const [advanced, setAdvanced] = useState(false);
   const [looking, setLooking] = useState(false);
   const [found, setFound] = useState<string>('');
@@ -263,7 +270,7 @@ function MailboxForm({ index, onAdded, onCancel }: { index: number; onAdded: () 
       </div>
       <div className="field">
         <span className="label">Colour for this address</span>
-        <ColorPicker value={color} onChange={setColor} />
+        <ColorPicker value={color} onChange={(c) => { setColorTouched(true); setColor(c); }} />
       </div>
       <div className="wizard-servers">
         {!advanced ? (

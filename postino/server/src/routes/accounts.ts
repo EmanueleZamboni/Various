@@ -10,7 +10,7 @@ import type { FolderRow } from '../mail/store.js';
 import { bus } from '../events.js';
 import { friendlyError } from '../mail/sync.js';
 
-const palette = ['#3B6CF6', '#E0567B', '#16A37A', '#9466E0', '#E8792B', '#13A1B5', '#8C9A1F', '#D23C6A', '#5B7A99', '#C2410C'];
+const palette = ['#2B3D90', '#3F6FB0', '#56657E', '#B4593C', '#A3821C', '#8C6A4A', '#2F7F78', '#5E7F45', '#3E8A6E', '#8A4F7D', '#5A4FA0', '#9A5A6B'];
 
 type ServerIn = { host?: string; port?: number | string; secure?: boolean | string };
 type AccountIn = { email?: string; name?: string; password?: string; username?: string; color?: string; signature?: string; order?: number; imap?: ServerIn; smtp?: ServerIn; aliases?: string[]; folders?: Record<string, string>; notify?: string };

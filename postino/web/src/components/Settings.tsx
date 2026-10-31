@@ -14,7 +14,19 @@ import { useUI } from '../store';
 import { currentSubscription, disablePush, enablePush, pushSupported } from '../push';
 import { pluralize } from '../util/format';
 
-export const COLORS = ['#3B6FE0', '#D9486B', '#2E9E6B', '#8A5BD6', '#E07C2A', '#1AA3B5', '#9A8A1E', '#5B6B9E', '#B8456B', '#157A5B'];
+/** Account colors: four families (postal blue, warm, green, plum) of equal depth, so tags look like one set. */
+export const COLOR_FAMILIES: Record<string, string[]> = { blue: ['#2B3D90', '#3F6FB0', '#56657E'], warm: ['#B4593C', '#A3821C', '#8C6A4A'], green: ['#2F7F78', '#5E7F45', '#3E8A6E'], plum: ['#8A4F7D', '#5A4FA0', '#9A5A6B'] };
+export const COLORS = ['#2B3D90', '#3F6FB0', '#56657E', '#B4593C', '#A3821C', '#8C6A4A', '#2F7F78', '#5E7F45', '#3E8A6E', '#8A4F7D', '#5A4FA0', '#9A5A6B'];
+
+/** Same domain, same family: info@ and admin@ of one company get shades of one color. */
+export function suggestColor(email: string, accounts: { email: string; color: string }[]): string {
+  const domain = email.split('@')[1]?.toLowerCase() ?? '';
+  const used = new Set(accounts.map((a) => a.color.toUpperCase()));
+  const sibling = accounts.find((a) => a.email.split('@')[1]?.toLowerCase() === domain);
+  const family = sibling ? Object.values(COLOR_FAMILIES).find((f) => f.some((c) => c.toUpperCase() === sibling.color.toUpperCase())) : undefined;
+  const pool = family ?? Object.values(COLOR_FAMILIES).find((f) => !f.some((c) => used.has(c.toUpperCase()))) ?? COLORS;
+  return pool.find((c) => !used.has(c.toUpperCase())) ?? pool[0];
+}
 
 const NAV: { to: string; label: string; icon: IconName }[] = [
   { to: '/settings/accounts', label: 'Accounts', icon: 'people' },
@@ -249,7 +261,7 @@ function AddAccount({ onDone }: { onDone: () => void }) {
   const [username, setUsername] = useState('');
   const [imap, setImap] = useState({ host: '', port: 993, secure: true });
   const [smtp, setSmtp] = useState({ host: '', port: 465, secure: true });
-  const [color, setColor] = useState(COLORS[(accounts?.length ?? 0) % COLORS.length]);
+  const [color, setColor] = useState(() => suggestColor('', accounts ?? []));
   const [advanced, setAdvanced] = useState(false);
   const [presetNote, setPresetNote] = useState('');
   const [err, setErr] = useState('');
