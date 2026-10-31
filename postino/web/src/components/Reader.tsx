@@ -476,7 +476,7 @@ const FRAME_CSS = `
   body{font:15px/1.6 'Instrument Sans',-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;word-wrap:break-word;overflow-wrap:anywhere;padding:2px 0 4px}
   img{max-width:100%!important;height:auto}
   table{max-width:100%}
-  a{color:#157a5b}
+  a{color:#0a47b8}
   blockquote{margin:0 0 0 .6em;padding-left:.9em;border-left:2px solid #cfd6d2;color:#6b7571}
   pre{white-space:pre-wrap}
 `;

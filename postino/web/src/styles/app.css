@@ -42,10 +42,12 @@
   --faint: #9aa39e;
   --line: #e4e9e6;
   --line-strong: #cfd6d2;
-  --pine: #157a5b;
-  --pine-ink: #0f5e46;
-  --pine-soft: #e3f2ec;
-  --pine-tint: #f1f8f5;
+  --pine: #0a47b8;
+  --pine-ink: #06327f;
+  --pine-soft: #e3ebfa;
+  --pine-tint: #f2f6fd;
+  --postal: #ffd100;
+  --postal-ink: #0b2559;
   --rose: #c9414f;
   --rose-soft: #fbe9eb;
   --amber: #b7791f;
@@ -3115,4 +3117,20 @@ textarea:focus-visible {
   color: #fff;
   background: var(--c);
   box-shadow: none;
+}
+
+/* Postal yellow for the main "write" actions */
+.compose-btn,
+.fab {
+  background: var(--postal) !important;
+  color: var(--postal-ink) !important;
+  font-weight: 700;
+  box-shadow: 0 1px 0 rgba(11, 37, 89, 0.25), 0 6px 16px rgba(255, 190, 0, 0.35);
+}
+.compose-btn:hover,
+.fab:hover {
+  background: #ffc400 !important;
+}
+.brand-name {
+  color: var(--postal-ink);
 }
