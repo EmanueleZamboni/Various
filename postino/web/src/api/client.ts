@@ -2,7 +2,9 @@ import type {
   Account,
   AccountInput,
   Address,
+  BackupStatus,
   BlockedSender,
+  PendingMailbox,
   Draft,
   Folder,
   Me,
@@ -162,6 +164,12 @@ export const api = {
     connect: () => post<{ url: string }>('/api/google/connect'),
     disconnect: () => post<void>('/api/google/disconnect'),
     save: (attachmentId: string, convertTo?: string) => post<{ ok: true; id: string; webViewLink: string; converted: boolean }>('/api/google/save', { attachmentId, convertTo }),
+  },
+  backup: {
+    status: () => get<BackupStatus>('/api/backup/status'),
+    driveNow: () => post<{ ok: true }>('/api/backup/drive-now'),
+    restore: (file: unknown) => post<{ mailboxes: PendingMailbox[] }>('/api/backup/restore', file),
+    forgetPending: () => post<{ ok: true }>('/api/backup/forget-pending'),
   },
   outbox: {
     list: () => get<{ items: OutboxItem[] }>('/api/outbox'),

@@ -1,3 +1,4 @@
+import { PendingMailboxes, RestoreButton } from './Backup';
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { startRegistration, browserSupportsWebAuthn } from '@simplewebauthn/browser';
@@ -137,6 +138,13 @@ function MailStep({ accounts, onNext }: { accounts: Account[]; onNext: () => voi
             </li>
           ))}
         </ul>
+      )}
+      <PendingMailboxes />
+      {accounts.length === 0 && (
+        <div className="wizard-restore">
+          <span>Moving to a new server?</span>
+          <RestoreButton className="btn btn-quiet btn-sm" />
+        </div>
       )}
       {adding ? (
         <MailboxForm index={accounts.length} onAdded={() => setAdding(false)} onCancel={accounts.length ? () => setAdding(false) : undefined} />

@@ -166,7 +166,8 @@ is needed to read the stored account passwords.
 - **Google Drive buttons missing**: Settings → Google Drive must show "Connected". If Google refuses the redirect, the URI in the Google Cloud console must match the one shown there exactly.
 - **Mail is not arriving live**: Settings → Accounts shows a red dot when the IMAP connection dropped; Postino reconnects by itself (retrying up to once a minute). `docker compose logs -f postino` shows why.
 - **Disk**: `data/attachments` is a cache capped at 2 GB (change with `POSTINO_ATTACHMENT_CACHE_MB` in `.env`); the least recently opened files are dropped and fetched again when needed. `data/avatars` can be deleted at any time.
-- **Backups**: `scripts/backup.sh` (see the comment inside for the nightly cron line). Restore = stop the app, replace `data/postino.db` and `data/secret.key`, start it again.
+- **Backups**: your mail stays on the mail servers, so a lost server loses no email. What lives only in Postino (settings, templates, signatures, blocked senders, unsent drafts, the list of mailboxes) is covered by **Settings → Backup**: download the file, or connect Google Drive and a copy is saved every night in a "Postino backups" folder (copies older than 30 days are deleted). On a new server, the setup's first step has **Restore from a backup**: pick the file, then type each mailbox password (passwords are never in the backup).
+- **Full server copy**: `scripts/backup.sh` also runs nightly on the server itself (the whole database plus the key). Restore = stop the app, replace `data/postino.db` and `data/secret.key`, start it again.
 - **Logs**: `docker compose logs --tail 200 postino`.
 
 ## Security notes

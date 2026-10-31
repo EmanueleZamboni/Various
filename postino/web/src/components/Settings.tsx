@@ -1,3 +1,4 @@
+import { BackupSettings } from './Backup';
 import { type ReactNode, useEffect, useState, type FormEvent } from 'react';
 import { Link, Route, Routes, useLocation } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -38,6 +39,7 @@ const NAV: { to: string; label: string; icon: IconName }[] = [
   { to: '/settings/notifications', label: 'Notifications', icon: 'bell' },
   { to: '/settings/google', label: 'Google Drive', icon: 'folder' },
   { to: '/settings/preferences', label: 'Swipes & look', icon: 'filter' },
+  { to: '/settings/backup', label: 'Backup', icon: 'download' },
   { to: '/settings/security', label: 'Security', icon: 'shield' },
 ];
 
@@ -82,6 +84,7 @@ export function SettingsPage({ me, onLogout }: { me?: Me; onLogout: () => void }
           <Route path="reading" element={<ReadingSettings />} />
           <Route path="composing" element={<ComposeSettings />} />
           <Route path="preferences" element={<PreferenceSettings />} />
+          <Route path="backup" element={<BackupSettings />} />
           <Route path="security" element={<SecuritySettings me={me} />} />
         </Routes>
       </div>

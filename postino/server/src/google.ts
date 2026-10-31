@@ -109,6 +109,61 @@ async function uploadToDrive(opts: { name: string; contentType: string; bytes: B
   return { id: json.id, webViewLink: json.webViewLink || `https://drive.google.com/file/d/${json.id}/view` };
 }
 
+/** True when Drive is connected (so the nightly backup can go there). */
+export function driveConnected(): boolean {
+  return Boolean(creds() && tokens());
+}
+
+async function driveJson(url: string, init: RequestInit = {}): Promise<Record<string, unknown>> {
+  const token = await accessToken();
+  const res = await fetch(url, { ...init, headers: { authorization: `Bearer ${token}`, ...(init.headers || {}) } });
+  if (res.status === 204) return {};
+  const json = (await res.json().catch(() => ({}))) as Record<string, unknown> & { error?: { message?: string } };
+  if (!res.ok) throw new Error(json.error?.message || `Google Drive answered ${res.status}`);
+  return json;
+}
+
+/**
+ * Save a backup file into a "Postino backups" folder in Drive and delete copies older than
+ * keepDays. With the drive.file permission Postino only ever sees the files it made itself.
+ */
+export async function saveBackupToDrive(name: string, bytes: Buffer, keepDays = 30): Promise<void> {
+  let folderId = getSetting<string | null>('backup.driveFolder', null);
+  if (folderId) {
+    const f = await driveJson(`${API_BASE}/drive/v3/files/${encodeURIComponent(folderId)}?fields=id,trashed`).catch(() => null);
+    if (!f || f.trashed) folderId = null;
+  }
+  if (!folderId) {
+    const f = await driveJson(`${API_BASE}/drive/v3/files?fields=id`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'Postino backups', mimeType: 'application/vnd.google-apps.folder' }),
+    });
+    folderId = String(f.id);
+    setSetting('backup.driveFolder', folderId);
+  }
+  const token = await accessToken();
+  const boundary = 'postino' + randomToken(8);
+  const head = Buffer.from(`--${boundary}\r\ncontent-type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify({ name, parents: [folderId] })}\r\n--${boundary}\r\ncontent-type: application/json\r\n\r\n`);
+  const body = Buffer.concat([head, bytes, Buffer.from(`\r\n--${boundary}--`)]);
+  const res = await fetch(`${API_BASE}/upload/drive/v3/files?uploadType=multipart&fields=id`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${token}`, 'content-type': `multipart/related; boundary=${boundary}`, 'content-length': String(body.length) },
+    body,
+  });
+  if (!res.ok) {
+    const json = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
+    throw new Error(json.error?.message || `Google Drive answered ${res.status}`);
+  }
+  // Old copies go: anything in the folder made more than keepDays ago.
+  const cutoff = new Date(Date.now() - keepDays * 86_400_000).toISOString();
+  const q = encodeURIComponent(`'${folderId}' in parents and createdTime < '${cutoff}' and trashed = false`);
+  const list = await driveJson(`${API_BASE}/drive/v3/files?q=${q}&fields=files(id)&pageSize=100`);
+  for (const f of (list.files as { id: string }[] | undefined) ?? []) {
+    await driveJson(`${API_BASE}/drive/v3/files/${encodeURIComponent(f.id)}`, { method: 'DELETE' }).catch((err) => log.warn({ err }, 'could not delete an old backup'));
+  }
+}
+
 export function registerGoogleRoutes(app: FastifyInstance): void {
   app.get('/api/google/status', async () => {
     const c = creds();

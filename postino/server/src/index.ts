@@ -15,6 +15,7 @@ import { registerComposeRoutes } from './routes/compose.js';
 import { registerMiscRoutes } from './routes/misc.js';
 import { registerSignatureRoutes } from './routes/signatures.js';
 import { registerTemplateRoutes } from './routes/templates.js';
+import { registerBackupRoutes, startDriveBackups } from './backup.js';
 import { registerPasskeyRoutes } from './passkeys.js';
 import { registerGoogleRoutes } from './google.js';
 import { manager } from './mail/manager.js';
@@ -116,6 +117,7 @@ export async function buildApp() {
   registerMiscRoutes(app);
   registerSignatureRoutes(app);
   registerTemplateRoutes(app);
+  registerBackupRoutes(app);
   registerPasskeyRoutes(app);
   registerGoogleRoutes(app);
 
@@ -179,6 +181,7 @@ async function main(): Promise<void> {
   };
   setTimeout(prune, 60_000).unref();
   setInterval(prune, 6 * 3_600_000).unref();
+  startDriveBackups();
   await app.listen({ port: config.port, host: config.host });
   log.info({ port: config.port, data: config.dataDir }, 'postino listening');
   announceSetupCode();

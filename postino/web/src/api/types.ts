@@ -233,3 +233,13 @@ export type CalendarEvent = {
   url: string;
   googleLink: string | null;
 };
+
+export type PendingMailbox = {
+  email: string;
+  name: string;
+  color: string;
+  username: string;
+  imap: { host: string; port: number; secure: boolean };
+  smtp: { host: string; port: number; secure: boolean };
+};
+export type BackupStatus = { driveConnected: boolean; lastDrive: string | null; lastDriveError: string | null; pendingMailboxes: PendingMailbox[] };

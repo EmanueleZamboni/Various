@@ -7,7 +7,7 @@ import { recomputeThread, type FolderRole } from '../mail/store.js';
 
 type BlockedRow = { id: number; pattern: string; note: string; created_at: string };
 
-function normalizePattern(raw: string): string | null {
+export function normalizePattern(raw: string): string | null {
   const p = raw.trim().toLowerCase();
   if (/[%_*?]/.test(p)) return null; // no wildcards: a pattern is one address or one domain
   if (/^@[^@\s]+\.[^@\s]+$/.test(p)) return p; // @domain
@@ -17,7 +17,7 @@ function normalizePattern(raw: string): string | null {
 }
 
 /** True for one of the user's own addresses, aliases, or the domain of one of them. */
-function isOwn(pattern: string): boolean {
+export function isOwn(pattern: string): boolean {
   const rows = db.prepare('SELECT lower(email) AS email, aliases FROM accounts').all() as { email: string; aliases: string }[];
   const own = new Set<string>();
   for (const r of rows) {

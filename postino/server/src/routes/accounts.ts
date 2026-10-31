@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { ImapFlow } from 'imapflow';
+import { applyPendingFor } from '../backup.js';
 import { db } from '../db.js';
 import { encrypt } from '../crypto.js';
 import { manager } from '../mail/manager.js';
@@ -102,6 +103,8 @@ export function registerAccountRoutes(app: FastifyInstance): void {
          VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
       )
       .run(v.email, v.name, color, count, v.username, encrypt(v.password), v.imap.host, v.imap.port, v.imap.secure ? 1 : 0, v.smtp.host, v.smtp.port, v.smtp.secure ? 1 : 0);
+    // A restored backup brings back this mailbox's colour, signatures and drafts.
+    applyPendingFor(Number(info.lastInsertRowid));
     const row = db.prepare('SELECT * FROM accounts WHERE id = ?').get(info.lastInsertRowid) as AccountRow;
     manager.start(row);
     return reply.code(201).send(accountView(row));
