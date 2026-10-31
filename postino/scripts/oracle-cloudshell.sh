@@ -68,8 +68,8 @@ main() {
       --query 'data[?!contains("display-name", `"Minimal"`)] | [0].id' --raw-output)"
     [ -n "$IMG" ] || die "could not find the Ubuntu 24.04 image"
     ADS="$(q iam availability-domain list -c "$C" --query 'join(`" "`, data[].name)' --raw-output)"
-    say "Creating the free server (Ampere, 2 OCPU, 12 GB). Oracle sometimes has no free capacity: this retries for up to 30 minutes."
-    for attempt in $(seq 1 30); do
+    say "Creating the free server (Ampere, 2 OCPU, 12 GB). Free Ampere capacity is often scarce: this keeps retrying for up to 3 hours. Leave the tab open."
+    for attempt in $(seq 1 120); do
       for AD in $ADS; do
         if INST="$(oci compute instance launch -c "$C" --availability-domain "$AD" --display-name postino \
             --shape VM.Standard.A1.Flex --shape-config '{"ocpus":2,"memoryInGBs":12}' \
@@ -79,15 +79,20 @@ main() {
           break 2
         fi
         INST=""
-        if ! grep -qi "capacity" /tmp/postino-launch.err; then
+        if grep -qiE "TooManyRequests|\b429\b|Too many requests" /tmp/postino-launch.err; then
+          echo "  Oracle says: too many requests (attempt $attempt/120), waiting 2 minutes..."
+          sleep 120
+          continue 2
+        fi
+        if ! grep -qiE "capacity|InternalError|\b5[0-9][0-9]\b" /tmp/postino-launch.err; then
           cat /tmp/postino-launch.err >&2
           die "Oracle refused to create the server (see above)"
         fi
       done
-      echo "  no free capacity right now (attempt $attempt/30), retrying in 60 s..."
-      sleep 60
+      echo "  no free capacity right now (attempt $attempt/120), retrying in 90 s..."
+      sleep 90
     done
-    [ -n "$INST" ] || die "still no free capacity after 30 minutes; run this command again later"
+    [ -n "$INST" ] || die "still no free capacity after 3 hours. Run the command again later (nights and early mornings are best), or upgrade the account to Pay As You Go (the server stays free) which usually gets capacity at once."
   fi
   IP="$(q compute instance list-vnics --instance-id "$INST" --query 'data[0]."public-ip"' --raw-output)"
   [ -n "$IP" ] || die "the server has no public IP"
