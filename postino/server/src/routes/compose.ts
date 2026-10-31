@@ -200,12 +200,12 @@ export function registerComposeRoutes(app: FastifyInstance): void {
       if (sig && sig.account_id === account.id) signature = { html: sig.html, text: sig.text };
     }
     // Quoted original (reply/forward), built here so HTML mail is quoted as HTML.
-    let quote: { html: string | null; text: string } | null = null;
+    let quote: { html: string | null; text: string; sourceRow: number } | null = null;
     if (b.quote === '1') {
       const src = replyRow || (b.forwardOf ? (db.prepare('SELECT * FROM messages WHERE id = ?').get(Number(b.forwardOf)) as MessageRow | undefined) : undefined);
       if (src) {
         const pre = replyPrefill(src, b.forwardOf ? 'forward' : 'reply');
-        quote = { html: pre.quotedHtml ? `<div>${esc(pre.headerLine).replace(/\n/g, '<br>')}</div>${pre.quotedHtml}` : null, text: pre.quotedText.trim() };
+        quote = { html: pre.quotedHtml ? `<div>${esc(pre.headerLine).replace(/\n/g, '<br>')}</div>${pre.quotedHtml}` : null, text: pre.quotedText.trim(), sourceRow: src.id };
       }
     }
     // Reply from the alias the mail was sent to, when it belongs to this account.

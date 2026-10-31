@@ -21,6 +21,7 @@ main() {
   fi
   DOMAIN="${DOMAIN#https://}"; DOMAIN="${DOMAIN#http://}"; DOMAIN="${DOMAIN%/}"
   [ -n "$DOMAIN" ] || die "an address is needed"
+  [[ "$DOMAIN" =~ ^[A-Za-z0-9.-]+$ ]] || die "that does not look like a domain name: $DOMAIN"
 
   # ---- where to create things: the root compartment of this account ----------------
   C="${OCI_TENANCY:-}"

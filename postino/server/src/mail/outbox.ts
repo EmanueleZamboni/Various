@@ -26,7 +26,7 @@ export type SendJob = {
   inReplyTo?: { messageId: string; references: string[]; row: number } | null;
   forwardOf?: number | null;
   signature?: { html: string; text: string } | null;
-  quote?: { html: string | null; text: string } | null;
+  quote?: { html: string | null; text: string; sourceRow?: number } | null;
   uploadIds: string[];
   draftId?: number | null;
   threadId?: number | null;
@@ -96,7 +96,10 @@ async function forwardedAttachments(messageRow: number): Promise<OutgoingAttachm
  */
 async function inlineQuoteImages(job: SendJob): Promise<{ html: string | null; text: string; inline: OutgoingAttachment[] } | null> {
   if (!job.quote) return null;
-  if (!job.quote.html) return { ...job.quote, inline: [] };
+  if (!job.quote.html) return { html: null, text: job.quote.text, inline: [] };
+  // Only images of the quoted message itself: the HTML came from a stranger's email and any
+  // other /api/attachments/N text in it must never pull in files from other messages.
+  const sourceRow = job.quote.sourceRow ?? -1;
   let html = job.quote.html.replace(/\ssrc=""/g, '').replace(/data-remote-src=/g, 'src=');
   const inline: OutgoingAttachment[] = [];
   const ids = new Map<number, string>();
@@ -106,7 +109,7 @@ async function inlineQuoteImages(job: SendJob): Promise<{ html: string | null; t
     return `src=${q}cid:${ids.get(n)}${q}`;
   });
   for (const [id, cid] of ids) {
-    const a = db.prepare('SELECT a.*, m.account_id FROM attachments a JOIN messages m ON m.id = a.message_row WHERE a.id = ?').get(id) as (AttachmentRow & { account_id: number }) | undefined;
+    const a = db.prepare('SELECT a.*, m.account_id FROM attachments a JOIN messages m ON m.id = a.message_row WHERE a.id = ? AND a.message_row = ?').get(id, sourceRow) as (AttachmentRow & { account_id: number }) | undefined;
     if (!a) continue;
     try {
       const sync = manager.get(a.account_id);

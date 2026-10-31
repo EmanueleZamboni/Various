@@ -84,14 +84,22 @@ export function DocxPreview({ url }: { url: string }) {
         const doc = el.contentDocument;
         if (cancelled || !doc) return;
         // The frame is same-origin so we can write into it, but has no allow-scripts: nothing in the document can run.
-        await renderAsync(new Blob([bytes]), doc.body, doc.head, { inWrapper: true, ignoreLastRenderedPageBreak: true, experimental: false, useBase64URL: true });
+        // Styles go into their own box so the frame's CSP <meta> in <head> stays; raw HTML chunks are not rendered.
+        const styles = doc.createElement('div');
+        const content = doc.createElement('div');
+        doc.body.append(styles, content);
+        await renderAsync(new Blob([bytes]), content, styles, { inWrapper: true, ignoreLastRenderedPageBreak: true, experimental: false, useBase64URL: true, renderAltChunks: false });
         if (!cancelled) setState('ready');
       } catch {
         if (!cancelled) setState('error');
       }
     };
-    if (el.contentDocument?.readyState === 'complete' && el.contentDocument.body) void run();
-    else el.addEventListener('load', () => void run(), { once: true });
+    // Wait for our srcdoc (with its CSP) to load; never write into the frame's initial blank page.
+    const onLoad = () => {
+      if (el.contentDocument?.querySelector('meta[http-equiv="Content-Security-Policy"]')) void run();
+    };
+    if (el.contentDocument?.querySelector('meta[http-equiv="Content-Security-Policy"]')) void run();
+    else el.addEventListener('load', onLoad, { once: true });
     return () => {
       cancelled = true;
     };
