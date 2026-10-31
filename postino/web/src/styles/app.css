@@ -1539,9 +1539,6 @@ textarea:focus-visible {
   .btn {
     min-height: 40px;
   }
-  .row {
-    min-height: 76px;
-  }
   .sugs {
     left: 14px;
     right: 14px;
