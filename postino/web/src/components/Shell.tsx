@@ -7,6 +7,7 @@ import { useNav } from '../nav';
 import { useUI } from '../store';
 import { useSettings } from '../api/hooks';
 import { Sidebar } from './Sidebar';
+import { TopBar } from './TopBar';
 import { ThreadList } from './ThreadList';
 import { Reader } from './Reader';
 import { Compose } from './Compose';
@@ -81,6 +82,7 @@ export function Shell({ me, forcedView, onLogout }: { me?: Me; forcedView?: stri
           }
           return;
         case 'p':
+        case 's':
           if (sel) void act({ threadIds: [sel], action: 'pin', view });
           return;
         case 'u':
@@ -130,12 +132,12 @@ export function Shell({ me, forcedView, onLogout }: { me?: Me; forcedView?: stri
   const [resizing, setResizing] = useState(false);
   const startResize = (e: React.PointerEvent) => {
     e.preventDefault();
-    const shell = (e.currentTarget as HTMLElement).parentElement!;
-    const sidebarW = (shell.querySelector('.sidebar') as HTMLElement | null)?.offsetWidth ?? 240;
+    const card = (e.currentTarget as HTMLElement).parentElement!;
     setResizing(true);
     let last = listW;
     const move = (ev: PointerEvent) => {
-      last = Math.round(Math.min(Math.max(ev.clientX - shell.getBoundingClientRect().left - sidebarW, 280), Math.min(760, window.innerWidth - sidebarW - 360)));
+      const box = card.getBoundingClientRect();
+      last = Math.round(Math.min(Math.max(ev.clientX - box.left, 280), Math.min(900, box.width - 360)));
       setListW(last);
     };
     const up = () => {
@@ -151,31 +153,53 @@ export function Shell({ me, forcedView, onLogout }: { me?: Me; forcedView?: stri
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
   };
+  const [mini, setMiniState] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('postino.navMini') === '1';
+    } catch {
+      return false;
+    }
+  });
+  // Gmail's menu button: folds the sidebar to icons on a computer, opens the drawer on smaller screens.
+  const onMenu = () => {
+    if (window.matchMedia('(max-width: 1100px)').matches) return ui.setDrawer(true);
+    setMiniState((v) => {
+      try {
+        localStorage.setItem('postino.navMini', v ? '0' : '1');
+      } catch {
+        /* ignore */
+      }
+      return !v;
+    });
+  };
   return (
-    <div className={`shell${resizing ? ' resizing' : ''}`} style={sideBySide ? ({ ['--list-w' as string]: `${listW}px` } as React.CSSProperties) : undefined} data-view={phoneView} data-reading={settings?.appearance.readingPane ?? 'full'} data-open={nav.threadId ? 'thread' : 'list'} data-drawer={ui.drawerOpen ? 'open' : 'closed'} data-density={settings?.appearance.density ?? 'comfortable'} data-text={settings?.appearance.textSize ?? 'normal'}>
+    <div className={`shell${resizing ? ' resizing' : ''}`} data-mini={mini ? 'on' : 'off'} style={sideBySide ? ({ ['--list-w' as string]: `${listW}px` } as React.CSSProperties) : undefined} data-view={phoneView} data-reading={settings?.appearance.readingPane ?? 'full'} data-open={nav.threadId ? 'thread' : 'list'} data-drawer={ui.drawerOpen ? 'open' : 'closed'} data-density={settings?.appearance.density ?? 'comfortable'} data-text={settings?.appearance.textSize ?? 'normal'}>
       {!online && (
         <div className="offline-bar" role="status">
           <Icon name="alert" size={16} />
           You're offline. Showing the last synced mail; changes will fail until the connection is back.
         </div>
       )}
+      <TopBar me={me} onMenu={onMenu} onLogout={onLogout} />
       <Sidebar />
-      {sideBySide && !nav.isSettings && (
-        <div className={`pane-resizer${resizing ? ' dragging' : ''}`} role="separator" aria-orientation="vertical" aria-label="Resize the list" title="Drag to resize" onPointerDown={startResize} onDoubleClick={() => { setListW(400); try { localStorage.removeItem('postino.listW'); } catch { /* ignore */ } }} />
-      )}
       <div className="drawer-scrim" onClick={() => ui.setDrawer(false)} />
-      {nav.isSettings ? (
-        <SettingsPage me={me} onLogout={onLogout} />
-      ) : (
-        <>
-          <ThreadList view={view} />
-          <Reader view={view} />
-        </>
-      )}
+      <main className="main-card">
+        {nav.isSettings ? (
+          <SettingsPage me={me} onLogout={onLogout} />
+        ) : (
+          <>
+            <ThreadList view={view} />
+            {sideBySide && (
+              <div className={`pane-resizer${resizing ? ' dragging' : ''}`} role="separator" aria-orientation="vertical" aria-label="Resize the list" title="Drag to resize" onPointerDown={startResize} onDoubleClick={() => { setListW(400); try { localStorage.removeItem('postino.listW'); } catch { /* ignore */ } }} />
+            )}
+            <Reader view={view} />
+          </>
+        )}
+      </main>
       {!nav.isSettings && (
-        <button className="fab" onClick={() => ui.openCompose({ mode: 'new', accountId: nav.accountId ?? undefined })} aria-label="New email">
-          <Icon name="pen" size={18} />
-          New email
+        <button className="fab" onClick={() => ui.openCompose({ mode: 'new', accountId: nav.accountId ?? undefined })} aria-label="Compose">
+          <Icon name="pen" size={24} />
+          <span>Compose</span>
         </button>
       )}
       {ui.compose && !ui.compose.inline && <Compose key={ui.composeSeq} />}

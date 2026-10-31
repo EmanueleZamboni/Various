@@ -180,46 +180,50 @@ export function Reader({ view }: { view: string }) {
     if (['archive', 'trash', 'junk', 'notjunk', 'inbox', 'delete'].includes(action)) afterAction(thread.id);
   };
   const isDraft = thread.folderRoles.includes('drafts') && messages.every((m) => m.draft);
+  const pos = order.indexOf(thread.id);
 
   return (
     <section className="reader" aria-label="Conversation">
-      <div className="r-bar">
+      <div className="r-bar" role="toolbar" aria-label="Conversation actions">
         {backBtn}
-        <span className="desk">
-          {!isDraft && (
-            <>
-              <button className="ib" onClick={() => doAct('archive')} title="Archive (e)" aria-label="Archive"><Icon name="archive" /></button>
-              <button className="ib" onClick={() => doAct(inTrash ? 'inbox' : 'trash')} title={inTrash ? 'Move to Inbox' : 'Delete (#)'} aria-label={inTrash ? 'Move to Inbox' : 'Delete'}><Icon name={inTrash ? 'inbox' : 'trash'} /></button>
-              <button className="ib" onClick={() => doAct(inJunk ? 'notjunk' : 'junk')} title={inJunk ? 'Not spam' : 'Mark as spam'} aria-label={inJunk ? 'Not spam' : 'Mark as spam'}><Icon name="spam" /></button>
-              <span className="div" />
-              <button className={`ib${thread.pinned ? ' on' : ''}`} onClick={() => doAct(thread.pinned ? 'unpin' : 'pin')} title={`${thread.pinned ? 'Unpin' : 'Pin'} (p)`} aria-label={thread.pinned ? 'Unpin' : 'Pin'}><Icon name="pin" /></button>
-              <button className="ib" onClick={() => { doAct('unread'); nav.closeThread(); }} title="Mark as unread (u)" aria-label="Mark as unread"><Icon name="unread" /></button>
-              <button className="ib" onClick={() => ui.setMoveTarget({ threadIds: [thread.id], accountId: thread.accountId })} title="Move to folder" aria-label="Move to folder"><Icon name="move" /></button>
-              {inTrash && (
-                <button className="ib danger" onClick={() => doAct('delete')} title="Delete forever" aria-label="Delete forever"><Icon name="x" /></button>
-              )}
-            </>
-          )}
-        </span>
+        {!isDraft && (
+          <>
+            <button className="ib" onClick={() => doAct('archive')} title="Archive (e)" aria-label="Archive"><Icon name="archive" /></button>
+            <button className="ib wide-only" onClick={() => doAct(inJunk ? 'notjunk' : 'junk')} title={inJunk ? 'Not spam' : 'Report spam'} aria-label={inJunk ? 'Not spam' : 'Report spam'}><Icon name="spam" /></button>
+            <button className="ib" onClick={() => doAct(inTrash ? 'inbox' : 'trash')} title={inTrash ? 'Move to Inbox' : 'Delete (#)'} aria-label={inTrash ? 'Move to Inbox' : 'Delete'}><Icon name={inTrash ? 'moveInbox' : 'trash'} /></button>
+            {inTrash && (
+              <button className="ib" onClick={() => doAct('delete')} title="Delete forever" aria-label="Delete forever"><Icon name="deleteForever" /></button>
+            )}
+            <span className="div wide-only" />
+            <button className="ib" onClick={() => { doAct('unread'); nav.closeThread(); }} title="Mark as unread (u)" aria-label="Mark as unread"><Icon name="mail" /></button>
+            <button className="ib wide-only" onClick={() => ui.setMoveTarget({ threadIds: [thread.id], accountId: thread.accountId })} title="Move to" aria-label="Move to"><Icon name="move" /></button>
+            <button className={`ib star-btn${thread.pinned ? ' on' : ''}`} onClick={() => doAct(thread.pinned ? 'unpin' : 'pin')} title={thread.pinned ? 'Remove star (s)' : 'Add star (s)'} aria-label={thread.pinned ? 'Remove star' : 'Add star'}><Icon name={thread.pinned ? 'starFilled' : 'star'} /></button>
+            {canBlock && (
+              <button className="ib wide-only" onClick={() => ui.setPendingBlock({ email: lastIncoming!.from.email, name: displayName(lastIncoming!.from), threadId: thread.id })} title={`Block ${lastIncoming!.from.email}`} aria-label="Block sender"><Icon name="block" /></button>
+            )}
+          </>
+        )}
         <span className="sp" />
-        {canBlock && !isDraft && (
-          <button className="btn btn-quiet btn-sm" onClick={() => ui.setPendingBlock({ email: lastIncoming!.from.email, name: displayName(lastIncoming!.from), threadId: thread.id })}>
-            <Icon name="block" size={16} />
-            <span className="block-label">Block sender</span>
-          </button>
+        {pos >= 0 && order.length > 1 && (
+          <span className="pager wide-only">
+            <span className="range">{`${pos + 1} of ${order.length}`}</span>
+            <button className="ib" disabled={pos <= 0} onClick={() => nav.openThread(order[pos - 1])} aria-label="Newer" title="Newer (k)"><Icon name="chevronLeft" /></button>
+            <button className="ib" disabled={pos >= order.length - 1} onClick={() => nav.openThread(order[pos + 1])} aria-label="Older" title="Older (j)"><Icon name="chevronRight" /></button>
+          </span>
         )}
       </div>
       <div className="r-scroll" ref={scrollRef}>
         <div className="r-inner">
           <div className="r-head">
-            <h2 className="r-subj">{thread.subject || '(no subject)'}</h2>
-            <div className="r-meta">
+            <h2 className="r-subj">
+              {thread.subject || '(no subject)'}
               {account && (
                 <span className="acct-tag" style={{ ['--c' as string]: account.color }}>{account.email}</span>
               )}
-              <span>{messages.length > 1 ? `${messages.length} messages` : formatFullDate(messages[0]?.date ?? thread.lastDate)}</span>
-              {thread.pinned && <span className="tag pin"><Icon name="pin" size={13} />Pinned</span>}
-            </div>
+            </h2>
+            {lastIncoming && (
+              <button className="ib wide-only" onClick={() => printMessage(lastIncoming, true)} aria-label="Print" title="Print"><Icon name="print" /></button>
+            )}
           </div>
           {messages.map((m) => (
             <MessageCard
@@ -252,27 +256,17 @@ export function Reader({ view }: { view: string }) {
                 }}
               />
             ) : (
-              <button className="reply-collapsed" onClick={() => startReply(settings?.compose.defaultReply ?? 'reply')}>
-                <Icon name="reply" size={18} />
-                Reply to {firstName(lastIncoming.mine ? lastIncoming.to[0] : lastIncoming.from)}
-                <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: 12, fontSize: 13 }}>
-                  <span onClick={(e) => { e.stopPropagation(); startReply('replyAll'); }} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && startReply('replyAll')}>Reply all</span>
-                  <span onClick={(e) => { e.stopPropagation(); startReply('forward'); }} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && startReply('forward')}>Forward</span>
-                </span>
-              </button>
+              <div className="reply-pills">
+                <button className="pill-btn" onClick={() => startReply('reply')}><Icon name="reply" size={20} />Reply</button>
+                {lastIncoming.to.length + lastIncoming.cc.length > 1 && (
+                  <button className="pill-btn" onClick={() => startReply('replyAll')}><Icon name="replyAll" size={20} />Reply all</button>
+                )}
+                <button className="pill-btn" onClick={() => startReply('forward')}><Icon name="forward" size={20} />Forward</button>
+              </div>
             )
           )}
         </div>
       </div>
-      {!isDraft && (
-        <nav className="r-actions" aria-label="Conversation actions">
-          <button onClick={() => doAct('archive')}><Icon name="archive" />Archive</button>
-          <button onClick={() => doAct(inTrash ? 'inbox' : 'trash')}><Icon name={inTrash ? 'inbox' : 'trash'} />{inTrash ? 'Restore' : 'Delete'}</button>
-          <button className={thread.pinned ? 'on' : ''} onClick={() => doAct(thread.pinned ? 'unpin' : 'pin')}><Icon name="pin" />{thread.pinned ? 'Unpin' : 'Pin'}</button>
-          <button onClick={() => doAct(inJunk ? 'notjunk' : 'junk')}><Icon name="spam" />{inJunk ? 'Not spam' : 'Spam'}</button>
-          <button onClick={() => startReply(settings?.compose.defaultReply ?? 'reply')}><Icon name="reply" />Reply</button>
-        </nav>
-      )}
     </section>
   );
 }
@@ -341,29 +335,31 @@ function MessageCard({ message: m, thread, accountColor, myEmails, expanded, sin
       <div className="msg-head" style={{ cursor: single ? 'default' : 'pointer' }} onClick={() => !single && onToggle()}>
         <Avatar who={m.from} color={accountColor} small me={me} />
         <div className="msg-who">
-          <b>{me ? 'You' : displayName(m.from)}</b>
-          <small>
-            <button className="to-line" onClick={(e) => { e.stopPropagation(); setDetails((d) => !d); }} aria-expanded={details}>
-              {me ? `to ${toLine}` : `${m.from.email} · to ${toLine || 'me'}`}
-              <Icon name="chevronDown" size={12} />
-            </button>
-          </small>
+          <span className="msg-from">
+            <b>{me ? 'me' : displayName(m.from)}</b>
+            {!me && m.from.name && <span className="msg-email">&lt;{m.from.email}&gt;</span>}
+          </span>
+          <button className="to-line" onClick={(e) => { e.stopPropagation(); setDetails((d) => !d); }} aria-expanded={details} aria-label="Show details">
+            {`to ${toLine || 'me'}`}
+            <Icon name="dropDown" size={18} />
+          </button>
         </div>
-        <span className="msg-time"><span className="t-long">{formatFullDate(m.date)}</span><span className="t-short">{formatListDate(m.date)}</span></span>
+        <span className="msg-time"><span className="t-long">{formatFullDate(m.date)}{agoText(m.date)}</span><span className="t-short">{formatListDate(m.date)}</span></span>
         <div className="msg-tools" onClick={(e) => e.stopPropagation()}>
           {m.draft ? (
             <button className="btn btn-ghost btn-sm" onClick={onEditDraft}>Edit draft</button>
           ) : (
             <>
-              <button className="ib" aria-label="Reply" title="Reply (r)" onClick={() => onReply('reply')}><Icon name="reply" size={18} /></button>
+              <button className={`ib star-btn wide-only${m.flagged ? ' on' : ''}`} aria-label={m.flagged ? 'Starred' : 'Not starred'} title={m.flagged ? 'Starred' : 'Not starred'} onClick={() => void act({ threadIds: [m.threadId], action: m.flagged ? 'unpin' : 'pin', view: 'inbox' })}><Icon name={m.flagged ? 'starFilled' : 'star'} size={20} /></button>
+              <button className="ib" aria-label="Reply" title="Reply (r)" onClick={() => onReply('reply')}><Icon name="reply" size={20} /></button>
               <div style={{ position: 'relative' }}>
-                <button className="ib" aria-label="More actions" aria-expanded={menu} onClick={() => setMenu((v) => !v)}><Icon name="more" size={18} /></button>
+                <button className="ib" aria-label="More actions" aria-expanded={menu} onClick={() => setMenu((v) => !v)}><Icon name="more" size={20} /></button>
                 {menu && (
-                  <div className="search-pop" style={{ left: 'auto', right: 0, width: 200 }} onMouseLeave={() => setMenu(false)}>
+                  <div className="menu-pop right" role="menu" onMouseLeave={() => setMenu(false)}>
                     <button className="sug" onClick={() => { setMenu(false); onReply('replyAll'); }}><Icon name="replyAll" size={16} />Reply all</button>
                     <button className="sug" onClick={() => { setMenu(false); onReply('forward'); }}><Icon name="forward" size={16} />Forward</button>
-                    <button className="sug" onClick={() => { setMenu(false); printMessage(m, showImages); }}><Icon name="draft" size={16} />Print</button>
-                    <button className="sug" onClick={() => { setMenu(false); void act({ threadIds: [m.threadId], action: m.flagged ? 'unpin' : 'pin', view: 'inbox' }); }}><Icon name="pin" size={16} />{m.flagged ? 'Unpin' : 'Pin'}</button>
+                    <button className="sug" onClick={() => { setMenu(false); printMessage(m, showImages); }}><Icon name="print" size={16} />Print</button>
+                    <button className="sug" onClick={() => { setMenu(false); void act({ threadIds: [m.threadId], action: m.flagged ? 'unpin' : 'pin', view: 'inbox' }); }}><Icon name={m.flagged ? 'starFilled' : 'star'} size={16} />{m.flagged ? 'Remove star' : 'Add star'}</button>
                     {!me && (
                       <button className="sug" onClick={() => { setMenu(false); onBlock(); }}><Icon name="block" size={16} />Block {m.from.email}</button>
                     )}
@@ -491,7 +487,7 @@ const FRAME_CSS = `
   ::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-track{background:transparent}
   ::-webkit-scrollbar-thumb{background:#cdd3dc;border-radius:10px;border:3px solid #fff}::-webkit-scrollbar-thumb:hover{background:#aab2be}
   html,body{margin:0;padding:0;background:#fff;color:#17201c}
-  body{font:15px/1.6 'Instrument Sans',-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;word-wrap:break-word;overflow-wrap:anywhere;padding:2px 0 4px}
+  body{font:14px/1.5 Arial,Helvetica,sans-serif;word-wrap:break-word;overflow-wrap:anywhere;padding:2px 0 4px}
   img{max-width:100%!important;height:auto}
   table{max-width:100%}
   a{color:#2b3d90}
@@ -561,4 +557,17 @@ function EventCard({ ev, attachments }: { ev: NonNullable<Message['calendar']>; 
       </div>
     </div>
   );
+}
+
+/** Gmail's " (2 days ago)" after the full date. */
+function agoText(iso: string): string {
+  const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+  if (!Number.isFinite(mins) || mins < 0) return '';
+  if (mins < 1) return ' (now)';
+  if (mins < 60) return ` (${mins} minute${mins === 1 ? '' : 's'} ago)`;
+  const h = Math.round(mins / 60);
+  if (h < 24) return ` (${h} hour${h === 1 ? '' : 's'} ago)`;
+  const d = Math.round(h / 24);
+  if (d < 31) return ` (${d} day${d === 1 ? '' : 's'} ago)`;
+  return '';
 }

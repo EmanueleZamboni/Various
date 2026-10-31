@@ -420,7 +420,7 @@ function InboxSettings() {
           <Row title="Smart inbox" hint="People first, with notifications and newsletters grouped"><Switch on={inbox.smart} label="Smart inbox" onChange={(v) => { setSmart(v); set({ smart: v }); }} /></Row>
           <Row title="Group notifications" hint="Receipts, shares, alerts in one card"><Switch on={inbox.groupNotifications} label="Group notifications" onChange={(v) => set({ groupNotifications: v })} /></Row>
           <Row title="Group newsletters" hint="Bulk mail with an unsubscribe link in one card"><Switch on={inbox.groupNewsletters} label="Group newsletters" onChange={(v) => set({ groupNewsletters: v })} /></Row>
-          <Row title="Pinned on top" hint="Show pinned conversations in their own section"><Switch on={inbox.pinnedOnTop} label="Pinned on top" onChange={(v) => set({ pinnedOnTop: v })} /></Row>
+          <Row title="Starred on top" hint="Show starred conversations in their own section"><Switch on={inbox.pinnedOnTop} label="Starred on top" onChange={(v) => set({ pinnedOnTop: v })} /></Row>
         </div>
         <div className="card">
           <Row title="Preview lines" hint="Lines of the message shown under the subject"><Select value={String(inbox.previewLines) as '0' | '1' | '2'} label="Preview lines" width={140} options={[{ id: '0', label: 'None' }, { id: '1', label: 'One line' }, { id: '2', label: 'Two lines' }]} onChange={(v) => set({ previewLines: Number(v) as 0 | 1 | 2 })} /></Row>
@@ -570,7 +570,7 @@ function NotificationSettings({ me }: { me?: Me }) {
 
 const SWIPES: { id: SwipeAction; label: string }[] = [
   { id: 'archive', label: 'Archive' },
-  { id: 'pin', label: 'Pin' },
+  { id: 'pin', label: 'Star' },
   { id: 'trash', label: 'Delete' },
   { id: 'read', label: 'Mark as read' },
   { id: 'junk', label: 'Mark as spam' },

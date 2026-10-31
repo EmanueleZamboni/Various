@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { InfiniteData } from '@tanstack/react-query';
 import { useAccountMap, useAccounts, useBlocked, useDrafts, useMyEmails, useOutbox, useSearch, useSettings, useThreadList, useThreadActions } from '../api/hooks';
 import { api } from '../api/client';
@@ -7,9 +7,8 @@ import { Icon, type IconName } from '../icons';
 import { useNav, VIEW_LABEL } from '../nav';
 import { useNavigate } from 'react-router-dom';
 import { useUI } from '../store';
-import { accountLabel, dayGroup, pluralize } from '../util/format';
+import { accountLabel, pluralize } from '../util/format';
 import { ThreadRow } from './ThreadRow';
-import { SearchBar } from './SearchBar';
 import { BlockedList } from './BlockedList';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -50,6 +49,18 @@ export function ThreadList({ view }: { view: string }) {
     }
   };
   const search = useSearch(nav.q, nav.accountId ?? undefined);
+  // Gmail-style checkboxes: a set of picked conversations for bulk actions, cleared when the list changes.
+  const [checked, setChecked] = useState<Set<string>>(new Set());
+  const [selMenu, setSelMenu] = useState(false);
+  const [moreMenu, setMoreMenu] = useState(false);
+  useEffect(() => setChecked(new Set()), [view, nav.accountId, nav.q]);
+  const toggleCheck = (id: string) =>
+    setChecked((c) => {
+      const n = new Set(c);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
 
   const main = isSearch ? search : people;
   const rows = flat(main.data);
@@ -172,6 +183,8 @@ export function ThreadList({ view }: { view: string }) {
       showAvatar={settings?.inbox.showAvatars ?? true}
       showAccount={!nav.accountId && (settings?.inbox.showAccountTag ?? true)}
       accountLabel={accountMap.get(t.accountId) ? accountLabel(accountMap.get(t.accountId)!.email, accounts ?? []) : ''}
+      checked={checked.has(t.id)}
+      onCheck={() => toggleCheck(t.id)}
       onOpen={() => open(t)}
       onSwipe={(dir) => swipe(t, dir)}
       swipeActions={{ left: settings?.swipe.left ?? 'archive', right: settings?.swipe.right ?? 'pin' }}
@@ -181,6 +194,19 @@ export function ThreadList({ view }: { view: string }) {
       onPrefetch={() => void qc.prefetchQuery({ queryKey: ['thread', t.id], queryFn: () => api.threads.get(t.id), staleTime: 10_000 })}
     />
   );
+
+  const visible = smart ? [...pinnedRows, ...peopleRows] : rows;
+  const visibleIds = visible.map((t) => t.id);
+  const checkedRows = visible.filter((t) => checked.has(t.id));
+  const checkedIds = checkedRows.map((t) => t.id);
+  const allChecked = visibleIds.length > 0 && checkedIds.length === visibleIds.length;
+  const someChecked = checkedIds.length > 0 && !allChecked;
+  const oneAccount = checkedRows.length > 0 && checkedRows.every((t) => t.accountId === checkedRows[0].accountId);
+  const bulk = (action: Parameters<typeof act>[0]['action'], ids = checkedIds) => {
+    if (!ids.length) return;
+    void act({ threadIds: ids, action, view });
+    setChecked(new Set());
+  };
 
   let body: ReactNode;
   if (view === 'blocked') body = <BlockedList />;
@@ -200,7 +226,7 @@ export function ThreadList({ view }: { view: string }) {
       <>
         {pinnedRows.length > 0 && (
           <>
-            <div className="sec"><Icon name="pin" size={14} />Pinned</div>
+            <div className="sec"><Icon name="starFilled" size={16} />Starred</div>
             {pinnedRows.map((t) => renderRow(t))}
           </>
         )}
@@ -216,18 +242,7 @@ export function ThreadList({ view }: { view: string }) {
       </>
     );
   } else {
-    let group = '';
-    const list = rows.map((t) => {
-      const g = isSearch ? '' : dayGroup(t.lastDate);
-      const header = g && g !== group ? <div className="sec">{g}</div> : null;
-      group = g;
-      return (
-        <Fragment key={t.id}>
-          {header}
-          {renderRow(t)}
-        </Fragment>
-      );
-    });
+    const list = rows.map((t) => renderRow(t));
     body = (
       <>
         {scheduledBlock}
@@ -238,17 +253,77 @@ export function ThreadList({ view }: { view: string }) {
 
   return (
     <section className="list-pane" aria-label="Conversations">
-      <header className="list-head">
-        <div className="list-head-row">
-          <button className="ib menu-btn" onClick={() => ui.setDrawer(true)} aria-label="Open mailboxes">
-            <Icon name="menu" />
-          </button>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <h1 className="list-title">{title}</h1>
-            {subtitle && <div className="list-sub">{subtitle}</div>}
-          </div>
+      <header className={`list-head${checkedIds.length ? ' checking' : ''}`}>
+        <div className="list-title-row">
+          <h1 className="list-title">{title}</h1>
+          {subtitle && <span className="list-sub">{subtitle}</span>}
         </div>
-        {view !== 'blocked' && <SearchBar />}
+        {view !== 'blocked' && (
+          <div className="toolbar" role="toolbar" aria-label="List actions">
+            <div className="sel-wrap">
+              <button className="ib sel-box" onClick={() => setChecked(allChecked || someChecked ? new Set() : new Set(visibleIds))} aria-label={allChecked ? 'Deselect all' : 'Select all'} title="Select">
+                <Icon name={allChecked ? 'checkboxOn' : someChecked ? 'checkboxSome' : 'checkbox'} size={20} />
+              </button>
+              <button className="ib sel-drop" onClick={() => setSelMenu((v) => !v)} aria-label="Select options" aria-expanded={selMenu}>
+                <Icon name="dropDown" size={20} />
+              </button>
+              {selMenu && (
+                <div className="menu-pop" role="menu" onMouseLeave={() => setSelMenu(false)}>
+                  {([
+                    ['All', () => true],
+                    ['None', () => false],
+                    ['Read', (t: ThreadSummary) => !t.unread],
+                    ['Unread', (t: ThreadSummary) => t.unread],
+                    ['Starred', (t: ThreadSummary) => t.pinned],
+                    ['Unstarred', (t: ThreadSummary) => !t.pinned],
+                  ] as [string, (t: ThreadSummary) => boolean][]).map(([label, fn]) => (
+                    <button key={label} role="menuitem" onClick={() => { setChecked(new Set(visible.filter(fn).map((t) => t.id))); setSelMenu(false); }}>{label}</button>
+                  ))}
+                </div>
+              )}
+            </div>
+            {checkedIds.length === 0 ? (
+              <>
+                <button className="ib" onClick={() => void qc.invalidateQueries({ queryKey: ['threads'] })} aria-label="Refresh" title="Refresh">
+                  <Icon name="refresh" size={20} />
+                </button>
+                <div className="sel-wrap">
+                  <button className="ib" onClick={() => setMoreMenu((v) => !v)} aria-label="More" title="More" aria-expanded={moreMenu}>
+                    <Icon name="more" size={20} />
+                  </button>
+                  {moreMenu && (
+                    <div className="menu-pop" role="menu" onMouseLeave={() => setMoreMenu(false)}>
+                      <button role="menuitem" disabled={!visible.some((t) => t.unread)} onClick={() => { setMoreMenu(false); bulk('read', visible.filter((t) => t.unread).map((t) => t.id)); }}>Mark all as read</button>
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                {!['archive', 'trash', 'sent', 'drafts'].includes(view) && (
+                  <button className="ib" onClick={() => bulk('archive')} aria-label="Archive" title="Archive"><Icon name="archive" size={20} /></button>
+                )}
+                <button className="ib" onClick={() => bulk(view === 'junk' ? 'notjunk' : 'junk')} aria-label={view === 'junk' ? 'Not spam' : 'Report spam'} title={view === 'junk' ? 'Not spam' : 'Report spam'}><Icon name="spam" size={20} /></button>
+                <button className="ib" onClick={() => bulk(view === 'trash' ? 'inbox' : 'trash')} aria-label={view === 'trash' ? 'Move to Inbox' : 'Delete'} title={view === 'trash' ? 'Move to Inbox' : 'Delete'}><Icon name={view === 'trash' ? 'moveInbox' : 'trash'} size={20} /></button>
+                <span className="tb-div" />
+                {checkedRows.some((t) => t.unread) ? (
+                  <button className="ib" onClick={() => bulk('read')} aria-label="Mark as read" title="Mark as read"><Icon name="mailOpen" size={20} /></button>
+                ) : (
+                  <button className="ib" onClick={() => bulk('unread')} aria-label="Mark as unread" title="Mark as unread"><Icon name="mail" size={20} /></button>
+                )}
+                {oneAccount && (
+                  <button className="ib" onClick={() => { ui.setMoveTarget({ threadIds: checkedIds, accountId: checkedRows[0].accountId }); setChecked(new Set()); }} aria-label="Move to" title="Move to"><Icon name="move" size={20} /></button>
+                )}
+                <button className="ib" onClick={() => bulk(checkedRows.every((t) => t.pinned) ? 'unpin' : 'pin')} aria-label="Star" title={checkedRows.every((t) => t.pinned) ? 'Remove star' : 'Add star'}><Icon name={checkedRows.every((t) => t.pinned) ? 'starFilled' : 'star'} size={20} /></button>
+                <span className="tb-count">{checkedIds.length} selected</span>
+              </>
+            )}
+            <span className="sp" />
+            {counts && rows.length > 0 && (
+              <span className="range">{`1–${rows.length.toLocaleString()} of ${counts.total.toLocaleString()}`}</span>
+            )}
+          </div>
+        )}
         {isSearch && nav.q && (
           <div className="scope">
             {account ? (
@@ -259,16 +334,6 @@ export function ThreadList({ view }: { view: string }) {
             ) : (
               <>Searching all accounts</>
             )}
-          </div>
-        )}
-        {!isSearch && view !== 'blocked' && (accounts?.length ?? 0) > 1 && (
-          <div className="chips" role="group" aria-label="Filter by account">
-            <button className={`chip${!nav.accountId ? ' on' : ''}`} onClick={() => nav.setAccount(null)}>All</button>
-            {accounts!.map((a) => (
-              <button key={a.id} className={`chip acct-chip${nav.accountId === a.id ? ' on' : ''}`} style={{ ['--c' as string]: a.color }} onClick={() => nav.setAccount(a.id)}>
-                {accountLabel(a.email, accounts!)}
-              </button>
-            ))}
           </div>
         )}
       </header>

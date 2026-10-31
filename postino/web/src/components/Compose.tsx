@@ -25,6 +25,8 @@ export function Compose() {
   const [accountId, setAccountId] = useState(c.accountId ?? c.draft?.accountId ?? '');
   const [sendAt, setSendAt] = useState<Date | null>(null);
   const [laterOpen, setLaterOpen] = useState(false);
+  // Gmail's compose window: normal (docked bottom right), minimized to its title bar, or full screen.
+  const [win, setWin] = useState<'normal' | 'min' | 'max'>('normal');
   const [to, setTo] = useState(c.to ?? c.draft?.to ?? '');
   const [cc, setCc] = useState(c.cc ?? c.draft?.cc ?? '');
   const [bcc, setBcc] = useState(c.bcc ?? c.draft?.bcc ?? '');
@@ -259,10 +261,10 @@ export function Compose() {
     }
   };
 
-  const title = c.mode === 'forward' ? 'Forward' : c.mode === 'new' ? (c.draft ? (forwardOf ? 'Forward (draft)' : inReplyTo ? 'Reply (draft)' : 'Draft') : 'New email') : 'Reply';
+  const title = c.mode === 'forward' ? 'Forward' : c.mode === 'new' ? (c.draft ? (forwardOf ? 'Forward (draft)' : inReplyTo ? 'Reply (draft)' : 'Draft') : 'New Message') : 'Reply';
 
   return (
-    <div className="scrim full" role="dialog" aria-modal="true" aria-labelledby="compose-title" onMouseDown={(e) => { if (e.target === e.currentTarget) void closeAndKeep(); }}>
+    <div className={`compose-dock${win === 'max' ? ' max' : ''}${win === 'min' ? ' min' : ''}`} role="dialog" aria-modal={win === 'max'} aria-labelledby="compose-title" onMouseDown={(e) => { if (win === 'max' && e.target === e.currentTarget) setWin('normal'); }}>
       <form
         ref={sheetRef as never}
         className={`sheet compose${drag ? ' drop' : ''}`}
@@ -272,9 +274,13 @@ export function Compose() {
         onDrop={onDrop}
         onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') void send(); }}
       >
-        <div className="compose-top">
+        <div className="compose-top" onClick={() => win === 'min' && setWin('normal')}>
+          <button type="button" className="ib compose-back" aria-label="Close" onClick={() => void closeAndKeep()}><Icon name="back" /></button>
           <h2 id="compose-title">{subject.trim() ? subject : title}</h2>
-          <button type="button" className="ib" aria-label="Close" onClick={() => void closeAndKeep()}><Icon name="x" /></button>
+          <button type="button" className="ib win-btn" aria-label={win === 'min' ? 'Restore' : 'Minimize'} title={win === 'min' ? 'Restore' : 'Minimize'} onClick={(e) => { e.stopPropagation(); setWin(win === 'min' ? 'normal' : 'min'); }}><Icon name="minimize" size={18} /></button>
+          <button type="button" className="ib win-btn" aria-label={win === 'max' ? 'Exit full screen' : 'Full screen'} title={win === 'max' ? 'Exit full screen' : 'Full screen'} onClick={(e) => { e.stopPropagation(); setWin(win === 'max' ? 'normal' : 'max'); }}><Icon name={win === 'max' ? 'closeFull' : 'openFull'} size={16} /></button>
+          <button type="button" className="ib win-btn" aria-label="Save and close" title="Save &amp; close" onClick={(e) => { e.stopPropagation(); void closeAndKeep(); }}><Icon name="x" size={18} /></button>
+          <button type="button" className="ib phone-send" aria-label="Send" disabled={busy || !accounts?.length} onClick={() => void send()}><Icon name="send" /></button>
         </div>
         <div className="cfield">
           <label htmlFor="c-from">From</label>
@@ -297,8 +303,8 @@ export function Compose() {
         {showCc && <AddressInput id="c-cc" label="Cc" value={cc} onChange={setCc} />}
         {showBcc && <AddressInput id="c-bcc" label="Bcc" value={bcc} onChange={setBcc} />}
         <div className="cfield">
-          <label htmlFor="c-subject">Subject</label>
-          <input id="c-subject" type="text" value={subject} onChange={(e) => setSubject(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); document.getElementById('c-text')?.focus(); } }} autoComplete="off" />
+          <label htmlFor="c-subject" className="sr-only">Subject</label>
+          <input id="c-subject" type="text" placeholder="Subject" value={subject} onChange={(e) => setSubject(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); document.getElementById('c-text')?.focus(); } }} autoComplete="off" />
         </div>
         <label htmlFor="c-body" className="sr-only">Message</label>
         <textarea id="c-body" className="compose-body" value={text} onChange={(e) => setText(e.target.value)} placeholder="Write your message" autoFocus={!!c.to} />
@@ -323,30 +329,12 @@ export function Compose() {
           </div>
         )}
         <div className="compose-foot">
-          <label className="ib" title="Attach files" aria-label="Attach files">
-            <Icon name="clip" size={18} />
-            <input type="file" multiple hidden onChange={(e) => e.target.files && addFiles(e.target.files)} />
-          </label>
-          <TemplatePicker
-            current={{ subject, text }}
-            onPick={(t) => {
-              if (!subject.trim() && t.subject.trim()) setSubject(t.subject);
-              const body = fillTemplate(t.text, to);
-              setText((cur) => (cur.trim() ? `${body}\n\n${cur}` : body));
-            }}
-          />
-          <SignaturePicker signatures={signatures ?? []} accountId={accountId} value={signatureId || 'none'} onChange={setSignatureId} compact={narrow} />
-          {hasContent && (
-            <button type="button" className="ib danger" title="Discard" aria-label="Discard draft" onClick={() => void discard()}><Icon name="trash" size={18} /></button>
-          )}
-          <span className={`status${err ? ' err' : ''}`} role={err ? 'alert' : undefined}>{err || (saved ? `Draft saved ${saved}` : drag ? 'Drop files to attach' : '')}</span>
           <div className="send-group">
             <button type="submit" className="btn btn-primary" disabled={busy || !accounts?.length}>
               {busy ? 'Sending' : sendAt ? `Send ${sendAt.toLocaleString(undefined, { weekday: 'short', hour: '2-digit', minute: '2-digit' })}` : 'Send'}
-              <Icon name="send" size={15} />
             </button>
             <button type="button" className="btn btn-primary send-later" aria-label="Send later" aria-expanded={laterOpen} onClick={() => setLaterOpen((v) => !v)}>
-              <Icon name="chevronDown" size={15} />
+              <Icon name="dropDown" size={20} />
             </button>
             {laterOpen && (
               <div className="menu send-later-menu" role="menu">
@@ -361,6 +349,24 @@ export function Compose() {
               </div>
             )}
           </div>
+          <label className="ib" title="Attach files" aria-label="Attach files">
+            <Icon name="clip" size={20} />
+            <input type="file" multiple hidden onChange={(e) => e.target.files && addFiles(e.target.files)} />
+          </label>
+          <TemplatePicker
+            current={{ subject, text }}
+            onPick={(t) => {
+              if (!subject.trim() && t.subject.trim()) setSubject(t.subject);
+              const body = fillTemplate(t.text, to);
+              setText((cur) => (cur.trim() ? `${body}\n\n${cur}` : body));
+            }}
+          />
+          <SignaturePicker signatures={signatures ?? []} accountId={accountId} value={signatureId || 'none'} onChange={setSignatureId} compact={narrow} />
+          <span className={`status${err ? ' err' : ''}`} role={err ? 'alert' : undefined}>{err || (saved ? `Draft saved ${saved}` : drag ? 'Drop files to attach' : '')}</span>
+          <span className="sp" />
+          {hasContent && (
+            <button type="button" className="ib danger" title="Discard" aria-label="Discard draft" onClick={() => void discard()}><Icon name="trash" size={20} /></button>
+          )}
         </div>
       </form>
     </div>

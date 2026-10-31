@@ -22,6 +22,8 @@ type Props = {
   swipeActions?: { left: SwipeAction; right: SwipeAction };
   onAction: (a: ThreadAction) => void;
   onPrefetch: () => void;
+  checked?: boolean;
+  onCheck?: () => void;
   /** Extra actions for the right-click menu. */
   onMove?: () => void;
   onBlock?: () => void;
@@ -71,18 +73,18 @@ const SWIPE_META: Record<SwipeAction, { label: (t: ThreadSummary) => string; ico
   archive: { label: () => 'Archive', icon: 'archive', removes: true, tone: 'green' },
   trash: { label: () => 'Delete', icon: 'trash', removes: true, tone: 'red' },
   junk: { label: () => 'Spam', icon: 'spam', removes: true, tone: 'red' },
-  pin: { label: (t) => (t.pinned ? 'Unpin' : 'Pin'), icon: 'pin', removes: false, tone: 'blue' },
+  pin: { label: (t) => (t.pinned ? 'Unstar' : 'Star'), icon: 'star', removes: false, tone: 'blue' },
   read: { label: (t) => (t.unread ? 'Mark read' : 'Mark unread'), icon: 'mailOpen', removes: false, tone: 'blue' },
 };
 
-export function ThreadRow({ thread: t, account, myEmails, selected, focused, highlight, compact, previewLines = 1, showAvatar = true, showAccount, accountLabel, onOpen, onSwipe, onAction, onPrefetch, swipeActions, onMove, onBlock }: Props) {
+export function ThreadRow({ thread: t, account, myEmails, selected, focused, highlight, compact, previewLines = 1, showAvatar = true, showAccount, accountLabel, onOpen, onSwipe, onAction, onPrefetch, swipeActions, onMove, onBlock, checked = false, onCheck }: Props) {
   const [ctx, setCtx] = useState<{ x: number; y: number } | null>(null);
   const longPress = useRef<number | undefined>(undefined);
   const menuItems: MenuItem[] = [
     { label: 'Open', icon: 'mailOpen', run: onOpen },
     'sep',
     { label: t.unread ? 'Mark as read' : 'Mark as unread', icon: t.unread ? 'mailOpen' : 'unread', run: () => onAction(t.unread ? 'read' : 'unread') },
-    { label: t.pinned ? 'Unpin (not important)' : 'Pin as important', icon: 'pin', run: () => onAction(t.pinned ? 'unpin' : 'pin') },
+    { label: t.pinned ? 'Remove star' : 'Add star', icon: t.pinned ? 'starFilled' : 'star', run: () => onAction(t.pinned ? 'unpin' : 'pin') },
     { label: 'Archive', icon: 'archive', run: () => onAction('archive') },
     ...(onMove ? [{ label: 'Move to folder…', icon: 'move' as IconName, run: onMove }] : []),
     'sep',
@@ -170,7 +172,7 @@ export function ThreadRow({ thread: t, account, myEmails, selected, focused, hig
         </div>
       )}
       <div
-        className={`row${t.unread ? ' unread' : ''}${selected ? ' sel' : ''}${focused ? ' focus' : ''}${start.current?.active ? ' swiping' : ''}${showAvatar ? '' : ' no-avatar'}`}
+        className={`row${t.unread ? ' unread' : ''}${selected ? ' sel' : ''}${checked ? ' checked' : ''}${compact ? ' compact' : ''}${focused ? ' focus' : ''}${start.current?.active ? ' swiping' : ''}${showAvatar ? '' : ' no-avatar'}`}
         role="button"
         tabIndex={0}
         aria-current={selected ? 'true' : undefined}
@@ -210,60 +212,58 @@ export function ThreadRow({ thread: t, account, myEmails, selected, focused, hig
         onPointerUp={end}
         onPointerCancel={end}
       >
-        <Avatar who={avatarSource} color={account?.color} small={compact} />
-        <div className="row-main">
-          <div className="row-top">
-            {t.unread && <i className="udot" title="Unread" />}
-            <span className="who">{who}</span>
-            {t.count > 1 && <span className="cnt">{t.count}</span>}
-            <span className="when">{formatListDate(t.lastDate)}</span>
-          </div>
-          <div className="subj">{t.subject || '(no subject)'}</div>
+        <button className="row-check" onClick={(e) => { e.stopPropagation(); onCheck?.(); }} aria-label={checked ? 'Deselect' : 'Select'} aria-pressed={checked}>
+          <Icon name={checked ? 'checkboxOn' : 'checkbox'} size={20} />
+        </button>
+        <button className={`row-star${t.pinned ? ' on' : ''}`} onClick={(e) => { e.stopPropagation(); onAction(t.pinned ? 'unpin' : 'pin'); }} aria-label={t.pinned ? 'Starred' : 'Not starred'} title={t.pinned ? 'Starred' : 'Not starred'}>
+          <Icon name={t.pinned ? 'starFilled' : 'star'} size={20} />
+        </button>
+        {showAvatar && (
+          <span className="row-av" role="button" tabIndex={-1} aria-hidden="true" onClick={(e) => { e.stopPropagation(); onCheck?.(); }}>
+            {checked ? <span className="av av-check"><Icon name="check" size={22} /></span> : <Avatar who={avatarSource} color={account?.color} small={compact} />}
+          </span>
+        )}
+        <span className="who">
+          <span className="who-name">{who}</span>
+          {t.count > 1 && <span className="cnt">{t.count}</span>}
+          {t.draft && <span className="draft-word">Draft</span>}
+        </span>
+        <span className="row-text">
+          <span className="row-line">
+            {showAccount && account && (
+              <span className="acct-tag" style={{ ['--c' as string]: account.color }}>{accountLabel}</span>
+            )}
+            <span className="subj">{t.subject || '(no subject)'}</span>
+            {previewLines > 0 && !highlight && <span className="snip-inline"> - {t.snippet}</span>}
+          </span>
           {highlight ? (
-            <div className="snip" dangerouslySetInnerHTML={{ __html: highlight }} />
+            <span className="snip" dangerouslySetInnerHTML={{ __html: highlight }} />
           ) : previewLines > 0 ? (
-            <div className={`snip${previewLines === 2 ? ' lines-2' : ''}`}>{t.snippet}</div>
+            <span className={`snip${previewLines === 2 ? ' lines-2' : ''}`}>{t.snippet}</span>
           ) : null}
-          {!compact && (
-            <div className="row-meta">
-              {showAccount && account && (
-                <span className="acct-tag" style={{ ['--c' as string]: account.color }}>{accountLabel}</span>
-              )}
-              {t.hasAttachments && (
-                <span className="tag" title="Has attachments">
-                  <Icon name="clip" size={13} />
-                </span>
-              )}
-              {t.pinned && (
-                <span className="tag pin">
-                  <Icon name="pin" size={13} />
-                  Pinned
-                </span>
-              )}
-              {t.answered && (
-                <span className="tag" title="You replied">
-                  <Icon name="reply" size={13} />
-                </span>
-              )}
-              {t.draft && <span className="tag draft">Draft</span>}
-            </div>
+          {showAccount && account && (
+            <span className="row-tags">
+              <span className="acct-tag" style={{ ['--c' as string]: account.color }}>{accountLabel}</span>
+            </span>
           )}
-        </div>
+        </span>
+        <span className="row-icons">
+          {t.answered && <Icon name="reply" size={16} aria-label="You replied" />}
+          {t.hasAttachments && <Icon name="clip" size={16} aria-label="Has attachments" />}
+        </span>
+        <span className="when">{formatListDate(t.lastDate)}</span>
         {!compact && (
-          <div className="row-hover" onClick={(e) => e.stopPropagation()}>
-            <button className={`ib${t.pinned ? ' on' : ''}`} aria-label={t.pinned ? 'Unpin' : 'Pin'} title={t.pinned ? 'Unpin' : 'Pin'} onClick={() => onAction(t.pinned ? 'unpin' : 'pin')}>
-              <Icon name="pin" size={16} />
+          <span className="row-hover" onClick={(e) => e.stopPropagation()}>
+            <button className="ib" aria-label="Archive" title="Archive (e)" onClick={() => onAction('archive')}>
+              <Icon name="archive" size={20} />
+            </button>
+            <button className="ib" aria-label="Delete" title="Delete (#)" onClick={() => onAction('trash')}>
+              <Icon name="trash" size={20} />
             </button>
             <button className="ib" aria-label={t.unread ? 'Mark as read' : 'Mark as unread'} title={t.unread ? 'Mark as read' : 'Mark as unread (u)'} onClick={() => onAction(t.unread ? 'read' : 'unread')}>
-              <Icon name={t.unread ? 'mailOpen' : 'unread'} size={16} />
+              <Icon name={t.unread ? 'mailOpen' : 'mail'} size={20} />
             </button>
-            <button className="ib" aria-label="Archive" title="Archive (e)" onClick={() => onAction('archive')}>
-              <Icon name="archive" size={16} />
-            </button>
-            <button className="ib danger" aria-label="Delete" title="Delete (#)" onClick={() => onAction('trash')}>
-              <Icon name="trash" size={16} />
-            </button>
-          </div>
+          </span>
         )}
       </div>
     </div>

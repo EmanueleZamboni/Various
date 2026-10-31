@@ -6,7 +6,7 @@ export type KnownView = (typeof VIEWS)[number];
 
 export const VIEW_LABEL: Record<string, string> = {
   inbox: 'Inbox',
-  pinned: 'Pinned',
+  pinned: 'Starred',
   sent: 'Sent',
   drafts: 'Drafts',
   archive: 'Archive',
