@@ -1,3 +1,6 @@
+import samplePdf from './files/sample.pdf?url';
+import sampleDocx from './files/sample.docx?url';
+import sampleXlsx from './files/sample.xlsx?url';
 import type { Address, Category, FolderRole, Message, ThreadSummary, ThreadAction } from '../api/types';
 import {
   accounts,
@@ -524,10 +527,18 @@ on('DELETE', '/api/drafts/:id', ({ params }) => { const i = drafts.findIndex((x)
 on('POST', '/api/messages/:id/unsubscribe', () => json({ ok: true, method: 'http', url: 'https://example.com/unsubscribe' }));
 
 // ----- attachments
-on('GET', '/api/attachments/:id', ({ params, query }) => {
+// Real sample files so the demo can show PDF, Word and Excel previews.
+const SAMPLES: Record<string, string> = { pdf: samplePdf, docx: sampleDocx, xlsx: sampleXlsx };
+on('GET', '/api/attachments/:id', async ({ params, query }) => {
   const a = threads.flatMap((t) => t.messages).flatMap((m) => m.attachments).find((x) => x.id === params.id);
   const name = a?.filename ?? 'file.bin';
   const inline = query.get('inline') === '1';
+  const sample = SAMPLES[(name.split('.').pop() ?? '').toLowerCase()];
+  const realFetch = (window as unknown as { __realFetch?: typeof fetch }).__realFetch;
+  if (sample && realFetch) {
+    const r = await realFetch(sample);
+    return new Response(await r.arrayBuffer(), { headers: { 'Content-Type': a?.contentType ?? 'application/octet-stream', 'Content-Disposition': `${inline ? 'inline' : 'attachment'}; filename="${name}"` } });
+  }
   const content = `Mock content of ${name}`;
   return new Response(content, { headers: { 'Content-Type': a?.contentType ?? 'application/octet-stream', 'Content-Disposition': `${inline ? 'inline' : 'attachment'}; filename="${name}"` } });
 });

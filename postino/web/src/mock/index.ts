@@ -26,6 +26,7 @@ class MockEventSource extends EventTarget {
 
 export function installMock() {
   const realFetch = window.fetch.bind(window);
+  (window as unknown as { __realFetch: typeof fetch }).__realFetch = realFetch;
   window.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
     if (url.startsWith('/api/') || url.startsWith(`${location.origin}/api/`)) return handle(input, init);
