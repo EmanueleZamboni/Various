@@ -227,7 +227,7 @@ export function registerBackupRoutes(app: FastifyInstance): void {
   });
 
   app.post('/api/backup/drive-now', async (_req, reply) => {
-    if (!driveConnected()) return reply.code(409).send({ error: 'not_connected', message: 'Connect Google Drive first (Settings → Google Drive).' });
+    if (!driveConnected()) return reply.code(409).send({ error: 'not_connected', message: 'Connect Google Drive first (Settings → Google).' });
     try {
       await backupToDrive();
     } catch (err) {

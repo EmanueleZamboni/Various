@@ -129,7 +129,7 @@ export async function gmailAccessToken(account: { id: number; password_enc: stri
   const cached = gmailTokens.get(account.id);
   if (cached && cached.expiresAt - Date.now() > 60_000) return cached.access;
   const c = creds();
-  if (!c) throw new Error('Google sign-in is not set up on this server any more (Settings → Google Drive).');
+  if (!c) throw new Error('Google sign-in is not set up on this server any more (Settings → Google).');
   let body: Record<string, unknown>;
   try {
     body = await tokenRequest({ client_id: c.clientId, client_secret: c.clientSecret, refresh_token: decrypt(account.password_enc), grant_type: 'refresh_token' });
@@ -289,7 +289,7 @@ export function registerGoogleRoutes(app: FastifyInstance): void {
   // "Sign in with Google" for a Gmail mailbox (instead of an app password).
   app.post<{ Body: { back?: string; email?: string } }>('/api/google/gmail', async (req, reply) => {
     const c = creds();
-    if (!c) return reply.code(409).send({ error: 'not_configured', message: 'Google sign-in is not set up on this server yet. Use an app password, or set up Google in Settings → Google Drive first.' });
+    if (!c) return reply.code(409).send({ error: 'not_configured', message: 'Google sign-in is not set up on this server yet. Use an app password, or set up Google in Settings → Google first.' });
     const back = req.body?.back === '/welcome' ? '/welcome' : '/settings/accounts';
     const state = randomToken(16);
     pendingStates.set(state, { redirect: redirectUri(req), expires: Date.now() + 10 * 60_000, purpose: 'gmail', back });

@@ -126,7 +126,7 @@ export function BackupSettings() {
             <b>Automatic copy in Google Drive</b>
             <small>
               {!data?.driveConnected
-                ? 'Connect Google Drive (Settings → Google Drive) and Postino saves a copy every night in a "Postino backups" folder. Copies older than 30 days are deleted.'
+                ? 'Connect Google Drive (Settings → Google) and Postino saves a copy every night in a "Postino backups" folder. Copies older than 30 days are deleted.'
                 : data.lastDriveError
                   ? `Last try failed: ${data.lastDriveError}`
                   : when
