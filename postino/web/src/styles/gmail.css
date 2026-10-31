@@ -99,9 +99,11 @@ h3 {
   display: block;
 }
 .topbar .brand-name {
-  font: 400 22px/24px var(--font-display);
-  color: var(--mute);
-  letter-spacing: 0;
+  /* Gmail's wordmark: Google's logo face at 22 px, in Gmail's grey */
+  font: 400 22px/24px 'Google Sans', 'Product Sans', var(--font-display);
+  color: #5f6368;
+  letter-spacing: -0.1px;
+  padding-left: 4px;
 }
 .topbar .search {
   position: relative;
@@ -1438,8 +1440,8 @@ h3 {
     align-items: center;
     gap: 10px;
     padding: 12px 24px 16px;
-    font: 400 20px/24px var(--font-display);
-    color: var(--mute);
+    font: 400 22px/24px 'Google Sans', 'Product Sans', var(--font-display);
+    color: #5f6368;
   }
   .sidebar .compose-wrap {
     display: none;
@@ -1740,8 +1742,8 @@ h3 {
   height: 36px;
 }
 .brand-name {
-  font: 400 22px/28px var(--font-display);
-  color: var(--mute);
+  font: 400 22px/28px 'Google Sans', 'Product Sans', var(--font-display);
+  color: #5f6368;
 }
 .settings-nav {
   padding: 8px 16px 8px 0;

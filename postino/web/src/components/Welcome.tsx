@@ -65,7 +65,7 @@ export function Welcome({ onFinish }: { onFinish: () => void }) {
     <div className="auth wizard-page">
       <div className="auth-card wizard">
         <div className="brand">
-          <span className="brand-mark"><img src={`${import.meta.env.BASE_URL}mascot.svg`} alt="" width={34} height={34} /></span>
+          <span className="brand-mark"><img src={`${import.meta.env.BASE_URL}icon.svg`} alt="" width={36} height={36} /></span>
         <span className="brand-name">Postino</span>
           <span className="wizard-count">{Math.min(idx + 1, STEPS.length - 1)} of {STEPS.length - 1}</span>
         </div>
