@@ -42,12 +42,14 @@
   --faint: #9aa39e;
   --line: #e4e9e6;
   --line-strong: #cfd6d2;
-  --pine: #2b3d90;
-  --pine-ink: #14215c;
-  --pine-soft: #e6e9f6;
-  --pine-tint: #f3f5fb;
-  --postal: #f5e000;
-  --postal-ink: #14215c;
+  --pine: #1d46a8;
+  --pine-ink: #12285e;
+  --pine-soft: #e3e9f8;
+  --pine-tint: #f2f5fc;
+  --postal: #ffe500;
+  --postal-ink: #12285e;
+  --graphite: #26282c;
+  --letterbox: #c8102e;
   --rose: #c9414f;
   --rose-soft: #fbe9eb;
   --amber: #b7791f;
@@ -3122,14 +3124,17 @@ textarea:focus-visible {
 /* Postal yellow for the main "write" actions */
 .compose-btn,
 .fab {
-  background: var(--postal) !important;
+  background: linear-gradient(112deg, var(--postal) 0 74%, #f2a900 74% 76%, var(--graphite) 76% 100%) !important;
   color: var(--postal-ink) !important;
   font-weight: 700;
-  box-shadow: 0 1px 0 rgba(20, 33, 92, 0.3), 0 6px 16px rgba(220, 200, 0, 0.35);
+  justify-content: flex-start !important;
+  padding-left: 18px !important;
+  padding-right: 44px !important;
+  box-shadow: 0 1px 0 rgba(18, 40, 94, 0.3), 0 6px 16px rgba(230, 200, 0, 0.35);
 }
 .compose-btn:hover,
 .fab:hover {
-  background: #ecd600 !important;
+  filter: brightness(0.97);
 }
 .brand-name {
   color: var(--postal-ink);
@@ -3212,3 +3217,21 @@ textarea:focus-visible {
 .pv-table th { position: sticky; left: 0; background: var(--sheet-2); color: var(--mute); font-weight: 500; text-align: right; }
 .viewer-media { max-width: 100%; max-height: 100%; border-radius: 8px; background: #000; }
 .viewer-audio { width: min(520px, 100%); }
+
+/* ---------- Street-furniture touches ---------- */
+.letterbox { width: 88px; height: auto; margin-bottom: 8px; filter: drop-shadow(0 8px 14px rgba(200, 16, 46, 0.18)); }
+.auth { position: relative; overflow: hidden; background: var(--canvas); }
+.auth::before {
+  content: '';
+  position: absolute;
+  inset: auto auto -60px -60px;
+  width: 340px;
+  height: 340px;
+  background: var(--postal) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M78 22 34 66V38H22v48h48V74H42l44-44z' fill='%231d46a8'/%3E%3C/svg%3E") no-repeat 62% 38% / 46%;
+  border-radius: 28px;
+  transform: rotate(-6deg);
+  opacity: 0.95;
+  pointer-events: none;
+}
+.auth > * { position: relative; }
+@media (max-width: 760px) { .auth::before { width: 200px; height: 200px; inset: auto auto -50px -50px; } }
