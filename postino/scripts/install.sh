@@ -127,6 +127,10 @@ if command -v crontab >/dev/null && ! crontab -l 2>/dev/null | grep -q "postino/
   say "Scheduling a nightly backup (03:30, kept 14 days, in ~/postino-backups)"
   (crontab -l 2>/dev/null; echo "30 3 * * * $APP/scripts/backup.sh >> $HOME/postino-backup.log 2>&1") | crontab -
 fi
+if command -v crontab >/dev/null && ! crontab -l 2>/dev/null | grep -q "postino/scripts/auto-update.sh"; then
+  say "Turning on automatic updates (checks every 10 minutes)"
+  (crontab -l 2>/dev/null; echo "*/10 * * * * $APP/scripts/auto-update.sh >> $HOME/postino-update.log 2>&1") | crontab -
+fi
 chmod +x "$APP/scripts/"*.sh
 
 # ---- 7. Start -----------------------------------------------------------------------
@@ -156,7 +160,7 @@ cat <<EOF
 
 Useful later (from $APP):
   docker compose logs -f postino      live log
-  git pull && docker compose up -d --build   update
+  (updates install themselves every 10 minutes; log in ~/postino-update.log)
   scripts/backup.sh                   backup (see the comment inside for nightly cron)
 EOF
 }
