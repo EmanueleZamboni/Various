@@ -476,12 +476,25 @@ function PasskeyStep({ onNext }: { onNext: () => void }) {
   const supported = typeof window !== 'undefined' && browserSupportsWebAuthn();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  // Adding a device needs a recent sign-in; after a while the password is asked again.
+  const [needPw, setNeedPw] = useState(false);
+  const [pw, setPw] = useState('');
   const has = (data?.passkeys?.length ?? 0) > 0;
   const add = async () => {
     setErr('');
     setBusy(true);
     try {
-      const options = await api.passkeys.registerOptions();
+      let options;
+      try {
+        options = await api.passkeys.registerOptions(pw || undefined);
+      } catch (e) {
+        if ((e as { code?: string }).code === 'reauth_required') {
+          setNeedPw(true);
+          setErr(pw ? 'Wrong password. Try again.' : '');
+          return;
+        }
+        throw e;
+      }
       const response = await startRegistration({ optionsJSON: options });
       const name = platform() === 'android' ? 'Android phone' : platform() === 'ios' ? 'iPhone' : /Mac/i.test(navigator.userAgent) ? 'Mac' : /Windows/i.test(navigator.userAgent) ? 'Windows PC' : 'This device';
       await api.passkeys.registerVerify(response, name);
@@ -505,13 +518,19 @@ function PasskeyStep({ onNext }: { onNext: () => void }) {
       <StepHeader title="Sign in with your fingerprint" text="Next time, unlock Postino with your fingerprint, face or device PIN instead of the password. Each phone or computer is added once." />
       {!supported && <p className="wizard-hint"><Icon name="alert" size={14} /><span>This browser does not support passkeys. The password keeps working.</span></p>}
       {has && <p className="wizard-ok"><Icon name="check" size={14} />Fingerprint sign-in is set up on this device.</p>}
+      {needPw && !has && (
+        <div className="field">
+          <label htmlFor="w-pk-pw">Your Postino password (to confirm it is you)</label>
+          <input id="w-pk-pw" className="input input-lg" type="password" autoComplete="current-password" value={pw} onChange={(e) => setPw(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && pw) void add(); }} autoFocus />
+        </div>
+      )}
       {err && <p className="error-text" role="alert">{err}</p>}
       <div className="wizard-actions">
         {!has && <button className="btn btn-ghost" onClick={onNext}>Skip</button>}
         {has || !supported ? (
           <button className="btn btn-primary btn-lg" onClick={onNext}>Continue</button>
         ) : (
-          <button className="btn btn-primary btn-lg" onClick={() => void add()} disabled={busy}><Icon name="fingerprint" size={16} />{busy ? 'Waiting for the device…' : 'Add this device'}</button>
+          <button className="btn btn-primary btn-lg" onClick={() => void add()} disabled={busy || (needPw && !pw)}><Icon name="fingerprint" size={16} />{busy ? 'Waiting for the device…' : 'Add this device'}</button>
         )}
       </div>
     </>

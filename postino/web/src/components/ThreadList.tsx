@@ -24,6 +24,18 @@ export function ThreadList({ view }: { view: string }) {
   const act = useThreadActions();
   const addToTasks = useAddToTasks();
   const qc = useQueryClient();
+  // Pull down at the top of the list to refresh, like the Gmail app.
+  const pullStart = useRef<number | null>(null);
+  const [pull, setPull] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+  const refresh = async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([qc.refetchQueries({ queryKey: ['threads'], type: 'active' }), qc.refetchQueries({ queryKey: ['accounts'] })]);
+    } finally {
+      setRefreshing(false);
+    }
+  };
   const account = nav.accountId ? accountMap.get(nav.accountId) : undefined;
 
   const isSearch = view === 'search';
@@ -340,7 +352,31 @@ export function ThreadList({ view }: { view: string }) {
           </div>
         )}
       </header>
-      <div className="list" role="list">
+      <div
+        className="list"
+        role="list"
+        onTouchStart={(e) => {
+          const el = e.currentTarget;
+          pullStart.current = el.scrollTop <= 0 ? e.touches[0].clientY : null;
+        }}
+        onTouchMove={(e) => {
+          if (pullStart.current === null) return;
+          const dy = e.touches[0].clientY - pullStart.current;
+          setPull(dy > 0 ? Math.min(dy * 0.5, 90) : 0);
+        }}
+        onTouchEnd={() => {
+          if (pull > 60 && !refreshing) void refresh();
+          pullStart.current = null;
+          setPull(0);
+        }}
+      >
+        {(pull > 0 || refreshing) && (
+          <div className="ptr" style={{ height: refreshing ? 48 : pull }} aria-hidden="true">
+            <span className={`ptr-spin${refreshing ? ' on' : ''}`} style={{ transform: `rotate(${pull * 4}deg)`, opacity: refreshing ? 1 : Math.min(pull / 60, 1) }}>
+              <Icon name="refresh" size={20} />
+            </span>
+          </div>
+        )}
         {body}
         {main.hasNextPage && <div ref={sentinel} style={{ height: 1 }} />}
         {main.isFetchingNextPage && <div className="load-more">Loading more</div>}

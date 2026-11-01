@@ -229,6 +229,7 @@ export function ThreadRow({ thread: t, account, myEmails, selected, focused, hig
           <span className="who-name">{who}</span>
           {t.count > 1 && <span className="cnt">{t.count}</span>}
           {t.draft && <span className="draft-word">Draft</span>}
+          {showAccount && account && <span className="acct-tag who-tag" style={{ ['--c' as string]: account.color }}>{accountLabel}</span>}
         </span>
         <span className="row-text">
           <span className="row-line">

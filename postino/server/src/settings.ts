@@ -31,7 +31,7 @@ export type UiSettings = {
     confirmNoSubject: boolean;
   };
   swipe: { left: string; right: string };
-  appearance: { density: 'comfortable' | 'compact'; textSize: 'normal' | 'large'; readingPane: 'full' | 'side' };
+  appearance: { density: 'comfortable' | 'compact'; textSize: 'normal' | 'large'; readingPane: 'full' | 'side'; theme: 'system' | 'light' | 'dark' };
   // kept for older clients
   smartInbox: boolean;
   signaturePerAccount: boolean;
@@ -43,7 +43,7 @@ export const defaults: UiSettings = {
   reading: { markRead: 'open', markReadDelay: 2, remoteImages: 'ask', afterAction: 'next', confirmDelete: false, showQuoted: false },
   compose: { defaultAccount: 'lastUsed', replyFromRecipient: true, defaultReply: 'reply', includeQuote: true, undoSendSec: 10, sendAndArchive: false, bccMyself: false, confirmNoSubject: true },
   swipe: { left: 'archive', right: 'pin' },
-  appearance: { density: 'comfortable', textSize: 'normal', readingPane: 'full' },
+  appearance: { density: 'comfortable', textSize: 'normal', readingPane: 'full', theme: 'system' },
   smartInbox: true,
   signaturePerAccount: true,
 };
@@ -79,6 +79,7 @@ function clampSettings(s: UiSettings): UiSettings {
   s.appearance.density = pick(s.appearance.density, ['comfortable', 'compact'] as const, 'comfortable');
   s.appearance.textSize = pick(s.appearance.textSize, ['normal', 'large'] as const, 'normal');
   s.appearance.readingPane = pick(s.appearance.readingPane, ['full', 'side'] as const, 'full');
+  s.appearance.theme = pick(s.appearance.theme, ['system', 'light', 'dark'] as const, 'system');
   return s;
 }
 

@@ -601,6 +601,7 @@ function PreferenceSettings() {
           <Row title="Swipe right" hint="Drag a conversation to the right"><Select value={s.swipe.right} label="Swipe right action" width={170} options={SWIPES} onChange={(v) => update.mutate({ swipe: { right: v } })} /></Row>
         </div>
         <div className="card">
+          <Row title="Theme" hint="Dark follows your phone or computer when set to Automatic"><Select value={s.appearance.theme ?? 'system'} label="Theme" width={200} options={[{ id: 'system', label: 'Automatic' }, { id: 'light', label: 'Light' }, { id: 'dark', label: 'Dark' }]} onChange={(v) => update.mutate({ appearance: { theme: v } })} /></Row>
           <Row title="Reading" hint="How an email opens on a computer"><Select value={s.appearance.readingPane} label="Reading pane" width={200} options={[{ id: 'full', label: 'Full window (like Gmail)' }, { id: 'side', label: 'Next to the list (like Spark)' }]} onChange={(v) => update.mutate({ appearance: { readingPane: v } })} /></Row>
           <Row title="Density" hint="Space between conversations"><Select value={s.appearance.density} label="Density" width={170} options={[{ id: 'comfortable', label: 'Comfortable' }, { id: 'compact', label: 'Compact' }]} onChange={(v) => update.mutate({ appearance: { density: v } })} /></Row>
           <Row title="Text size"><Select value={s.appearance.textSize} label="Text size" width={170} options={[{ id: 'normal', label: 'Normal' }, { id: 'large', label: 'Large' }]} onChange={(v) => update.mutate({ appearance: { textSize: v } })} /></Row>

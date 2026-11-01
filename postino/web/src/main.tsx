@@ -8,6 +8,9 @@ const Router = import.meta.env.VITE_HASH === '1' ? HashRouter : BrowserRouter;
 import App from './App';
 import './styles/app.css';
 import './styles/gmail.css';
+import { initTheme } from './theme';
+
+initTheme();
 
 async function boot() {
   if (import.meta.env.VITE_MOCK === '1') {

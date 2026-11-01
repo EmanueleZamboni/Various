@@ -170,7 +170,7 @@ export type Settings = {
   reading: { markRead: 'open' | 'delay' | 'manual'; markReadDelay: number; remoteImages: 'ask' | 'always' | 'contacts'; afterAction: 'next' | 'previous' | 'list'; confirmDelete: boolean; showQuoted: boolean };
   compose: { defaultAccount: string; replyFromRecipient: boolean; defaultReply: 'reply' | 'replyAll'; includeQuote: boolean; undoSendSec: 0 | 5 | 10 | 20 | 30; sendAndArchive: boolean; bccMyself: boolean; confirmNoSubject: boolean };
   swipe: { left: SwipeAction; right: SwipeAction };
-  appearance: { density: 'comfortable' | 'compact'; textSize: 'normal' | 'large'; readingPane: 'full' | 'side' };
+  appearance: { density: 'comfortable' | 'compact'; textSize: 'normal' | 'large'; readingPane: 'full' | 'side'; theme?: 'system' | 'light' | 'dark' };
   smartInbox: boolean;
   signaturePerAccount: boolean;
 };

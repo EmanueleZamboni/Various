@@ -490,7 +490,7 @@ const FRAME_CSS = `
   ::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-track{background:transparent}
   ::-webkit-scrollbar-thumb{background:#cdd3dc;border-radius:10px;border:3px solid #fff}::-webkit-scrollbar-thumb:hover{background:#aab2be}
   html,body{margin:0;padding:0;background:#fff;color:#1f1f1f}
-  html{overflow-y:hidden}body{overflow-x:auto}
+  html{overflow:hidden}
   body{font:14px/1.5 Arial,Helvetica,sans-serif;word-wrap:break-word;overflow-wrap:anywhere;padding:2px 0 4px}
   img{max-width:100%!important;height:auto}
   table{max-width:100%}
@@ -517,28 +517,49 @@ export function HtmlBody({ id, html, showImages }: { id: string; html: string; s
     if (!frame) return;
     let ro: ResizeObserver | null = null;
     let timers: number[] = [];
+    // Emails built for a wide screen are shrunk to fit, like Gmail does, instead of scrolling sideways.
+    let scale = 1;
     const measure = () => {
       const d = frame.contentDocument;
       if (!d?.body) return;
       // The body's own height, not the document's: that one never shrinks below the frame.
-      const h = Math.ceil(Math.max(d.body.scrollHeight, d.body.getBoundingClientRect().height));
-      setHeight(Math.min(Math.max(h, 24), 30000));
+      const h = Math.max(d.body.scrollHeight, d.body.getBoundingClientRect().height / scale);
+      setHeight(Math.min(Math.max(Math.ceil(h * scale), 24), 30000));
+    };
+    const fit = () => {
+      const d = frame.contentDocument;
+      if (!d?.body) return;
+      const b = d.body;
+      b.style.width = '';
+      b.style.transform = '';
+      const cs = getComputedStyle(frame);
+      const w = frame.clientWidth - parseFloat(cs.paddingLeft || '0') - parseFloat(cs.paddingRight || '0');
+      const natural = Math.max(b.scrollWidth, d.documentElement.scrollWidth);
+      scale = w > 0 && natural > w + 4 ? w / natural : 1;
+      if (scale < 1) {
+        b.style.width = `${natural}px`;
+        b.style.transformOrigin = '0 0';
+        b.style.transform = `scale(${scale})`;
+      }
+      measure();
     };
     const attach = () => {
       const d = frame.contentDocument;
       if (!d?.body) return;
-      measure();
+      fit();
       ro?.disconnect();
       ro = new ResizeObserver(measure);
       ro.observe(d.body);
       // Images and web fonts can change the size after load.
-      for (const img of Array.from(d.images)) if (!img.complete) img.addEventListener('load', measure, { once: true });
-      timers = [150, 600, 1500].map((t) => window.setTimeout(measure, t));
+      for (const img of Array.from(d.images)) if (!img.complete) img.addEventListener('load', fit, { once: true });
+      timers = [150, 600, 1500].map((t) => window.setTimeout(fit, t));
     };
+    window.addEventListener('resize', fit);
     frame.addEventListener('load', attach);
     if (frame.contentDocument?.readyState === 'complete') attach();
     return () => {
       frame.removeEventListener('load', attach);
+      window.removeEventListener('resize', fit);
       ro?.disconnect();
       timers.forEach((t) => window.clearTimeout(t));
     };

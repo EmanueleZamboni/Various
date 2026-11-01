@@ -5,6 +5,15 @@
   and the mail in one white rounded card. Phones get Gmail's app layout.
 */
 
+:root {
+  --search-bg: #e9eef6;
+  --compose-head: #f2f6fc;
+  --checked: #c2dbff;
+  --on-soft: #041e49;
+  --chip: #e8eaed;
+  --hover-ov: rgba(31, 31, 31, 0.08);
+  --on-pine: #ffffff;
+}
 body {
   background: var(--canvas);
   font: 14px/20px var(--font);
@@ -40,7 +49,7 @@ h3 {
   color: var(--mute);
 }
 .ib:hover:not(:disabled) {
-  background: rgba(68, 71, 70, 0.08);
+  background: var(--hover-ov);
 }
 :focus-visible {
   outline: 2px solid var(--pine);
@@ -64,8 +73,8 @@ h3 {
   gap: 8px;
   padding: 8px 16px;
   font-size: 13px;
-  color: #3c2d00;
-  background: #fef7e0;
+  color: var(--amber);
+  background: var(--amber-soft);
 }
 .drawer-scrim {
   display: none;
@@ -101,7 +110,7 @@ h3 {
 .topbar .brand-name {
   /* Gmail's wordmark: Google's logo face at 22 px, in Gmail's grey */
   font: 400 22px/24px 'Google Sans', 'Product Sans', var(--font-display);
-  color: #5f6368;
+  color: var(--mute);
   letter-spacing: -0.1px;
   padding-left: 4px;
 }
@@ -120,7 +129,7 @@ h3 {
   padding: 0 8px 0 12px;
   border: 0;
   border-radius: 24px;
-  background: #e9eef6;
+  background: var(--search-bg);
   box-shadow: none;
   color: var(--mute);
   transition: background 0.15s, box-shadow 0.15s;
@@ -132,7 +141,7 @@ h3 {
   flex: none;
 }
 .topbar .search-box:focus-within {
-  background: #fff;
+  background: var(--sheet);
   box-shadow: 0 1px 1px rgba(65, 69, 73, 0.3), 0 1px 3px 1px rgba(65, 69, 73, 0.15);
 }
 .topbar .search:has(.search-pop) .search-box {
@@ -162,7 +171,7 @@ h3 {
   right: 0;
   width: auto;
   margin: 0;
-  background: #fff;
+  background: var(--sheet);
   border-radius: 0 0 24px 24px;
   box-shadow: 0 4px 6px rgba(32, 33, 36, 0.28);
   border-top: 1px solid var(--line);
@@ -203,7 +212,7 @@ h3 {
   transition: box-shadow 0.12s;
 }
 .me-btn:hover {
-  box-shadow: 0 0 0 4px rgba(68, 71, 70, 0.12);
+  box-shadow: 0 0 0 4px var(--hover-ov);
 }
 .me-pop {
   position: absolute;
@@ -211,7 +220,7 @@ h3 {
   right: 0;
   width: 360px;
   max-width: calc(100vw - 24px);
-  background: #e9eef6;
+  background: var(--search-bg);
   border-radius: 28px;
   box-shadow: var(--shadow-pop);
   padding: 16px 12px 12px;
@@ -243,7 +252,7 @@ h3 {
   margin-bottom: 4px;
 }
 .me-list {
-  background: #fff;
+  background: var(--sheet);
   border-radius: 20px;
   padding: 8px 0;
   max-height: 260px;
@@ -268,12 +277,12 @@ h3 {
   padding-top: 12px;
 }
 .me-actions .btn {
-  background: #fff;
+  background: var(--sheet);
   box-shadow: none;
   color: var(--ink);
 }
 .me-actions .btn:hover {
-  background: #f8fafd;
+  background: var(--sheet-2);
 }
 
 /* ---------- Sidebar ---------- */
@@ -334,7 +343,7 @@ h3 {
   border-radius: 0 16px 16px 0;
   background: none;
   box-shadow: none;
-  color: #202124;
+  color: var(--ink);
   font: 400 14px/20px var(--font);
   letter-spacing: 0.2px;
   text-align: left;
@@ -345,16 +354,16 @@ h3 {
   color: var(--mute);
 }
 .sidebar .nav-item:hover {
-  background: rgba(31, 31, 31, 0.08);
-  color: #202124;
+  background: var(--hover-ov);
+  color: var(--ink);
 }
 .sidebar .nav-item.on {
   background: var(--pine-soft);
-  color: #001d35;
+  color: var(--on-soft);
   font-weight: 700;
 }
 .sidebar .nav-item.on svg {
-  color: #001d35;
+  color: var(--on-soft);
 }
 .sidebar .nav-item.bold {
   font-weight: 700;
@@ -585,7 +594,7 @@ h3 {
   z-index: 60;
   min-width: 160px;
   padding: 6px 0;
-  background: #fff;
+  background: var(--sheet);
   border-radius: 4px;
   box-shadow: var(--shadow-pop);
 }
@@ -607,7 +616,7 @@ h3 {
   text-align: left;
 }
 .menu-pop button:hover:not(:disabled) {
-  background: rgba(31, 31, 31, 0.08);
+  background: var(--hover-ov);
 }
 .menu-pop button svg {
   color: var(--mute);
@@ -698,17 +707,17 @@ h3 {
   transition: transform 0.16s ease;
 }
 .row.unread {
-  background: #fff;
+  background: var(--sheet);
 }
 .row:hover {
   z-index: 2;
-  box-shadow: inset 1px 0 0 #dadce0, inset -1px 0 0 #dadce0, 0 1px 2px 0 rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15);
+  box-shadow: inset 1px 0 0 var(--line), inset -1px 0 0 var(--line), 0 1px 2px 0 rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15);
 }
 .row.sel {
   background: var(--pine-soft);
 }
 .row.checked {
-  background: #c2dbff;
+  background: var(--checked);
 }
 .row.focus::before {
   content: '';
@@ -854,8 +863,8 @@ h3 {
   border-radius: 4px;
   font: 400 12px/18px var(--font);
   white-space: nowrap;
-  background: color-mix(in srgb, var(--c, #5f6368) 16%, #fff);
-  color: color-mix(in srgb, var(--c, #5f6368) 75%, #000);
+  background: color-mix(in srgb, var(--c, var(--mute)) 16%, #fff);
+  color: color-mix(in srgb, var(--c, var(--mute)) 75%, #000);
 }
 
 /* Avatars: a coloured circle with a white letter */
@@ -868,7 +877,7 @@ h3 {
   height: 40px;
   border-radius: 50%;
   overflow: hidden;
-  background: var(--c, #5f6368);
+  background: var(--c, var(--mute));
   color: #fff;
   font: 500 17px/1 var(--font-display);
   text-transform: uppercase;
@@ -880,7 +889,7 @@ h3 {
   height: 100%;
   object-fit: cover;
   opacity: 0;
-  background: #fff;
+  background: var(--sheet);
 }
 .av.has-img img {
   opacity: 1;
@@ -908,7 +917,7 @@ h3 {
     align-items: start;
     height: auto;
     padding: 10px 16px 10px 16px;
-    background: #fff;
+    background: var(--sheet);
     border-bottom: 0;
   }
   .row:hover {
@@ -1131,7 +1140,7 @@ h3 {
 }
 .msg-email {
   font-size: 12px;
-  color: #5e5e5e;
+  color: var(--mute);
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -1142,7 +1151,7 @@ h3 {
   height: 20px;
   padding: 0;
   font-size: 12px;
-  color: #5e5e5e;
+  color: var(--mute);
   border-radius: 4px;
 }
 .msg-snip {
@@ -1151,7 +1160,7 @@ h3 {
 }
 .msg-time {
   font-size: 12px;
-  color: #5e5e5e;
+  color: var(--mute);
   white-space: nowrap;
   line-height: 20px;
 }
@@ -1187,13 +1196,13 @@ h3 {
   padding: 0 24px 0 16px;
   border: 1px solid var(--faint);
   border-radius: 20px;
-  background: #fff;
+  background: var(--sheet);
   color: var(--mute);
   font: 500 14px/20px var(--font-display);
   letter-spacing: 0.1px;
 }
 .pill-btn:hover {
-  background: rgba(68, 71, 70, 0.08);
+  background: var(--hover-ov);
 }
 .reply {
   margin: 16px 0 24px 56px;
@@ -1230,7 +1239,7 @@ h3 {
   max-height: none;
   margin: 0;
   padding: 0;
-  background: #fff;
+  background: var(--sheet);
   border-radius: 16px 16px 0 0;
   box-shadow: 0 8px 10px 1px rgba(0, 0, 0, 0.14), 0 3px 14px 2px rgba(0, 0, 0, 0.12), 0 5px 5px -3px rgba(0, 0, 0, 0.2);
   overflow: hidden;
@@ -1266,7 +1275,7 @@ h3 {
   height: 40px;
   padding: 0 8px 0 16px;
   margin: 0;
-  background: #f2f6fc;
+  background: var(--compose-head);
   border: 0;
 }
 .compose-top h2 {
@@ -1274,7 +1283,7 @@ h3 {
   min-width: 0;
   margin: 0;
   font: 500 14px/20px var(--font-display);
-  color: #041e49;
+  color: var(--on-soft);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1296,7 +1305,7 @@ h3 {
   min-height: 40px;
   margin: 0 16px;
   padding: 0;
-  border-bottom: 1px solid #f1f3f4;
+  border-bottom: 1px solid var(--line);
   background: transparent;
 }
 .compose-dock .cfield label {
@@ -1339,7 +1348,7 @@ h3 {
   flex: none;
   padding: 8px 16px 12px;
   border: 0;
-  background: #fff;
+  background: var(--sheet);
 }
 .compose-foot .sp {
   flex: 1;
@@ -1441,7 +1450,7 @@ h3 {
     gap: 10px;
     padding: 12px 24px 16px;
     font: 400 22px/24px 'Google Sans', 'Product Sans', var(--font-display);
-    color: #5f6368;
+    color: var(--mute);
   }
   .sidebar .compose-wrap {
     display: none;
@@ -1484,17 +1493,17 @@ h3 {
   }
   .shell {
     grid-template-rows: auto auto minmax(0, 1fr);
-    background: #fff;
+    background: var(--sheet);
   }
   .topbar {
     height: 48px;
     margin: 8px 16px 4px;
     padding: 0 4px;
     border-radius: 28px;
-    background: #e9eef6;
+    background: var(--search-bg);
   }
   .topbar:focus-within {
-    background: #fff;
+    background: var(--sheet);
     box-shadow: 0 1px 1px rgba(65, 69, 73, 0.3), 0 1px 3px 1px rgba(65, 69, 73, 0.15);
   }
   .topbar .brand,
@@ -1576,7 +1585,7 @@ h3 {
     top: 0;
     left: 0;
     right: 0;
-    background: #fff;
+    background: var(--sheet);
     padding: 0 8px;
   }
   .list-head.checking .range {
@@ -1677,7 +1686,7 @@ h3 {
   .compose-top {
     height: calc(56px + env(safe-area-inset-top, 0px));
     padding: env(safe-area-inset-top, 0px) 4px 0;
-    background: #fff;
+    background: var(--sheet);
   }
   .compose-top h2 {
     font: 400 18px/24px var(--font-display);
@@ -1743,7 +1752,7 @@ h3 {
 }
 .brand-name {
   font: 400 22px/28px 'Google Sans', 'Product Sans', var(--font-display);
-  color: #5f6368;
+  color: var(--mute);
 }
 .settings-nav {
   padding: 8px 16px 8px 0;
@@ -1755,7 +1764,7 @@ h3 {
   height: 36px;
   padding: 0 16px 0 24px;
   border-radius: 0 18px 18px 0;
-  color: #202124;
+  color: var(--ink);
   text-decoration: none;
   font-size: 14px;
 }
@@ -1763,11 +1772,11 @@ h3 {
   color: var(--mute);
 }
 .settings-nav .nav-item:hover {
-  background: rgba(31, 31, 31, 0.08);
+  background: var(--hover-ov);
 }
 .settings-nav .nav-item.on {
   background: var(--pine-soft);
-  color: #001d35;
+  color: var(--on-soft);
   font-weight: 700;
 }
 .settings-head {
@@ -1869,13 +1878,13 @@ a.btn {
 
 /* Google's sign-in button (white, grey outline, coloured G) */
 .google-btn {
-  background: #fff;
+  background: var(--sheet);
   color: #1f1f1f;
   box-shadow: inset 0 0 0 1px #747775;
   font-family: 'Google Sans', var(--font-display);
 }
 .google-btn:hover:not(:disabled) {
-  background: #f8fafd;
+  background: var(--sheet-2);
 }
 .google-row {
   display: flex;
@@ -1929,7 +1938,7 @@ a.btn {
   display: none;
 }
 .settings .settings-nav .nav-item:hover {
-  background: rgba(31, 31, 31, 0.06);
+  background: var(--hover-ov);
   color: var(--ink);
 }
 .settings .settings-nav .nav-item.on {
@@ -2060,7 +2069,7 @@ a.btn {
   color: var(--amber);
 }
 .settings-main .pill {
-  background: #e8eaed;
+  background: var(--chip);
   color: var(--mute);
   border-radius: 4px;
   font-weight: 500;
@@ -2116,7 +2125,7 @@ a.btn {
   }
 }
 .sig-default {
-  background: #e8eaed !important;
+  background: var(--chip) !important;
   color: var(--mute) !important;
   border-radius: 4px !important;
 }
@@ -2164,7 +2173,7 @@ a.btn {
   white-space: nowrap;
 }
 .settings-tabs .tab:hover {
-  background: rgba(31, 31, 31, 0.06);
+  background: var(--hover-ov);
   color: var(--ink);
 }
 .settings-tabs .tab.on {
@@ -2227,14 +2236,14 @@ a.btn {
   box-shadow: inset 0 0 0 1px var(--faint);
   font: 500 14px/20px var(--font-display);
   color: var(--mute);
-  background: #fff;
+  background: var(--sheet);
 }
 .rsvp-btn:hover:not(:disabled) {
-  background: rgba(68, 71, 70, 0.08);
+  background: var(--hover-ov);
 }
 .rsvp-btn.on {
   background: var(--pine-soft);
-  color: #041e49;
+  color: var(--on-soft);
   box-shadow: none;
 }
 .rsvp-cal {
@@ -2258,7 +2267,7 @@ a.btn {
   width: 320px;
   display: flex;
   flex-direction: column;
-  background: #fff;
+  background: var(--sheet);
   border-radius: 16px;
   box-shadow: var(--shadow-pop);
   overflow: hidden;
@@ -2352,7 +2361,7 @@ a.btn {
 }
 .top-right .ib.on {
   background: var(--pine-soft);
-  color: #041e49;
+  color: var(--on-soft);
 }
 @media (max-width: 760px) {
   .side-panel {
@@ -2388,4 +2397,194 @@ a.btn {
 }
 .g-feat.on {
   color: #188038;
+}
+
+/* Phone rows as compact as the Gmail app: account tag on the sender line, no extra line */
+.who-tag {
+  display: none;
+}
+@container list (max-width: 759px) {
+  .row {
+    padding: 8px 16px;
+    row-gap: 0;
+  }
+  .row-tags {
+    display: none !important;
+  }
+  .who-tag {
+    display: inline-block;
+    flex: none;
+    max-width: 110px;
+    margin: 0 0 0 6px;
+    font-size: 11px;
+    line-height: 16px;
+    vertical-align: 2px;
+    font-weight: 400;
+  }
+  .who {
+    align-items: center;
+    font-size: 16px;
+    line-height: 22px;
+  }
+  .row-line,
+  .row-text > .snip {
+    line-height: 20px;
+  }
+  .row-star {
+    width: 28px;
+    height: 28px;
+    margin: 0 -4px -2px 0;
+  }
+}
+
+/* Pull to refresh */
+.ptr {
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+.ptr-spin {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--sheet);
+  color: var(--pine);
+  box-shadow: var(--shadow-pop);
+}
+.ptr-spin.on svg {
+  animation: ptr-turn 0.8s linear infinite;
+}
+@keyframes ptr-turn {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---------- Dark theme (Gmail's dark colours) ---------- */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --canvas: #111214;
+  --sheet: #1e1f20;
+  --sheet-2: #28292a;
+  --ink: #e3e3e3;
+  --mute: #c4c7c5;
+  --faint: #8e918f;
+  --line: #3c4043;
+  --line-strong: #5f6368;
+  --pine: #a8c7fa;
+  --pine-ink: #d3e3fd;
+  --pine-soft: #004a77;
+  --pine-tint: #1b2733;
+  --postal: #004a77;
+  --postal-ink: #c2e7ff;
+  --rose: #f2b8b5;
+  --rose-soft: #3c1f1e;
+  --amber: #f6c26b;
+  --amber-soft: #3a2e14;
+  --sel: #004a77;
+  --hover: #2b2c2e;
+  --read-bg: #1e1f20;
+  --row-line: rgba(255, 255, 255, 0.07);
+  --star: #fdd663;
+  --search-bg: #2b2c2f;
+  --compose-head: #2b2c2f;
+  --checked: #0b3b66;
+  --on-soft: #d3e3fd;
+  --chip: #3c4043;
+  --hover-ov: rgba(227, 227, 227, 0.08);
+  --on-pine: #062e6f;
+  --shadow-pop: 0 2px 6px 2px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+:root[data-theme='dark'] body {
+  background: var(--canvas);
+  color: var(--ink);
+}
+:root[data-theme='dark'] .btn-primary,
+:root[data-theme='dark'] .send-group .btn-primary,
+:root[data-theme='dark'] .av-check,
+:root[data-theme='dark'] .me-btn,
+:root[data-theme='dark'] .me-big {
+  color: var(--on-pine);
+}
+:root[data-theme='dark'] .row.unread {
+  background: var(--sheet);
+}
+:root[data-theme='dark'] .row:hover {
+  box-shadow: inset 1px 0 0 var(--line), inset -1px 0 0 var(--line), 0 1px 3px rgba(0, 0, 0, 0.6);
+}
+:root[data-theme='dark'] .row-check,
+:root[data-theme='dark'] .row-star:not(.on) {
+  color: rgba(227, 227, 227, 0.55);
+}
+:root[data-theme='dark'] .acct-tag {
+  background: color-mix(in srgb, var(--c, #5f6368) 30%, #1e1f20);
+  color: color-mix(in srgb, var(--c, #5f6368) 35%, #ffffff);
+}
+:root[data-theme='dark'] .av.has-img img {
+  background: #fff;
+}
+:root[data-theme='dark'] .toast {
+  background: #e3e3e3;
+  color: #1f1f1f;
+}
+:root[data-theme='dark'] .toast button {
+  color: #0b57d0;
+}
+/* Emails and documents keep their own white page, like Gmail */
+:root[data-theme='dark'] .html-frame,
+:root[data-theme='dark'] .pv-page,
+:root[data-theme='dark'] .pv-sheet,
+:root[data-theme='dark'] .pv-doc {
+  background: #fff;
+  border-radius: 8px;
+}
+:root[data-theme='dark'] .input,
+:root[data-theme='dark'] .select,
+:root[data-theme='dark'] textarea,
+:root[data-theme='dark'] select,
+:root[data-theme='dark'] input {
+  background-color: var(--sheet-2);
+  color: var(--ink);
+  border-color: var(--line);
+}
+:root[data-theme='dark'] .topbar .search-box input,
+:root[data-theme='dark'] .compose-dock .cfield input,
+:root[data-theme='dark'] .compose-dock .compose-body,
+:root[data-theme='dark'] .sp-add input {
+  background: transparent;
+}
+:root[data-theme='dark'] .compose-dock .compose-body {
+  color: var(--ink);
+}
+:root[data-theme='dark'] .switch {
+  box-shadow: inset 0 0 0 2px var(--mute);
+}
+:root[data-theme='dark'] .switch[aria-checked='true'] {
+  box-shadow: none;
+}
+:root[data-theme='dark'] .switch::after {
+  border-color: var(--on-pine);
+}
+:root[data-theme='dark'] .unsub-bar,
+:root[data-theme='dark'] .images-bar,
+:root[data-theme='dark'] .event-card,
+:root[data-theme='dark'] .card {
+  background: var(--sheet-2);
+  border-color: var(--line);
+}
+:root[data-theme='dark'] .status-pill.ok,
+:root[data-theme='dark'] .g-feat.on,
+:root[data-theme='dark'] .rsvp-cal {
+  color: #81c995;
+}
+:root[data-theme='dark'] .brand-name,
+:root[data-theme='dark'] .topbar .brand-name {
+  color: var(--mute);
+}
+:root[data-theme='dark'] .html-frame {
+  box-sizing: content-box;
+  width: calc(100% - 28px);
+  padding: 12px 14px;
 }

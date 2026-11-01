@@ -8,6 +8,7 @@ import { useUI } from '../store';
 import { useSettings } from '../api/hooks';
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
+import { setTheme } from '../theme';
 import { TasksPanel } from './GoogleApps';
 import { ThreadList } from './ThreadList';
 import { Reader } from './Reader';
@@ -36,6 +37,9 @@ export function Shell({ me, forcedView, onLogout }: { me?: Me; forcedView?: stri
   };
   const act = useThreadActions();
   const view = forcedView ?? nav.view;
+  useEffect(() => {
+    if (settings?.appearance.theme) setTheme(settings.appearance.theme);
+  }, [settings?.appearance.theme]);
 
   // Global keyboard shortcuts (Spark-like, Gmail-compatible).
   useEffect(() => {
