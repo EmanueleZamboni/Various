@@ -10,6 +10,7 @@ import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
 import { setTheme } from '../theme';
 import { TasksPanel } from './GoogleApps';
+import { GroupDialog } from './Groups';
 import { ThreadList } from './ThreadList';
 import { Reader } from './Reader';
 import { Compose } from './Compose';
@@ -211,6 +212,7 @@ export function Shell({ me, forcedView, onLogout }: { me?: Me; forcedView?: stri
       {ui.compose && !ui.compose.inline && <Compose key={ui.composeSeq} />}
       {ui.pendingBlock && <BlockConfirm />}
       {ui.moveTarget && <MovePicker view={view} />}
+      {ui.groupTarget && <GroupDialog />}
       {ui.shortcutsOpen && <ShortcutsSheet />}
       <AttachmentViewer />
     </div>

@@ -1,3 +1,4 @@
+import { GroupsSettings } from './Groups';
 import { GoogleSignInButton, useGoogleReady, useGoogleResult } from './GoogleSignIn';
 import { BackupSettings } from './Backup';
 import { type ReactNode, useEffect, useState, type FormEvent } from 'react';
@@ -439,6 +440,7 @@ function InboxSettings() {
           <Row title="Show which address" hint="A small tag with the account on each row"><Switch on={inbox.showAccountTag} label="Show account tag" onChange={(v) => set({ showAccountTag: v })} /></Row>
         </div>
       </div>
+      <GroupsSettings />
     </>
   );
 }

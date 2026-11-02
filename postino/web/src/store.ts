@@ -67,6 +67,9 @@ type UIState = {
   pendingBlock: { email: string; name: string; threadId: string } | null;
   setPendingBlock: (v: UIState['pendingBlock']) => void;
   moveTarget: { threadIds: string[]; accountId: string } | null;
+  /** Sender being added to a group (Group emails from…) */
+  groupTarget: { email: string; name: string } | null;
+  setGroupTarget: (v: { email: string; name: string } | null) => void;
   setMoveTarget: (v: UIState['moveTarget']) => void;
   lastAction: { action: ThreadAction; threadIds: string[] } | null;
 };
@@ -127,6 +130,8 @@ export const useUI = create<UIState>((set, get) => ({
   setViewerIndex: (index) => set((s) => (s.viewer ? { viewer: { ...s.viewer, index } } : {})),
   setPendingBlock: (v) => set({ pendingBlock: v }),
   moveTarget: null,
+  groupTarget: null,
+  setGroupTarget: (v) => set({ groupTarget: v }),
   setMoveTarget: (v) => set({ moveTarget: v }),
   lastAction: null,
 }));

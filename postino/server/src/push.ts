@@ -1,3 +1,4 @@
+import { groupedSenderNotifies } from './groups.js';
 import webpush from 'web-push';
 import { db, getSetting, setSetting } from './db.js';
 import { bus } from './events.js';
@@ -50,8 +51,10 @@ export function startPushBridge(): void {
     // Per-account level: "default" follows the global categories, "all" everything, "people" only people, "none" silent.
     const level = acct?.notify || 'default';
     if (level === 'none') return;
-    if (level === 'people' && ev.category !== 'person') return;
-    if (level === 'default' && !s.categories.includes(ev.category as never)) return;
+    // Senders you grouped still notify (that is the point of grouping instead of filtering).
+    const grouped = Boolean(ev.from?.email) && groupedSenderNotifies(ev.from.email);
+    if (!grouped && level === 'people' && ev.category !== 'person') return;
+    if (!grouped && level === 'default' && !s.categories.includes(ev.category as never)) return;
     const who = ev.from.name || ev.from.email;
     void sendPush({
       title: who,

@@ -2588,3 +2588,60 @@ a.btn {
   width: calc(100% - 28px);
   padding: 12px 14px;
 }
+
+/* ---------- Sender groups ---------- */
+.group-dialog .help {
+  margin: 4px 0 12px;
+}
+.group-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 16px;
+}
+.group-choice {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.group-choice:hover {
+  background: var(--hover-ov);
+}
+.group-choice small {
+  color: var(--mute);
+  margin-left: auto;
+}
+.group-choice .input {
+  flex: 1 1 100%;
+  margin-left: 26px;
+}
+.sheet-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.group-card {
+  gap: 4px !important;
+  margin-bottom: 8px;
+}
+.group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.group-notify {
+  gap: 6px;
+  font-size: 13px;
+  color: var(--mute);
+}
+.group-sender {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 14px;
+  color: var(--mute);
+}

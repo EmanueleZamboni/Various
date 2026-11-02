@@ -1,7 +1,7 @@
 import { useAddToTasks } from './GoogleApps';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { InfiniteData } from '@tanstack/react-query';
-import { useAccountMap, useAccounts, useBlocked, useDrafts, useMyEmails, useOutbox, useSearch, useSettings, useThreadList, useThreadActions } from '../api/hooks';
+import { useAccountMap, useAccounts, useBlocked, useDrafts, useGroups, useMyEmails, useOutbox, useSearch, useSettings, useThreadList, useThreadActions } from '../api/hooks';
 import { api } from '../api/client';
 import type { ThreadSummary, ThreadsResponse } from '../api/types';
 import { Icon, type IconName } from '../icons';
@@ -47,7 +47,10 @@ export function ThreadList({ view }: { view: string }) {
   // Groups the user switched off fall back into the People list.
   const peopleCats = ['person', ...(groupNotif ? [] : ['notification']), ...(groupNews ? [] : ['newsletter'])].join(',');
 
-  const people = useThreadList({ ...base, category: smart ? peopleCats : undefined }, !isSearch && view !== 'blocked');
+  // Sender groups collapse into one line each at the top of the inbox.
+  const { data: groupsData } = useGroups();
+  const groupNames = view === 'inbox' && !isSearch ? (groupsData?.groups ?? []).map((g) => g.name) : [];
+  const people = useThreadList({ ...base, category: smart ? peopleCats : undefined, group: groupNames.length ? 'none' : undefined }, !isSearch && view !== 'blocked');
   const notifs = useThreadList({ ...base, category: 'notification' }, smart && groupNotif);
   const news = useThreadList({ ...base, category: 'newsletter' }, smart && groupNews);
   const outbox = useOutbox();
@@ -205,6 +208,7 @@ export function ThreadList({ view }: { view: string }) {
       onAction={(action) => void act({ threadIds: [t.id], action, view })}
       onMove={() => ui.setMoveTarget({ threadIds: [t.id], accountId: t.accountId })}
       onAddTask={() => void addToTasks(t.id)}
+      onGroup={t.lastFrom?.email && !myEmails.has(t.lastFrom.email.toLowerCase()) ? () => ui.setGroupTarget({ email: t.lastFrom.email, name: t.lastFrom.name || '' }) : undefined}
       onBlock={t.lastFrom?.email && !myEmails.has(t.lastFrom.email.toLowerCase()) ? () => ui.setPendingBlock({ email: t.lastFrom.email, name: t.lastFrom.name || t.lastFrom.email, threadId: t.id }) : undefined}
       onPrefetch={() => void qc.prefetchQuery({ queryKey: ['thread', t.id], queryFn: () => api.threads.get(t.id), staleTime: 10_000 })}
     />
@@ -223,6 +227,8 @@ export function ThreadList({ view }: { view: string }) {
     setChecked(new Set());
   };
 
+  const groupBlock = groupNames.map((g) => <GroupBundle key={g} name={g} base={base} render={(t) => renderRow(t, true)} />);
+
   let body: ReactNode;
   if (view === 'blocked') body = <BlockedList />;
   else if (main.isLoading) body = <Skeletons />;
@@ -235,7 +241,7 @@ export function ThreadList({ view }: { view: string }) {
         <button className="btn btn-ghost" onClick={() => void main.refetch()}>Try again</button>
       </div>
     );
-  else if (!rows.length && !notifRows.length && !newsRows.length) body = scheduled.length || drafts.length ? scheduledBlock : <Empty view={view} q={nav.q} />;
+  else if (!rows.length && !notifRows.length && !newsRows.length) body = <>{groupBlock}{scheduled.length || drafts.length ? scheduledBlock : <Empty view={view} q={nav.q} />}</>;
   else if (smart) {
     body = (
       <>
@@ -245,6 +251,7 @@ export function ThreadList({ view }: { view: string }) {
             {pinnedRows.map((t) => renderRow(t))}
           </>
         )}
+        {groupBlock}
         {/* Bundles sit above People so they stay reachable in a long inbox; closed, they are one line each. */}
         <Bundle k="notif" label="Notifications" icon="bell" rows={notifRows} query={notifs} render={(t) => renderRow(t, true)} />
         <Bundle k="news" label="Newsletters" icon="news" rows={newsRows} query={news} render={(t) => renderRow(t, true)} />
@@ -260,6 +267,7 @@ export function ThreadList({ view }: { view: string }) {
     const list = rows.map((t) => renderRow(t));
     body = (
       <>
+        {groupBlock}
         {scheduledBlock}
         {list}
       </>
@@ -414,6 +422,12 @@ function Bundle({ k, label, icon, rows, query, render }: { k: string; label: str
       )}
     </section>
   );
+}
+
+function GroupBundle({ name, base, render }: { name: string; base: { view: string; account?: string }; render: (t: ThreadSummary) => ReactNode }) {
+  const q = useThreadList({ ...base, group: name });
+  const rows = flat(q.data);
+  return <Bundle k={`group:${name}`} label={name} icon="labelFilled" rows={rows} query={q} render={render} />;
 }
 
 function Skeletons() {

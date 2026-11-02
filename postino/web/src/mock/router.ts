@@ -337,6 +337,15 @@ on('GET', '/api/messages/:id/invite', () => json({ rsvp: null, calendarConnected
 on('POST', '/api/messages/:id/rsvp', () => json({ ok: true, response: 'accepted', calendar: true, organizerTold: true }));
 on('GET', '/api/google/contacts/status', () => json({ at: new Date().toISOString(), count: 312 }));
 on('POST', '/api/google/contacts/sync', () => json({ count: 312 }));
+const mockGroups: Record<string, string> = { 'no-reply@accounts.google.com': 'Google alerts' };
+on('GET', '/api/groups', () => {
+  const m = new Map<string, string[]>();
+  for (const [e, g] of Object.entries(mockGroups)) m.set(g, [...(m.get(g) ?? []), e]);
+  return json({ groups: [...m].map(([name, senders]) => ({ name, senders, notify: true })) });
+});
+on('POST', '/api/groups', ({ body }) => { mockGroups[String(body.email).toLowerCase()] = String(body.group); return json({ ok: true }); });
+on('DELETE', '/api/groups/sender/:email', ({ params }) => { delete mockGroups[decodeURIComponent(params.email)]; return json({ ok: true }); });
+on('PATCH', '/api/groups', () => json({ ok: true }));
 on('GET', '/api/backup/status', () => json({ driveConnected: true, lastDrive: new Date(Date.now() - 5 * 3600_000).toISOString(), lastDriveError: null, pendingMailboxes: [] }));
 on('POST', '/api/backup/drive-now', () => json({ ok: true }));
 on('POST', '/api/backup/restore', () => json({ mailboxes: [] }));
@@ -397,7 +406,19 @@ on('GET', '/api/folders', () => json(folders));
 // ----- threads
 on('GET', '/api/threads', ({ query }) => {
   const view = query.get('view') ?? 'inbox';
-  const list = threadsInView(view, query.get('account'), query.get('category'), query.get('unread') === '1');
+  let list = threadsInView(view, query.get('account'), query.get('category'), query.get('unread') === '1');
+  const group = query.get('group');
+  if (group && view === 'inbox') {
+    const groupOf = (t: (typeof threads)[number]) => {
+      const gs = new Set(t.messages.map((m) => (m.mine ? null : mockGroups[m.from.email.toLowerCase()] ?? null)));
+      return gs.size === 1 && !gs.has(null) ? [...gs][0] : null;
+    };
+    list = list.filter((s) => {
+      const t = threads.find((x) => x.id === s.id);
+      const g = t ? groupOf(t) : null;
+      return group === 'none' ? g === null : g === group;
+    });
+  }
   return json(paginate(list, query));
 });
 on('GET', '/api/threads/:id', ({ params }) => {

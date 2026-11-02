@@ -29,7 +29,7 @@ export function useMyEmails() {
   return useMemo(() => new Set((data ?? []).map((a) => a.email.toLowerCase())), [data]);
 }
 
-export type ListParams = { view: string; account?: string; category?: string; unread?: boolean };
+export type ListParams = { view: string; account?: string; category?: string; unread?: boolean; group?: string };
 
 export function useThreadList(params: ListParams, enabled = true) {
   return useInfiniteQuery({
@@ -40,6 +40,7 @@ export function useThreadList(params: ListParams, enabled = true) {
         account: params.account,
         category: params.category,
         unread: params.unread ? '1' : undefined,
+        group: params.group,
         before: pageParam ?? undefined,
         limit: 50,
       }),
@@ -216,3 +217,5 @@ export function useDrafts(enabled = true) {
 export function useOutbox() {
   return useQuery<{ items: OutboxItem[] }>({ queryKey: ['outbox'], queryFn: api.outbox.list, staleTime: 5_000, refetchInterval: 15_000 });
 }
+
+export const useGroups = () => useQuery({ queryKey: ['groups'], queryFn: api.groups.list, staleTime: 60_000 });

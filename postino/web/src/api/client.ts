@@ -107,6 +107,7 @@ export const api = {
       account?: string;
       category?: string;
       unread?: '1';
+      group?: string;
       before?: string;
       limit?: number;
     }) => get<ThreadsResponse>(`/api/threads${qs(params)}`),
@@ -123,6 +124,12 @@ export const api = {
     unsubscribe: (id: string) => post<{ ok: true; method: 'mailto' | 'http' | 'none'; url?: string }>(`/api/messages/${id}/unsubscribe`),
     invite: (id: string) => get<{ rsvp: RsvpResponse | null; calendarConnected: boolean; conflicts: { summary: string; start: string | null }[] | null }>(`/api/messages/${id}/invite`),
     rsvp: (id: string, response: RsvpResponse) => post<{ ok: true; response: RsvpResponse; calendar: boolean; organizerTold: boolean }>(`/api/messages/${id}/rsvp`, { response }),
+  },
+  groups: {
+    list: () => get<{ groups: { name: string; senders: string[]; notify: boolean }[] }>('/api/groups'),
+    add: (email: string, group: string) => post<{ ok: true }>('/api/groups', { email, group }),
+    removeSender: (email: string) => del<{ ok: true }>(`/api/groups/sender/${encodeURIComponent(email)}`),
+    update: (name: string, body: { newName?: string; notify?: boolean }) => patch<{ ok: true }>('/api/groups', { name, ...body }),
   },
   tasks: {
     list: () => get<{ tasks: GoogleTask[] }>('/api/tasks'),

@@ -1,3 +1,4 @@
+import { groupedThreadsSql, hasGroups } from '../groups.js';
 import type { FastifyInstance } from 'fastify';
 import { db } from '../db.js';
 import { bus } from '../events.js';
@@ -6,7 +7,7 @@ import { log } from '../log.js';
 import { threadView, messageView } from '../views.js';
 import { recomputeThread, refreshFolderCounts, type ThreadRow, type MessageRow, type FolderRow, type FolderRole } from '../mail/store.js';
 
-type ListQuery = { view?: string; account?: string; category?: string; unread?: string; before?: string; limit?: string };
+type ListQuery = { view?: string; account?: string; category?: string; unread?: string; before?: string; limit?: string; group?: string };
 
 const concreteRoles: FolderRole[] = ['inbox', 'sent', 'drafts', 'archive', 'junk', 'trash', 'blocked'];
 
@@ -53,7 +54,18 @@ export function listThreads(q: ListQuery) {
   const accountId = q.account ? Number(q.account) : null;
   const category = q.category && q.category.split(',').every((c) => ['person', 'notification', 'newsletter'].includes(c)) ? q.category : null;
   const limit = Math.min(Math.max(Number(q.limit) || 50, 1), 200);
-  const { where, params } = viewWhere(view, accountId, category, q.unread === '1');
+  const base = viewWhere(view, accountId, category, q.unread === '1');
+  let { where } = base;
+  const params = [...base.params];
+  // Sender groups: the inbox hides grouped conversations (group=none) or shows one group (group=<name>).
+  if (view === 'inbox' && typeof q.group === 'string' && q.group !== '' && hasGroups()) {
+    const g = groupedThreadsSql(q.group === 'none' ? undefined : q.group);
+    const clause = `t.id ${q.group === 'none' ? 'NOT IN' : 'IN'} (${g.sql})`;
+    where = where ? `${where} AND ${clause}` : `WHERE ${clause}`;
+    params.push(...g.params);
+  } else if (typeof q.group === 'string' && q.group !== '' && q.group !== 'none') {
+    where = where ? `${where} AND 0` : 'WHERE 0';
+  }
   const cursorWhere: string[] = [];
   const cursorParams: unknown[] = [];
   if (q.before) {
