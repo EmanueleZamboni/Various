@@ -1,0 +1,29 @@
+# Always-on connector for claude.ai (web, desktop and phone apps).
+#   1. cp .env.example .env   and fill it in
+#   2. docker compose run --rm whatsapp login            (scan the QR, or add --phone 39...)
+#   3. docker compose up -d
+#      (if you linked while it was already running: docker compose restart whatsapp)
+#   4. docker compose logs tunnel   -> your https://....trycloudflare.com address (quick tunnel)
+services:
+  whatsapp:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - whatsapp-data:/data   # session keys, messages and media
+    # Only reachable through the tunnel; uncomment to also expose it on this machine:
+    # ports: ["127.0.0.1:8787:8787"]
+
+  # HTTPS in front of the connector: a free Cloudflare "quick tunnel", no account needed.
+  # Its address changes when the tunnel restarts (then update the connector URL in claude.ai).
+  # For a fixed address, create a named tunnel (free Cloudflare account: Zero Trust >
+  # Networks > Tunnels, service http://whatsapp:8787) and replace `command` with:
+  #   command: tunnel --no-autoupdate run --token <your tunnel token>
+  tunnel:
+    image: cloudflare/cloudflared:2026.10.0
+    restart: unless-stopped
+    depends_on: [whatsapp]
+    command: tunnel --no-autoupdate --url http://whatsapp:8787
+
+volumes:
+  whatsapp-data:
