@@ -39,3 +39,13 @@ describe('backup', () => {
     expect(() => restoreBackup({ format: 'postino-backup', version: 99 })).toThrow(/newer/);
   });
 });
+
+describe('groups in a backup file', () => {
+  it('adds sender groups without touching mailboxes or other groups', () => {
+    db.exec("DELETE FROM sender_groups; INSERT INTO sender_groups(email, group_name) VALUES ('keep@x.test', 'Mine')");
+    restoreBackup({ format: 'postino-backup', version: 1, settings: {}, accounts: [], templates: [], signatures: [], blocked: [], senderCategories: [], drafts: [], groups: [{ email: 'No-Reply@Vinted.it', group: 'Vinted' }, { email: 'keep@x.test', group: 'Other' }, { email: 'bad', group: 'X' }] });
+    const rows = db.prepare('SELECT email, group_name FROM sender_groups ORDER BY email').all();
+    expect(rows).toEqual([{ email: 'keep@x.test', group_name: 'Mine' }, { email: 'no-reply@vinted.it', group_name: 'Vinted' }]);
+    db.exec('DELETE FROM sender_groups');
+  });
+});

@@ -4,6 +4,7 @@ import { uiSettings, updateUiSettings } from './settings.js';
 import { isOwn, normalizePattern } from './routes/blocked.js';
 import { driveConnected, saveBackupToDrive } from './google.js';
 import { log } from './log.js';
+import './groups.js';
 
 /**
  * Backup of everything that lives only in Postino (mail itself stays on the mail servers):
@@ -40,6 +41,7 @@ export type Backup = {
   signatures: SignatureOut[];
   blocked: { pattern: string; note: string }[];
   senderCategories: { email: string; category: string }[];
+  groups?: { email: string; group: string; notify: boolean }[];
   drafts: DraftOut[];
 };
 
@@ -78,6 +80,7 @@ export function buildBackup(): Backup {
       .map((s) => ({ account: emailOf.get(s.account_id as number)!, name: String(s.name), html: String(s.html), text: String(s.text), isDefault: Boolean(s.is_default), sortOrder: Number(s.sort_order) })),
     blocked: db.prepare('SELECT pattern, note FROM blocked_senders ORDER BY id').all() as { pattern: string; note: string }[],
     senderCategories: db.prepare('SELECT email, category FROM sender_overrides').all() as { email: string; category: string }[],
+    groups: (db.prepare('SELECT email, group_name, notify FROM sender_groups ORDER BY group_name, email').all() as { email: string; group_name: string; notify: number }[]).map((g) => ({ email: g.email, group: g.group_name, notify: Boolean(g.notify) })),
     drafts: (db.prepare('SELECT * FROM drafts ORDER BY id').all() as Record<string, unknown>[])
       .filter((d) => emailOf.has(d.account_id as number))
       .map((d) => ({ account: emailOf.get(d.account_id as number)!, fromAddress: String(d.from_address ?? ''), to: String(d.to_text), cc: String(d.cc_text), bcc: String(d.bcc_text), subject: String(d.subject), text: String(d.text), updatedAt: String(d.updated_at) })),
@@ -124,6 +127,7 @@ function clean(raw: unknown): Backup {
     signatures: arr(b.signatures).map(obj).map((s) => ({ account: email(s.account), name: str(s.name, 80) || 'Signature', html: str(s.html, 2_000_000), text: str(s.text, 20000), isDefault: s.isDefault === true, sortOrder: Number.isInteger(s.sortOrder) ? (s.sortOrder as number) : 0 })).filter((s) => isEmail(s.account)),
     blocked: arr(b.blocked).map(obj).map((x) => ({ pattern: str(x.pattern, 320), note: str(x.note, 200) })),
     senderCategories: arr(b.senderCategories).map(obj).map((x) => ({ email: email(x.email), category: str(x.category, 20) })).filter((x) => isEmail(x.email) && ['person', 'notification', 'newsletter'].includes(x.category)),
+    groups: arr(b.groups).map(obj).map((x) => ({ email: email(x.email), group: str(x.group, 60).trim(), notify: x.notify !== false })).filter((x) => isEmail(x.email) && x.group),
     drafts: arr(b.drafts).map(obj).map((d) => ({ account: email(d.account), fromAddress: email(d.fromAddress), to: str(d.to, 5000), cc: str(d.cc, 5000), bcc: str(d.bcc, 5000), subject: str(d.subject, 998), text: str(d.text, 500_000), updatedAt: str(d.updatedAt, 40) })).filter((d) => isEmail(d.account)),
   };
 }
@@ -173,7 +177,12 @@ export function restoreBackup(raw: unknown): { mailboxes: AccountOut[] } {
     }
     const insC = db.prepare('INSERT INTO sender_overrides(email, category) VALUES (?, ?) ON CONFLICT(email) DO UPDATE SET category = excluded.category');
     for (const c of b.senderCategories) insC.run(c.email, c.category);
-    setSetting('restore.pending', { accounts: b.accounts, signatures: b.signatures, drafts: b.drafts } satisfies Pending);
+    // Sender groups: added (an address already in a group keeps its group); your own addresses never.
+    const own = new Set((db.prepare('SELECT lower(email) AS e FROM accounts').all() as { e: string }[]).map((r) => r.e));
+    const insG = db.prepare('INSERT OR IGNORE INTO sender_groups(email, group_name, notify) VALUES (?, ?, ?)');
+    for (const g of b.groups ?? []) if (!own.has(g.email)) insG.run(g.email, g.group, g.notify ? 1 : 0);
+    // A file with only groups (no mailboxes) must not wipe a restore that is half done.
+    if (b.accounts.length || !getSetting('restore.pending', null)) setSetting('restore.pending', { accounts: b.accounts, signatures: b.signatures, drafts: b.drafts } satisfies Pending);
   })();
   // Mailboxes that are already here get their things straight away.
   for (const a of b.accounts) {
