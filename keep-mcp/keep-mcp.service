@@ -1,0 +1,40 @@
+[Unit]
+Description=Google Keep MCP server
+# It listens on the Docker bridge, so Docker must be up first.
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+User=keepmcp
+Group=keepmcp
+WorkingDirectory=/opt/keep-mcp
+EnvironmentFile=/etc/keep-mcp.env
+ExecStart=/opt/keep-mcp/venv/bin/python server.py
+Restart=on-failure
+RestartSec=5
+UMask=0077
+StateDirectory=keep-mcp
+StateDirectoryMode=0700
+# Sandbox: it only needs to talk to Google and to Caddy.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target
