@@ -301,7 +301,9 @@ function MessageCard({ message: m, thread, accountColor, myEmails, expanded, sin
 }) {
   const [details, setDetails] = useState(false);
   const { data: rs } = useSettings();
-  const imagesPolicy = rs?.reading.remoteImages ?? 'ask';
+  // Spam and blocked mail never loads images by itself.
+  const suspicious = m.folderRole === 'junk' || m.folderRole === 'blocked';
+  const imagesPolicy = suspicious ? 'ask' : rs?.reading.remoteImages ?? 'always';
   const [showImages, setShowImages] = useState(imagesPolicy === 'always' || (imagesPolicy === 'contacts' && !!m.knownSender));
   const [showQuoted, setShowQuoted] = useState(rs?.reading.showQuoted ?? false);
   useEffect(() => {
@@ -492,11 +494,19 @@ export function AttachmentChip({ a, all }: { a: Attachment; all?: Attachment[] }
 }
 
 /** Print one message: its header plus the sanitized body, in a plain page. */
+/** Remote images go through the server's privacy proxy (/api/img), never straight to the sender. */
+function proxifyImages(html: string): string {
+  const unescape = (v: string) => v.replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+  return html
+    .replace(/\ssrc=""/g, '')
+    .replace(/data-remote-src=(["'])(.*?)\1/g, (_m, q: string, url: string) => `src=${q}${location.origin === 'null' ? '' : location.origin}/api/img?u=${encodeURIComponent(unescape(url))}${q}`);
+}
+
 export function printMessage(m: Message, showImages = false) {
   const esc = (t: string) => t.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string));
   // Remote images only when the reader shows them too; the page gets the same CSP as the viewer and no scripts.
-  const body = showImages ? (m.body.html || '').replace(/\ssrc=""/g, '').replace(/data-remote-src=/g, 'src=') : m.body.html || '';
-  const csp = `default-src 'none'; img-src data: blob: ${showImages ? 'https: http:' : ''} ${location.origin}; style-src 'unsafe-inline'; script-src 'none'`;
+  const body = showImages ? proxifyImages(m.body.html || '') : m.body.html || '';
+  const csp = `default-src 'none'; img-src data: blob: ${location.origin}; style-src 'unsafe-inline'; script-src 'none'`;
   const who = (a: { name: string; email: string }) => (a.name ? `${esc(a.name)} <${esc(a.email)}>` : esc(a.email));
   const html = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${csp}"><title>${esc(m.subject || '(no subject)')}</title>
     <style>body{font:14px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:#111;margin:32px}h1{font-size:20px;margin:0 0 12px}table.h td{padding:2px 10px 2px 0;color:#555;vertical-align:top}table.h td:first-child{font-weight:600;color:#222}hr{border:0;border-top:1px solid #ddd;margin:16px 0}img{max-width:100%}blockquote{border-left:2px solid #ccc;margin:0;padding-left:1ex;color:#555}</style></head>
@@ -547,8 +557,8 @@ export function HtmlBody({ id, html, showImages }: { id: string; html: string; s
   const [height, setHeight] = useState(80);
   const doc = useMemo(() => {
     let body = html;
-    if (showImages) body = body.replace(/\ssrc=""/g, '').replace(/data-remote-src=/g, 'src=');
-    const csp = `default-src 'none'; img-src data: blob: ${showImages ? 'https: http:' : ''} ${location.origin === 'null' ? '' : location.origin}; style-src 'unsafe-inline'; font-src https://fonts.gstatic.com; script-src 'none'; form-action 'none'`;
+    if (showImages) body = proxifyImages(body);
+    const csp = `default-src 'none'; img-src data: blob: ${location.origin === 'null' ? '' : location.origin}; style-src 'unsafe-inline'; font-src https://fonts.gstatic.com; script-src 'none'; form-action 'none'`;
     return `<!doctype html><html data-id="${id}"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${csp}"><base target="_blank"><style>${FRAME_CSS}</style></head><body>${body}</body></html>`;
   }, [html, id, showImages]);
   useEffect(() => {

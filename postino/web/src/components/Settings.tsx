@@ -462,7 +462,7 @@ function ReadingSettings() {
           <Row title="Ask before deleting"><Switch on={r.confirmDelete} label="Confirm delete" onChange={(v) => set({ confirmDelete: v })} /></Row>
         </div>
         <div className="card">
-          <Row title="Images from senders" hint="Remote images can tell a sender you opened the mail"><Select value={r.remoteImages} label="Remote images" width={230} options={[{ id: 'ask', label: 'Ask every time' }, { id: 'contacts', label: 'Load for people I wrote to' }, { id: 'always', label: 'Always load' }]} onChange={(v) => set({ remoteImages: v })} /></Row>
+          <Row title="Images from senders" hint="Images load through your own server, like Gmail, so senders never see your IP or device. Never automatic in Spam."><Select value={r.remoteImages} label="Remote images" width={230} options={[{ id: 'always', label: 'Always load' }, { id: 'contacts', label: 'Load for people I wrote to' }, { id: 'ask', label: 'Ask every time' }]} onChange={(v) => set({ remoteImages: v })} /></Row>
           <Row title="Show quoted text" hint="Expand the earlier messages quoted inside a reply"><Switch on={r.showQuoted} label="Show quoted text" onChange={(v) => set({ showQuoted: v })} /></Row>
         </div>
       </div>

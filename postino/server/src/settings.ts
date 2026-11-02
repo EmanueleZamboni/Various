@@ -40,7 +40,7 @@ export type UiSettings = {
 export const defaults: UiSettings = {
   notifications: { enabled: true, categories: ['person'], sound: true },
   inbox: { smart: false, groupNotifications: true, groupNewsletters: true, previewLines: 1, showAvatars: true, showAccountTag: true, pinnedOnTop: true },
-  reading: { markRead: 'open', markReadDelay: 2, remoteImages: 'ask', afterAction: 'next', confirmDelete: false, showQuoted: false },
+  reading: { markRead: 'open', markReadDelay: 2, remoteImages: 'always', afterAction: 'next', confirmDelete: false, showQuoted: false },
   compose: { defaultAccount: 'lastUsed', replyFromRecipient: true, defaultReply: 'auto', includeQuote: true, undoSendSec: 10, sendAndArchive: false, bccMyself: false, confirmNoSubject: true },
   swipe: { left: 'archive', right: 'pin' },
   appearance: { density: 'comfortable', textSize: 'normal', readingPane: 'full', theme: 'system' },
@@ -71,7 +71,7 @@ function clampSettings(s: UiSettings): UiSettings {
   s.inbox.previewLines = num(s.inbox.previewLines, 0, 2, 1) as 0 | 1 | 2;
   s.reading.markRead = pick(s.reading.markRead, ['open', 'delay', 'manual'] as const, 'open');
   s.reading.markReadDelay = num(s.reading.markReadDelay, 0, 60, 2);
-  s.reading.remoteImages = pick(s.reading.remoteImages, ['ask', 'always', 'contacts'] as const, 'ask');
+  s.reading.remoteImages = pick(s.reading.remoteImages, ['ask', 'always', 'contacts'] as const, 'always');
   s.reading.afterAction = pick(s.reading.afterAction, ['next', 'previous', 'list'] as const, 'next');
   s.compose.undoSendSec = ([0, 5, 10, 20, 30] as const).find((n) => n === s.compose.undoSendSec) ?? 10;
   s.compose.defaultReply = pick(s.compose.defaultReply, ['auto', 'reply', 'replyAll'] as const, 'auto');
@@ -92,6 +92,14 @@ export function uiSettings(): UiSettings {
       setSetting('ui2', stored);
     }
     setSetting('migr.replyAuto', true);
+  }
+  // Images now load through the server's privacy proxy, so "always" became the default once.
+  if (!getSetting<boolean>('migr.imagesAlways', false)) {
+    if (stored.reading && stored.reading.remoteImages === 'ask') {
+      stored.reading.remoteImages = 'always';
+      setSetting('ui2', stored);
+    }
+    setSetting('migr.imagesAlways', true);
   }
   const s = clampSettings(merge(defaults, stored));
   // Older single-key settings still win if the new ones were never saved.

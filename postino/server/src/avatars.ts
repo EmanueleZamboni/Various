@@ -169,6 +169,28 @@ async function fetchImage(url: string, accept = 'image/*'): Promise<{ bytes: Buf
   }
 }
 
+/** An image from any public web address, through the same SSRF-safe fetch (used by the email image proxy). */
+export async function fetchRemoteImage(url: string, maxBytes: number, timeoutMs = 10_000): Promise<{ bytes: Buffer; contentType: string } | null> {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await safeFetch(url, { signal: ctrl.signal, headers: { accept: 'image/avif,image/webp,image/png,image/jpeg,image/gif,image/*;q=0.8', 'user-agent': 'Mozilla/5.0 (compatible; Postino image proxy)' } });
+    if (!res.ok) return null;
+    const type = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+    // SVG can carry scripts: never proxied.
+    if (!type.startsWith('image/') || type.includes('svg')) return null;
+    const len = Number(res.headers.get('content-length') || 0);
+    if (len > maxBytes) return null;
+    const bytes = Buffer.from(await res.arrayBuffer());
+    if (!bytes.length || bytes.length > maxBytes) return null;
+    return { bytes, contentType: type };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(t);
+  }
+}
+
 async function fromGravatar(email: string): Promise<{ bytes: Buffer; contentType: string } | null> {
   const hash = crypto.createHash('sha256').update(email.trim().toLowerCase()).digest('hex');
   return fetchImage(`https://gravatar.com/avatar/${hash}?s=160&d=404&r=g`);
