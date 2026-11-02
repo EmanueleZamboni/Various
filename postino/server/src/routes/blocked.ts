@@ -89,6 +89,20 @@ function countsFor(rows: BlockedRow[]): Map<string, number> {
   return out;
 }
 
+// Domains shared by millions of senders: blocking one would silence real people and services.
+const SHARED_DOMAINS = /^@(gmail|googlemail|outlook|hotmail|live|msn|yahoo|ymail|icloud|me|mac|aol|proton|protonmail|libero|virgilio|tiscali|alice|tim|fastwebnet|email|gmx|web|mail|yandex|qq|163|126|google|facebook|facebookmail|instagram|meta|apple|amazon|microsoft|paypal|ebay|linkedin|twitter|x|tiktok|youtube)\.[a-z.]+$/;
+
+/** Add a block rule (address or domain) and move what is already in the inbox to Blocked. */
+export function blockSender(raw: string, note = ''): { pattern: string } | { error: string } {
+  const pattern = normalizePattern(raw);
+  if (!pattern) return { error: 'not an email address or a domain' };
+  if (isOwn(pattern)) return { error: 'one of your own addresses' };
+  if (SHARED_DOMAINS.test(pattern)) return { error: 'a shared domain; block the exact address instead' };
+  db.prepare('INSERT INTO blocked_senders(pattern, note) VALUES (?, ?) ON CONFLICT(pattern) DO UPDATE SET note = excluded.note').run(pattern, note.slice(0, 200));
+  void sweep(pattern, 'inbox', 'blocked');
+  return { pattern };
+}
+
 export function registerBlockedRoutes(app: FastifyInstance): void {
   app.get('/api/blocked', async () => {
     const rows = db.prepare('SELECT * FROM blocked_senders ORDER BY created_at DESC').all() as BlockedRow[];

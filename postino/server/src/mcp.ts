@@ -14,6 +14,7 @@ import { uiSettings } from './settings.js';
 import { htmlToText } from './mail/sanitize.js';
 import { listGroups, groupSuggestions, addSenders, removeSender, updateGroup } from './groups.js';
 import { bus } from './events.js';
+import { blockSender } from './routes/blocked.js';
 import { log } from './log.js';
 
 /**
@@ -371,6 +372,31 @@ const TOOLS: Tool[] = [
     },
   },
   {
+    name: 'block_senders',
+    title: 'Block senders',
+    description: 'Block exact addresses (or a whole domain written as @example.com) for good: their mail already in the inbox and all future mail go to the Blocked folder. Use for phishing and scams. Never block a real service by its shared domain (gmail.com, facebookmail.com…): block the exact address. Undo in Postino → Blocked.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        senders: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 100 },
+        note: { type: 'string', description: 'Why, e.g. "phishing (fake bank)".' },
+      },
+      required: ['senders'],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+    run: (a) => {
+      const blocked: string[] = [];
+      const skipped: { sender: string; reason: string }[] = [];
+      for (const s of strList(a.senders).slice(0, 100)) {
+        const r = blockSender(s, str(a.note, 200));
+        if ('pattern' in r) blocked.push(r.pattern);
+        else skipped.push({ sender: s, reason: r.error });
+      }
+      return { blocked, skipped };
+    },
+  },
+  {
     name: 'list_groups',
     title: 'List sender groups',
     description: 'Sender groups: exact addresses whose mail is bundled into one line at the top of the inbox (notifications still arrive).',
@@ -561,7 +587,7 @@ export function registerMcpRoutes(app: FastifyInstance): void {
         'Connect Claude to Postino',
         `<h1>Connect ${esc(check.client.name)} to Postino?</h1>
 <p>Claude will be able to:</p>
-<ul><li>read and search all your mailboxes</li><li>write drafts and send email (Claude asks you first)</li><li>archive, star and mark mail as read</li><li>create and edit sender groups</li></ul>
+<ul><li>read and search all your mailboxes</li><li>write drafts and send email (Claude asks you first)</li><li>archive, star and mark mail as read</li><li>create and edit sender groups, block scam senders</li></ul>
 <small>Disconnect any time in Postino → Settings → Claude. (v${CONNECTOR_VERSION})</small>
 <form method="post" action="/oauth/authorize">${hidden}<div class="row">
 <button class="no" name="decision" value="deny">Cancel</button><button class="ok" name="decision" value="allow">Allow</button></div></form>`,

@@ -46,7 +46,7 @@ const BRANDS: Record<string, string> = {
 // Automatic senders: no-reply robots, notification and newsletter addresses, shop updates, affiliate programmes.
 const ROBOT = /^(no-?reply|noreply.*|do-?not-?reply|notifications?|notice|news(letter)?|updates?|alerts?|mailer|marketing|shipment-tracking|order-update|conferma-.*|shipping|associates|affiliate|partner|message|notes|product_team|ita)$/i;
 // Never suggested: money, bills, tickets and account codes stay in the inbox.
-const KEEP = /(fattur|invoice|billing|pagament|payment|paypal|bank|banca|ticket|bigliett|biglietteria|register|verify|code|otp)/i;
+const KEEP = /(fattur|invoice|billing|pagament|payment|paypal|bank|banca|ticket|bigliett|biglietteria|register|verify|code|otp|revolut|n26|nexi|satispay|pagopa|sumup|binance|klarna|trenitalia|italotreno|booking|airbnb|ryanair|fedex|dhl|ups\.com|brt|gls|poste|sanitari|millewin|psicogest|iren|plenitude|enel|iliad|corrente|io\.italia|agenziaentrate|inps)/i;
 
 /** Who sends you regular automatic mail and is not grouped yet: offered as ready-made groups. */
 export function groupSuggestions(): { name: string; senders: { email: string; count: number }[] }[] {
