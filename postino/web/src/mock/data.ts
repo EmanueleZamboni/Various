@@ -59,7 +59,7 @@ export const settings: Settings = {
   notifications: { enabled: false, categories: ['person'], sound: true },
   inbox: { smart: false, groupNotifications: true, groupNewsletters: true, previewLines: 1, showAvatars: true, showAccountTag: true, pinnedOnTop: true },
   reading: { markRead: 'open', markReadDelay: 2, remoteImages: 'ask', afterAction: 'next', confirmDelete: false, showQuoted: false },
-  compose: { defaultAccount: 'lastUsed', replyFromRecipient: true, defaultReply: 'reply', includeQuote: true, undoSendSec: 10, sendAndArchive: false, bccMyself: false, confirmNoSubject: true },
+  compose: { defaultAccount: 'lastUsed', replyFromRecipient: true, defaultReply: 'auto', includeQuote: true, undoSendSec: 10, sendAndArchive: false, bccMyself: false, confirmNoSubject: true },
   swipe: { left: 'archive', right: 'pin' },
   appearance: { density: 'comfortable', textSize: 'normal', readingPane: 'full', theme: 'system' },
   smartInbox: true,

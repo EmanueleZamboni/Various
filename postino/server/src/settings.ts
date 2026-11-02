@@ -23,7 +23,7 @@ export type UiSettings = {
   compose: {
     defaultAccount: string; // "lastUsed" | account id
     replyFromRecipient: boolean; // reply from the address the mail was sent to
-    defaultReply: 'reply' | 'replyAll';
+    defaultReply: 'auto' | 'reply' | 'replyAll';
     includeQuote: boolean;
     undoSendSec: 0 | 5 | 10 | 20 | 30;
     sendAndArchive: boolean;
@@ -41,7 +41,7 @@ export const defaults: UiSettings = {
   notifications: { enabled: true, categories: ['person'], sound: true },
   inbox: { smart: false, groupNotifications: true, groupNewsletters: true, previewLines: 1, showAvatars: true, showAccountTag: true, pinnedOnTop: true },
   reading: { markRead: 'open', markReadDelay: 2, remoteImages: 'ask', afterAction: 'next', confirmDelete: false, showQuoted: false },
-  compose: { defaultAccount: 'lastUsed', replyFromRecipient: true, defaultReply: 'reply', includeQuote: true, undoSendSec: 10, sendAndArchive: false, bccMyself: false, confirmNoSubject: true },
+  compose: { defaultAccount: 'lastUsed', replyFromRecipient: true, defaultReply: 'auto', includeQuote: true, undoSendSec: 10, sendAndArchive: false, bccMyself: false, confirmNoSubject: true },
   swipe: { left: 'archive', right: 'pin' },
   appearance: { density: 'comfortable', textSize: 'normal', readingPane: 'full', theme: 'system' },
   smartInbox: true,
@@ -74,7 +74,7 @@ function clampSettings(s: UiSettings): UiSettings {
   s.reading.remoteImages = pick(s.reading.remoteImages, ['ask', 'always', 'contacts'] as const, 'ask');
   s.reading.afterAction = pick(s.reading.afterAction, ['next', 'previous', 'list'] as const, 'next');
   s.compose.undoSendSec = ([0, 5, 10, 20, 30] as const).find((n) => n === s.compose.undoSendSec) ?? 10;
-  s.compose.defaultReply = pick(s.compose.defaultReply, ['reply', 'replyAll'] as const, 'reply');
+  s.compose.defaultReply = pick(s.compose.defaultReply, ['auto', 'reply', 'replyAll'] as const, 'auto');
   s.notifications.categories = s.notifications.categories.filter((c) => ['person', 'notification', 'newsletter'].includes(c));
   s.appearance.density = pick(s.appearance.density, ['comfortable', 'compact'] as const, 'comfortable');
   s.appearance.textSize = pick(s.appearance.textSize, ['normal', 'large'] as const, 'normal');
@@ -85,6 +85,14 @@ function clampSettings(s: UiSettings): UiSettings {
 
 export function uiSettings(): UiSettings {
   const stored = getSetting<Partial<UiSettings>>('ui2', {});
+  // "Reply" used to be the only default; it becomes "Automatic" (reply all when others are on the email) once.
+  if (!getSetting<boolean>('migr.replyAuto', false)) {
+    if (stored.compose && stored.compose.defaultReply === 'reply') {
+      stored.compose.defaultReply = 'auto';
+      setSetting('ui2', stored);
+    }
+    setSetting('migr.replyAuto', true);
+  }
   const s = clampSettings(merge(defaults, stored));
   // Older single-key settings still win if the new ones were never saved.
   const legacyN = getSetting<{ enabled: boolean; categories: string[] } | null>('notifications', null);

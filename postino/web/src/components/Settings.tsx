@@ -484,7 +484,7 @@ function ComposeSettings() {
         <div className="card">
           <Row title="New emails are sent from" hint="Which address a new email starts with"><Select value={c.defaultAccount} label="Default account" width={260} options={[{ id: 'lastUsed', label: 'The last one I used' }, ...(accounts ?? []).map((a) => ({ id: a.id, label: a.email }))]} onChange={(v) => set({ defaultAccount: v })} /></Row>
           <Row title="Reply from the address they wrote to" hint="If a mail came to info@…, the reply goes out from info@…, including aliases you listed on the account"><Switch on={c.replyFromRecipient} label="Reply from recipient address" onChange={(v) => set({ replyFromRecipient: v })} /></Row>
-          <Row title="Default reply" hint="What the Reply button does"><Select value={c.defaultReply} label="Default reply" width={160} options={[{ id: 'reply', label: 'Reply' }, { id: 'replyAll', label: 'Reply all' }]} onChange={(v) => set({ defaultReply: v })} /></Row>
+          <Row title="Default reply" hint="Automatic replies to everyone when other people are on the email (To or Cc), otherwise just to the sender"><Select value={c.defaultReply} label="Default reply" width={200} options={[{ id: 'auto', label: 'Automatic' }, { id: 'reply', label: 'Always Reply' }, { id: 'replyAll', label: 'Always Reply all' }]} onChange={(v) => set({ defaultReply: v })} /></Row>
           <Row title="Quote the original" hint="Include the message you are answering under your reply"><Switch on={c.includeQuote} label="Include quoted text" onChange={(v) => set({ includeQuote: v })} /></Row>
         </div>
         <div className="card">

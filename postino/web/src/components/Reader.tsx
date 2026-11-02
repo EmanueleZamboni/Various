@@ -77,8 +77,9 @@ export function Reader({ view }: { view: string }) {
   // Keyboard r / a / f from the shell.
   useEffect(() => {
     const on = (e: Event) => {
-      const mode = (e as CustomEvent<ReplyMode>).detail;
+      const asked = (e as CustomEvent<ReplyMode>).detail;
       if (lastIncoming) {
+        const mode = asked === 'reply' ? defaultReplyFor(lastIncoming, myEmails, settings?.compose.defaultReply) : asked;
         setReplyFor(lastIncoming.id);
         setReplyMode(mode);
       }
@@ -260,9 +261,18 @@ export function Reader({ view }: { view: string }) {
               />
             ) : (
               <div className="reply-pills">
-                <button className="pill-btn" onClick={() => startReply('reply')}><Icon name="reply" size={20} />Reply</button>
-                {lastIncoming.to.length + lastIncoming.cc.length > 1 && (
-                  <button className="pill-btn" onClick={() => startReply('replyAll')}><Icon name="replyAll" size={20} />Reply all</button>
+                {defaultReplyFor(lastIncoming, myEmails, settings?.compose.defaultReply) === 'replyAll' ? (
+                  <>
+                    <button className="pill-btn" onClick={() => startReply('replyAll')}><Icon name="replyAll" size={20} />Reply all</button>
+                    <button className="pill-btn" onClick={() => startReply('reply')}><Icon name="reply" size={20} />Reply</button>
+                  </>
+                ) : (
+                  <>
+                    <button className="pill-btn" onClick={() => startReply('reply')}><Icon name="reply" size={20} />Reply</button>
+                    {lastIncoming.to.length + lastIncoming.cc.length > 1 && (
+                      <button className="pill-btn" onClick={() => startReply('replyAll')}><Icon name="replyAll" size={20} />Reply all</button>
+                    )}
+                  </>
                 )}
                 <button className="pill-btn" onClick={() => startReply('forward')}><Icon name="forward" size={20} />Forward</button>
               </div>
@@ -354,7 +364,14 @@ function MessageCard({ message: m, thread, accountColor, myEmails, expanded, sin
           ) : (
             <>
               <button className={`ib star-btn wide-only${m.flagged ? ' on' : ''}`} aria-label={m.flagged ? 'Starred' : 'Not starred'} title={m.flagged ? 'Starred' : 'Not starred'} onClick={() => void act({ threadIds: [m.threadId], action: m.flagged ? 'unpin' : 'pin', view: 'inbox' })}><Icon name={m.flagged ? 'starFilled' : 'star'} size={20} /></button>
-              <button className="ib" aria-label="Reply" title="Reply (r)" onClick={() => onReply('reply')}><Icon name="reply" size={20} /></button>
+              {(() => {
+                const mode = defaultReplyFor(m, myEmails, rs?.compose.defaultReply);
+                return (
+                  <button className="ib" aria-label={mode === 'replyAll' ? 'Reply all' : 'Reply'} title={mode === 'replyAll' ? 'Reply all (r)' : 'Reply (r)'} onClick={() => onReply(mode)}>
+                    <Icon name={mode === 'replyAll' ? 'replyAll' : 'reply'} size={20} />
+                  </button>
+                );
+              })()}
               <div style={{ position: 'relative' }}>
                 <button className="ib" aria-label="More actions" aria-expanded={menu} onClick={() => setMenu((v) => !v)}><Icon name="more" size={20} /></button>
                 {menu && (
@@ -608,6 +625,17 @@ function EventCard({ ev, attachments, messageId, mine }: { ev: NonNullable<Messa
       </div>
     </div>
   );
+}
+
+/** Reply or Reply all for this email: "auto" answers everyone when others besides you and the sender are on it. */
+export function defaultReplyFor(m: Message, myEmails: Set<string>, pref: 'auto' | 'reply' | 'replyAll' | undefined): ReplyMode {
+  if (pref === 'reply' || pref === 'replyAll') return pref;
+  const sender = m.from.email.toLowerCase();
+  const others = [...m.to, ...m.cc].filter((a) => {
+    const e = a.email.toLowerCase();
+    return !myEmails.has(e) && e !== sender;
+  });
+  return others.length > 0 ? 'replyAll' : 'reply';
 }
 
 /** Gmail's " (2 days ago)" after the full date. */
