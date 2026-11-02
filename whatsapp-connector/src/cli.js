@@ -103,7 +103,6 @@ async function main() {
   }
 
   // serve
-  await mkdir(join(dataDir, 'outbox'), { recursive: true });
   const store = new Store(join(dataDir, 'store.db'));
   let wa = null;
   if (owner) {
@@ -133,10 +132,10 @@ async function main() {
     if (!token || token.length < 24) {
       throw new Error('Set MCP_TOKEN to a long random secret (24+ characters), e.g. `openssl rand -hex 24`.');
     }
-    await startHttp({ makeServer: () => createServer({ store, wa, dataDir, remote: true }), token,
+    await startHttp({ makeServer: () => createServer({ store, wa, dataDir }), token,
       port: Number(opts.port), host: opts.host, log });
   } else {
-    const server = createServer({ store, wa, dataDir, remote: false });
+    const server = createServer({ store, wa, dataDir });
     await server.connect(new StdioServerTransport());
     process.stdin.on('close', shutdown);
   }

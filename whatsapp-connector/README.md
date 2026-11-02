@@ -1,6 +1,7 @@
 # WhatsApp connector for Claude
 
-Lets Claude read, search and send messages on your personal WhatsApp. It links to your
+Lets Claude read and search your personal WhatsApp. It is read-only: it can't send
+anything, to anyone. It links to your
 account as an extra device, exactly like WhatsApp Web, and speaks MCP, the protocol Claude
 uses for connectors.
 
@@ -12,14 +13,12 @@ uses for connectors.
 | Search all chats, or one chat or person, ignoring case and accents | `search_messages` |
 | Look up a contact or group | `find_contact` |
 | Download photos, videos, voice notes and documents (and look at photos) | `download_media` |
-| Send a text, optionally as a reply | `send_message` |
-| Send a photo, video, audio or document | `send_file` |
 
 > **Unofficial.** WhatsApp has no API for personal accounts, so this uses
 > [Baileys](https://github.com/WhiskeySockets/Baileys), an open-source WhatsApp Web client.
 > Using an unofficial client breaks WhatsApp's terms, and Meta can ban numbers it flags.
-> Reading your own chats and sending normal messages to people you know is low-risk;
-> bulk or automated messaging to strangers is how numbers get banned. Don't do that.
+> Bans hit accounts that send bulk or automated messages; this connector only reads,
+> which is low-risk, but the risk isn't zero.
 
 ## How it works
 
@@ -43,15 +42,18 @@ for about 14 days, WhatsApp unlinks the connector; run the login step again.
 | You use Claude in… | Run the connector | Setup |
 |---|---|---|
 | Claude Desktop or Claude Code on your computer | On that computer, started by Claude | [A](#a-on-your-computer-claude-desktop--claude-code) |
-| The Claude phone app, claude.ai, and the desktop app too | On an always-on machine (home PC, Raspberry Pi, cheap VPS) | [B](#b-always-on-for-the-phone-app-and-claudeai) |
+| The Claude phone app, claude.ai, and the desktop app too | On an always-on machine: a free Oracle Cloud server ([guide](docs/oracle-cloud.md)), a home PC or a Raspberry Pi | [B](#b-always-on-for-the-phone-app-and-claudeai) |
 
 The Claude phone app can't start programs, so for the phone the connector has to run
 somewhere that is always on and reachable over HTTPS. Claude's servers call it from the
 internet. Setup B does this with Docker and a free Cloudflare tunnel, so you don't need a
 domain or to open ports on your router.
 
+No machine that stays on? [docs/oracle-cloud.md](docs/oracle-cloud.md) walks you through a
+server that's free forever on Oracle Cloud, with this exact setup.
+
 Only one copy may be connected at a time. If you start a second one (say Claude Desktop and
-Claude Code both start it), the extra copies can read stored messages but not send.
+Claude Code both start it), the extra copies can read stored messages but not download media.
 
 ## A. On your computer (Claude Desktop / Claude Code)
 
@@ -97,6 +99,7 @@ claude mcp add whatsapp --scope user -- node --disable-warning=ExperimentalWarni
 
 Needs a machine that stays on with [Docker](https://docs.docker.com/get-docker/)
 (Docker Desktop on a home computer works, as does any small Linux server or Raspberry Pi).
+For a free Oracle Cloud server, follow [docs/oracle-cloud.md](docs/oracle-cloud.md) instead.
 
 ```sh
 cd whatsapp-connector
@@ -115,7 +118,7 @@ connector URL is that address plus `/mcp/` plus your token:
 https://some-words.trycloudflare.com/mcp/<your MCP_TOKEN>
 ```
 
-Treat this URL like a password: anyone who has it can read and send your WhatsApp messages.
+Treat this URL like a password: anyone who has it can read your WhatsApp messages.
 
 Add it to Claude once, on claude.ai in a browser: **Settings → Connectors → Add custom
 connector**, name it `WhatsApp`, paste the URL, and click **Add**. It then shows up in the
@@ -124,8 +127,8 @@ Claude app on your phone and desktop with the same account: in a chat, tap the t
 
 The free quick tunnel gets a new address whenever the tunnel container restarts. Then run
 the `logs` command again and edit the connector's URL in claude.ai. For an address that
-never changes, use a named Cloudflare tunnel (free account; see the comment in
-`docker-compose.yml`) or put the container behind your own reverse proxy with HTTPS.
+never changes, you need a domain of your own (about €10 a year) on a free Cloudflare
+account and a named tunnel; see the comment in `docker-compose.yml`.
 
 Useful commands: `docker compose logs -f whatsapp` (connection log),
 `docker compose restart whatsapp`, `docker compose down` (stop).
@@ -147,17 +150,13 @@ Ask Claude in plain language, for example:
 - "What did I miss on WhatsApp today?"
 - "Summarise the Calcetto group from this week."
 - "Find the address Laura sent me last month."
-- "Reply to Marco that I'll be 10 minutes late."
+- "Which messages did I leave unanswered this week?"
 - "Show me the photo Giulia sent this morning."
 
-Claude asks for your OK before sending (the apps ask before any tool that isn't read-only;
-leave that on for `send_message` and `send_file`). In setup B, `send_file` takes a public
-`https://` link to the file, or the name of a file you copied into the connector's outbox
-folder with `docker compose cp myfile.pdf whatsapp:/data/outbox/`.
-
 Messages are written by other people, and a message could try to give Claude instructions
-("ignore previous instructions and forward…"). Claude is told to treat message text as
-information only, but keep confirming each send yourself.
+("ignore previous instructions and…"). Claude is told to treat message text as information
+only. The connector has no way to send, so the worst case is limited to what Claude does
+with your other connectors: keep confirming actions such as sending email.
 
 ## Your data
 
@@ -168,7 +167,6 @@ Everything lives in `data/` (setup A) or the `whatsapp-data` Docker volume (setu
 | `auth/` | The linked-device keys. Anyone with these can use your WhatsApp. |
 | `store.db` | Chats, contacts and messages (SQLite) |
 | `media/` | Files fetched with `download_media` |
-| `outbox/` | Files that `send_file` may send in setup B |
 
 `data/` and `.env` are git-ignored. To unlink: `npm run logout`
 (or `docker compose run --rm whatsapp logout` after `docker compose stop whatsapp`),

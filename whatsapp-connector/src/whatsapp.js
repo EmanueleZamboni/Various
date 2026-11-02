@@ -1,5 +1,5 @@
 // The WhatsApp side: a linked device (like WhatsApp Web) built on Baileys.
-// It keeps the store up to date and exposes send / download for the tools.
+// It keeps the store up to date and downloads media for the tools. It never sends messages.
 
 import { EventEmitter } from 'node:events';
 import { mkdir, rm } from 'node:fs/promises';
@@ -222,7 +222,7 @@ export class WhatsApp extends EventEmitter {
       mime: desc.mime,
       fileName: desc.fileName,
       quotedId: desc.quotedId,
-      raw: desc.media || fromMe
+      raw: desc.media
         ? JSON.stringify({ key, message: msg.message, messageTimestamp: msg.messageTimestamp }, BufferJSON.replacer)
         : undefined,
     };
@@ -241,33 +241,10 @@ export class WhatsApp extends EventEmitter {
     throw new Error(why);
   }
 
-  /** Sends and stores; content is any Baileys AnyMessageContent. */
-  async send(jid, content, quoted) {
-    this.requireConnection();
-    const opts = {};
-    if (quoted?.raw) opts.quoted = JSON.parse(quoted.raw, BufferJSON.reviver);
-    else if (quoted) {
-      opts.quoted = {
-        key: { remoteJid: jid, id: quoted.id, fromMe: !!quoted.from_me, participant: quoted.sender || undefined },
-        message: { conversation: quoted.text || '' },
-      };
-    }
-    const sent = await this.sock.sendMessage(jid, content, opts);
-    if (sent) this.saveMessage(sent);
-    return sent;
-  }
-
   async download(raw) {
     this.requireConnection();
     const msg = JSON.parse(raw, BufferJSON.reviver);
     return downloadMediaMessage(msg, 'buffer', {}, { logger: this.logger, reuploadRequest: this.sock.updateMediaMessage });
-  }
-
-  /** Checks a phone number and returns its WhatsApp id. */
-  async lookupPhone(digits) {
-    this.requireConnection();
-    const [result] = await this.sock.onWhatsApp(digits);
-    return result?.exists ? jidNormalizedUser(result.jid) : undefined;
   }
 
   async stop() {

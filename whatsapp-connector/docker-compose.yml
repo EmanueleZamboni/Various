@@ -16,8 +16,9 @@ services:
 
   # HTTPS in front of the connector: a free Cloudflare "quick tunnel", no account needed.
   # Its address changes when the tunnel restarts (then update the connector URL in claude.ai).
-  # For a fixed address, create a named tunnel (free Cloudflare account: Zero Trust >
-  # Networks > Tunnels, service http://whatsapp:8787) and replace `command` with:
+  # For a fixed address you need your own domain on a (free) Cloudflare account: create a
+  # named tunnel (Zero Trust > Networks > Tunnels), give it a public hostname on your domain
+  # pointing to http://whatsapp:8787, and replace `command` with:
   #   command: tunnel --no-autoupdate run --token <your tunnel token>
   tunnel:
     image: cloudflare/cloudflared:2026.10.0
