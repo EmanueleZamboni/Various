@@ -7,6 +7,11 @@ address that claude.ai and the Claude phone app need. Total cost: €0. Time: ab
 Why not Cloudflare alone? Cloudflare Workers can't keep a WhatsApp session open around the
 clock or keep a message database on disk. Here Cloudflare only provides the tunnel.
 
+**Already have an Oracle server running something else?** Use it: skip to
+[step 3](#3-connect-to-the-server). The connector needs about 200 MB of RAM, publishes no
+ports, and keeps its own Docker project, volume and network, so it doesn't touch what's
+already there. If Docker is already installed, the setup script keeps it as it is.
+
 ## 1. Create the Oracle account
 
 1. Go to <https://www.oracle.com/cloud/free/> and click **Start for free**.

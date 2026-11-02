@@ -1,3 +1,4 @@
+name: whatsapp-connector
 # Always-on connector for claude.ai (web, desktop and phone apps).
 #   1. cp .env.example .env   and fill it in
 #   2. docker compose run --rm whatsapp login            (scan the QR, or add --phone 39...)
