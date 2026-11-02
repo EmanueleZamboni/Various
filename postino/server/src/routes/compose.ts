@@ -113,7 +113,73 @@ export function replyPrefill(m: MessageRow, mode: 'reply' | 'replyAll' | 'forwar
   };
 }
 
-type SendFields = { accountId?: string; to?: string; cc?: string; bcc?: string; subject?: string; text?: string; html?: string; inReplyTo?: string; forwardOf?: string; draftId?: string; uploadIds?: string | string[]; signatureId?: string; quote?: string; fromAddress?: string; sendAt?: string; now?: string };
+export type SendFields = { accountId?: string; to?: string; cc?: string; bcc?: string; subject?: string; text?: string; html?: string; inReplyTo?: string; forwardOf?: string; draftId?: string; uploadIds?: string | string[]; signatureId?: string; quote?: string; fromAddress?: string; sendAt?: string; now?: string };
+
+const badRequest = (code: string, message: string) => Object.assign(new Error(message), { statusCode: 400, code });
+
+/** Checks the fields and builds the job, exactly as the web app's Send does (signature, Bcc myself, quoting). */
+export function buildSendJob(b: SendFields): SendJob {
+  const settings = uiSettings();
+  const account = db.prepare('SELECT * FROM accounts WHERE id = ?').get(Number(b.accountId)) as AccountRow | undefined;
+  if (!account) throw badRequest('no_account', 'Choose which address to send from.');
+  const to = String(b.to || '').trim();
+  if (!parseAddressList(to).length) throw badRequest('no_recipient', 'Add at least one valid recipient.');
+  for (const [field, val] of [['To', to], ['Cc', String(b.cc || '')], ['Bcc', String(b.bcc || '')]] as const) {
+    const raw = val.split(/[,;]/).map((s) => s.trim()).filter(Boolean);
+    if (raw.length !== parseAddressList(val).length) throw badRequest('bad_address', `${field} has an address that does not look right.`);
+  }
+  let bcc = String(b.bcc || '');
+  if (settings.compose.bccMyself && !parseAddressList(bcc).some((a) => a.email === account.email)) bcc = bcc ? `${bcc}, ${account.email}` : account.email;
+  const uploadIds = (Array.isArray(b.uploadIds) ? b.uploadIds : b.uploadIds ? [b.uploadIds] : []).map((x) => String(x).replace(/[^A-Za-z0-9_-]/g, ''));
+  let inReplyTo: SendJob['inReplyTo'] = null;
+  let replyRow: MessageRow | undefined;
+  if (b.inReplyTo) {
+    replyRow = db.prepare('SELECT * FROM messages WHERE id = ?').get(Number(b.inReplyTo)) as MessageRow | undefined;
+    if (replyRow?.message_id) {
+      const refs = (db.prepare('SELECT ref FROM message_refs WHERE message_row = ?').all(replyRow.id) as { ref: string }[]).map((r) => r.ref);
+      inReplyTo = { messageId: replyRow.message_id, references: refs.slice(-20), row: replyRow.id };
+    }
+  }
+  // Signature: an explicit id, "none", or the account's default.
+  let signature: { html: string; text: string } | null = null;
+  if (b.signatureId !== 'none') {
+    const sig = b.signatureId ? signatureById(Number(b.signatureId)) : defaultSignature(account.id);
+    if (sig && sig.account_id === account.id) signature = { html: sig.html, text: sig.text };
+  }
+  // Quoted original (reply/forward), built here so HTML mail is quoted as HTML.
+  let quote: { html: string | null; text: string; sourceRow: number } | null = null;
+  if (b.quote === '1') {
+    const src = replyRow || (b.forwardOf ? (db.prepare('SELECT * FROM messages WHERE id = ?').get(Number(b.forwardOf)) as MessageRow | undefined) : undefined);
+    if (src) {
+      const pre = replyPrefill(src, b.forwardOf ? 'forward' : 'reply');
+      quote = { html: pre.quotedHtml ? `<div>${esc(pre.headerLine).replace(/\n/g, '<br>')}</div>${pre.quotedHtml}` : null, text: pre.quotedText.trim(), sourceRow: src.id };
+    }
+  }
+  // Reply from the alias the mail was sent to, when it belongs to this account.
+  let fromAddress: string | undefined;
+  if (b.fromAddress) {
+    const alias = String(b.fromAddress).toLowerCase();
+    const aliases = safeList(account.aliases);
+    if (alias === account.email.toLowerCase() || aliases.includes(alias)) fromAddress = alias;
+  }
+  return {
+    accountId: account.id,
+    to,
+    cc: String(b.cc || ''),
+    bcc,
+    subject: String(b.subject || ''),
+    text: String(b.text || ''),
+    html: b.html ? String(b.html) : undefined,
+    inReplyTo,
+    forwardOf: b.forwardOf ? Number(b.forwardOf) : null,
+    signature,
+    quote,
+    uploadIds,
+    draftId: b.draftId ? Number(b.draftId) : null,
+    threadId: replyRow?.thread_id ?? (b.forwardOf ? null : null),
+    fromAddress,
+  };
+}
 
 export function registerComposeRoutes(app: FastifyInstance): void {
   app.get<{ Params: { id: string }; Querystring: { mode?: string } }>('/api/messages/:id/reply', async (req, reply) => {
@@ -173,65 +239,7 @@ export function registerComposeRoutes(app: FastifyInstance): void {
       b = { ...fields, uploadIds: [...uploadIds, ...(fields.uploadIds ? fields.uploadIds.split(',') : [])] };
     }
     const settings = uiSettings();
-    const account = db.prepare('SELECT * FROM accounts WHERE id = ?').get(Number(b.accountId)) as AccountRow | undefined;
-    if (!account) return reply.code(400).send({ error: 'no_account', message: 'Choose which address to send from.' });
-    const to = String(b.to || '').trim();
-    if (!parseAddressList(to).length) return reply.code(400).send({ error: 'no_recipient', message: 'Add at least one valid recipient.' });
-    for (const [field, val] of [['To', to], ['Cc', String(b.cc || '')], ['Bcc', String(b.bcc || '')]] as const) {
-      const raw = val.split(/[,;]/).map((s) => s.trim()).filter(Boolean);
-      if (raw.length !== parseAddressList(val).length) return reply.code(400).send({ error: 'bad_address', message: `${field} has an address that does not look right.` });
-    }
-    let bcc = String(b.bcc || '');
-    if (settings.compose.bccMyself && !parseAddressList(bcc).some((a) => a.email === account.email)) bcc = bcc ? `${bcc}, ${account.email}` : account.email;
-    const uploadIds = (Array.isArray(b.uploadIds) ? b.uploadIds : b.uploadIds ? [b.uploadIds] : []).map((x) => String(x).replace(/[^A-Za-z0-9_-]/g, ''));
-    let inReplyTo: SendJob['inReplyTo'] = null;
-    let replyRow: MessageRow | undefined;
-    if (b.inReplyTo) {
-      replyRow = db.prepare('SELECT * FROM messages WHERE id = ?').get(Number(b.inReplyTo)) as MessageRow | undefined;
-      if (replyRow?.message_id) {
-        const refs = (db.prepare('SELECT ref FROM message_refs WHERE message_row = ?').all(replyRow.id) as { ref: string }[]).map((r) => r.ref);
-        inReplyTo = { messageId: replyRow.message_id, references: refs.slice(-20), row: replyRow.id };
-      }
-    }
-    // Signature: an explicit id, "none", or the account's default.
-    let signature: { html: string; text: string } | null = null;
-    if (b.signatureId !== 'none') {
-      const sig = b.signatureId ? signatureById(Number(b.signatureId)) : defaultSignature(account.id);
-      if (sig && sig.account_id === account.id) signature = { html: sig.html, text: sig.text };
-    }
-    // Quoted original (reply/forward), built here so HTML mail is quoted as HTML.
-    let quote: { html: string | null; text: string; sourceRow: number } | null = null;
-    if (b.quote === '1') {
-      const src = replyRow || (b.forwardOf ? (db.prepare('SELECT * FROM messages WHERE id = ?').get(Number(b.forwardOf)) as MessageRow | undefined) : undefined);
-      if (src) {
-        const pre = replyPrefill(src, b.forwardOf ? 'forward' : 'reply');
-        quote = { html: pre.quotedHtml ? `<div>${esc(pre.headerLine).replace(/\n/g, '<br>')}</div>${pre.quotedHtml}` : null, text: pre.quotedText.trim(), sourceRow: src.id };
-      }
-    }
-    // Reply from the alias the mail was sent to, when it belongs to this account.
-    let fromAddress: string | undefined;
-    if (b.fromAddress) {
-      const alias = String(b.fromAddress).toLowerCase();
-      const aliases = safeList(account.aliases);
-      if (alias === account.email.toLowerCase() || aliases.includes(alias)) fromAddress = alias;
-    }
-    const job: SendJob = {
-      accountId: account.id,
-      to,
-      cc: String(b.cc || ''),
-      bcc,
-      subject: String(b.subject || ''),
-      text: String(b.text || ''),
-      html: b.html ? String(b.html) : undefined,
-      inReplyTo,
-      forwardOf: b.forwardOf ? Number(b.forwardOf) : null,
-      signature,
-      quote,
-      uploadIds,
-      draftId: b.draftId ? Number(b.draftId) : null,
-      threadId: replyRow?.thread_id ?? (b.forwardOf ? null : null),
-      fromAddress,
-    };
+    const job = buildSendJob(b);
     // "Send later" or "Undo send": queue it; otherwise send now.
     let sendAt: Date | null = null;
     if (b.sendAt) {

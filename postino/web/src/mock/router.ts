@@ -338,6 +338,8 @@ on('POST', '/api/messages/:id/rsvp', () => json({ ok: true, response: 'accepted'
 on('GET', '/api/google/contacts/status', () => json({ at: new Date().toISOString(), count: 312 }));
 on('POST', '/api/google/contacts/sync', () => json({ count: 312 }));
 const mockGroups: Record<string, string> = { 'no-reply@accounts.google.com': 'Google alerts' };
+on('GET', '/api/mcp/connections', () => json({ connections: [{ name: 'Claude', since: new Date(Date.now() - 86400_000).toISOString(), lastUsed: new Date().toISOString() }] }));
+on('DELETE', '/api/mcp/connections', () => json({ ok: true }));
 on('GET', '/api/groups', () => {
   const m = new Map<string, string[]>();
   for (const [e, g] of Object.entries(mockGroups)) m.set(g, [...(m.get(g) ?? []), e]);

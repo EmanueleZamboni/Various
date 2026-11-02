@@ -74,38 +74,70 @@ export function groupSuggestions(): { name: string; senders: { email: string; co
   return [...groups].map(([name, senders]) => ({ name, senders })).sort((a, b) => b.senders.reduce((n, s) => n + s.count, 0) - a.senders.reduce((n, s) => n + s.count, 0));
 }
 
+/** All groups with their senders. */
+export function listGroups(): { name: string; senders: string[]; notify: boolean }[] {
+  const rows = db.prepare('SELECT email, group_name, notify FROM sender_groups ORDER BY group_name, email').all() as { email: string; group_name: string; notify: number }[];
+  const groups = new Map<string, { name: string; senders: string[]; notify: boolean }>();
+  for (const r of rows) {
+    const g = groups.get(r.group_name) ?? { name: r.group_name, senders: [], notify: true };
+    g.senders.push(r.email);
+    g.notify = g.notify && Boolean(r.notify);
+    groups.set(r.group_name, g);
+  }
+  return [...groups.values()];
+}
+
+/**
+ * Put exact sender addresses in a group. `move` re-files senders already in another group;
+ * otherwise they are left where they are. Your own addresses and non-addresses are skipped.
+ */
+export function addSenders(group: string, senders: string[], move = false): { added: number; skipped: string[] } {
+  const name = String(group || '').trim().slice(0, 60);
+  if (!name) throw Object.assign(new Error('Give the group a name.'), { statusCode: 400 });
+  const own = new Set((db.prepare('SELECT lower(email) AS e FROM accounts').all() as { e: string }[]).map((r) => r.e));
+  const ins = db.prepare(move ? 'INSERT INTO sender_groups(email, group_name) VALUES (?, ?) ON CONFLICT(email) DO UPDATE SET group_name = excluded.group_name' : 'INSERT OR IGNORE INTO sender_groups(email, group_name) VALUES (?, ?)');
+  let added = 0;
+  const skipped: string[] = [];
+  db.transaction(() => {
+    for (const raw of senders.slice(0, 200)) {
+      const email = String(raw).trim().toLowerCase();
+      if (!EMAIL.test(email) || own.has(email)) {
+        skipped.push(String(raw));
+        continue;
+      }
+      const n = ins.run(email, name).changes;
+      if (n) added += n;
+      else skipped.push(email);
+    }
+  })();
+  return { added, skipped };
+}
+
+export function removeSender(email: string): boolean {
+  return db.prepare('DELETE FROM sender_groups WHERE email = ?').run(String(email).trim().toLowerCase()).changes > 0;
+}
+
+export function updateGroup(name: string, change: { newName?: string; notify?: boolean }): number {
+  let n = 0;
+  if (typeof change.notify === 'boolean') n = db.prepare('UPDATE sender_groups SET notify = ? WHERE group_name = ?').run(change.notify ? 1 : 0, name).changes;
+  const newName = String(change.newName || '').trim().slice(0, 60);
+  if (newName) n = db.prepare('UPDATE sender_groups SET group_name = ? WHERE group_name = ?').run(newName, name).changes;
+  return n;
+}
+
 export function registerGroupRoutes(app: FastifyInstance): void {
   app.get('/api/groups/suggestions', async () => ({ suggestions: groupSuggestions() }));
 
   app.post<{ Body: { groups?: { name?: string; senders?: string[] }[] } }>('/api/groups/bulk', async (req) => {
-    const ins = db.prepare('INSERT OR IGNORE INTO sender_groups(email, group_name) VALUES (?, ?)');
-    const own = new Set((db.prepare('SELECT lower(email) AS e FROM accounts').all() as { e: string }[]).map((r) => r.e));
     let n = 0;
-    db.transaction(() => {
-      for (const g of (req.body?.groups ?? []).slice(0, 50)) {
-        const name = String(g.name || '').trim().slice(0, 60);
-        if (!name) continue;
-        for (const raw of (g.senders ?? []).slice(0, 200)) {
-          const email = String(raw).trim().toLowerCase();
-          if (EMAIL.test(email) && !own.has(email)) n += ins.run(email, name).changes;
-        }
-      }
-    })();
+    for (const g of (req.body?.groups ?? []).slice(0, 50)) {
+      if (!String(g.name || '').trim()) continue;
+      n += addSenders(String(g.name), (g.senders ?? []).map(String)).added;
+    }
     return { added: n };
   });
 
-
-  app.get('/api/groups', async () => {
-    const rows = db.prepare('SELECT email, group_name, notify FROM sender_groups ORDER BY group_name, email').all() as { email: string; group_name: string; notify: number }[];
-    const groups = new Map<string, { name: string; senders: string[]; notify: boolean }>();
-    for (const r of rows) {
-      const g = groups.get(r.group_name) ?? { name: r.group_name, senders: [], notify: true };
-      g.senders.push(r.email);
-      g.notify = g.notify && Boolean(r.notify);
-      groups.set(r.group_name, g);
-    }
-    return { groups: [...groups.values()] };
-  });
+  app.get('/api/groups', async () => ({ groups: listGroups() }));
 
   app.post<{ Body: { email?: string; group?: string } }>('/api/groups', async (req, reply) => {
     const email = String(req.body?.email || '').trim().toLowerCase();
@@ -119,16 +151,14 @@ export function registerGroupRoutes(app: FastifyInstance): void {
   });
 
   app.delete<{ Params: { email: string } }>('/api/groups/sender/:email', async (req) => {
-    db.prepare('DELETE FROM sender_groups WHERE email = ?').run(String(req.params.email).toLowerCase());
+    removeSender(req.params.email);
     return { ok: true };
   });
 
   app.patch<{ Body: { name?: string; newName?: string; notify?: boolean } }>('/api/groups', async (req, reply) => {
     const name = String(req.body?.name || '');
-    if (typeof req.body?.notify === 'boolean') db.prepare('UPDATE sender_groups SET notify = ? WHERE group_name = ?').run(req.body.notify ? 1 : 0, name);
-    const newName = String(req.body?.newName || '').trim().slice(0, 60);
-    if (newName) db.prepare('UPDATE sender_groups SET group_name = ? WHERE group_name = ?').run(newName, name);
     if (!name) return reply.code(400).send({ error: 'bad_group', message: 'Which group?' });
+    updateGroup(name, { newName: req.body?.newName, notify: req.body?.notify });
     return { ok: true };
   });
 }

@@ -2709,3 +2709,9 @@ a.btn {
 .suggest-sender small {
   color: var(--mute);
 }
+
+/* Settings → Claude */
+.claude-steps ol { margin: 0; padding: 4px 8px 4px 28px; }
+.claude-steps li { margin: 10px 0; }
+.claude-url { gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+.claude-url code { background: var(--search-bg); border-radius: 8px; padding: 6px 10px; font-size: 13px; overflow-wrap: anywhere; }

@@ -112,7 +112,7 @@ export default function App() {
     <>
       <Routes>
         <Route path="/setup" element={<Setup onDone={() => { rememberSignedIn(true); markWizardOpen(); setAuth('in'); }} />} />
-        <Route path="/login" element={<Login onDone={() => { rememberSignedIn(true); setAuth('in'); }} />} />
+        <Route path="/login" element={<Login onDone={() => { rememberSignedIn(true); if (!resumeConnector()) setAuth('in'); }} />} />
         {auth === 'in' && (
           <>
             <Route path="/" element={<Navigate to="/inbox" replace />} />
@@ -130,4 +130,12 @@ export default function App() {
       <Toasts />
     </>
   );
+}
+
+/** Signing in from Claude's "Connect" page: go back to the Postino approval page afterwards. */
+function resumeConnector(): boolean {
+  const next = new URLSearchParams(window.location.search).get('next') || '';
+  if (!/^\/oauth\/authorize\?[^\\]*$/.test(next)) return false;
+  window.location.assign(next);
+  return true;
 }

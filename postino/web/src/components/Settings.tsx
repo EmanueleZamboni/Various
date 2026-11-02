@@ -40,6 +40,7 @@ const NAV: { to: string; label: string; icon: IconName }[] = [
   { to: '/settings/composing', label: 'Composing', icon: 'send' },
   { to: '/settings/notifications', label: 'Notifications', icon: 'bell' },
   { to: '/settings/google', label: 'Google', icon: 'folder' },
+  { to: '/settings/claude', label: 'Claude', icon: 'sparkle' },
   { to: '/settings/preferences', label: 'Swipes & look', icon: 'filter' },
   { to: '/settings/backup', label: 'Backup', icon: 'download' },
   { to: '/settings/security', label: 'Security', icon: 'shield' },
@@ -81,6 +82,7 @@ export function SettingsPage({ me, onLogout }: { me?: Me; onLogout: () => void }
           <Route path="templates" element={<TemplatesSettings />} />
           <Route path="notifications" element={<NotificationSettings me={me} />} />
           <Route path="google" element={<GoogleSettings />} />
+          <Route path="claude" element={<ClaudeSettings />} />
           <Route path="inbox" element={<InboxSettings />} />
           <Route path="reading" element={<ReadingSettings />} />
           <Route path="composing" element={<ComposeSettings />} />
@@ -1041,6 +1043,64 @@ export function GoogleSettings({ back, embedded }: { back?: string; embedded?: b
             </form>
           </>
         )}
+      </div>
+    </>
+  );
+}
+
+/** Settings → Claude: how to connect the Claude app, and who is connected. */
+function ClaudeSettings() {
+  const qc = useQueryClient();
+  const toast = useUI((s) => s.toast);
+  const { data } = useQuery({ queryKey: ['mcp-connections'], queryFn: api.mcp.connections });
+  const url = `${window.location.origin}/mcp`;
+  const list = data?.connections ?? [];
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(url);
+      toast({ text: 'Link copied', kind: 'success' });
+    } catch {
+      /* the link is on screen anyway */
+    }
+  };
+  const disconnect = async () => {
+    if (!window.confirm('Disconnect Claude from Postino? You can connect it again any time.')) return;
+    await api.mcp.disconnect();
+    qc.invalidateQueries({ queryKey: ['mcp-connections'] });
+    toast({ text: 'Claude disconnected', kind: 'success' });
+  };
+  return (
+    <>
+      <h2>Claude</h2>
+      <div className="settings-section">
+        <p className="help">Let Claude (claude.ai and the Claude apps, with your own subscription) read, search, tidy and group your mail, and write drafts. Claude asks you before sending anything.</p>
+        <div className="card claude-steps">
+          <ol>
+            <li>In Claude open <b>Settings → Connectors → Add custom connector</b>.</li>
+            <li>
+              Name it <b>Postino</b> and paste this link:
+              <div className="row-inline claude-url">
+                <code>{url}</code>
+                <button className="btn btn-ghost btn-sm" onClick={() => void copy()}>Copy</button>
+              </div>
+            </li>
+            <li>Press <b>Connect</b>, then <b>Allow</b> on the Postino page that opens.</li>
+          </ol>
+        </div>
+        <div className="card">
+          {list.length ? (
+            list.map((c, i) => (
+              <Row key={i} title={c.name} hint={`Connected ${new Date(c.since).toLocaleDateString()}${c.lastUsed ? `, last used ${new Date(c.lastUsed).toLocaleString()}` : ''}`} />
+            ))
+          ) : (
+            <Row title="Not connected" hint="Follow the steps above." />
+          )}
+          {list.length > 0 && (
+            <div className="sheet-actions">
+              <button className="btn btn-quiet" onClick={() => void disconnect()}>Disconnect Claude</button>
+            </div>
+          )}
+        </div>
       </div>
     </>
   );

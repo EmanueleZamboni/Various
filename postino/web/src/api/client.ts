@@ -133,6 +133,10 @@ export const api = {
     suggestions: () => get<{ suggestions: { name: string; senders: { email: string; count: number }[] }[] }>('/api/groups/suggestions'),
     bulk: (groups: { name: string; senders: string[] }[]) => post<{ added: number }>('/api/groups/bulk', { groups }),
   },
+  mcp: {
+    connections: () => get<{ connections: { name: string; since: string; lastUsed: string | null }[] }>('/api/mcp/connections'),
+    disconnect: () => del<{ ok: true }>('/api/mcp/connections'),
+  },
   tasks: {
     list: () => get<{ tasks: GoogleTask[] }>('/api/tasks'),
     add: (body: { title?: string; threadId?: string }) => post<{ id: string; title: string }>('/api/tasks', body),

@@ -22,6 +22,7 @@ import { registerGroupRoutes } from './groups.js';
 import { registerImageProxy } from './imageProxy.js';
 import { registerPasskeyRoutes } from './passkeys.js';
 import { registerGoogleRoutes } from './google.js';
+import { registerMcpRoutes } from './mcp.js';
 import { manager } from './mail/manager.js';
 import { startPushBridge, vapidKeys } from './push.js';
 import { startOutbox } from './mail/outbox.js';
@@ -93,7 +94,8 @@ export async function buildApp() {
           "frame-src 'self' data: blob:",
           "frame-ancestors 'none'",
           "base-uri 'self'",
-          "form-action 'self'",
+          // The Claude connector's consent form hands the code back to Claude.
+          req.routeOptions?.url === '/oauth/authorize' ? "form-action 'self' https://claude.ai https://claude.com" : "form-action 'self'",
           "object-src 'none'",
           "worker-src 'self'",
           "manifest-src 'self'",
@@ -128,6 +130,7 @@ export async function buildApp() {
   registerImageProxy(app);
   registerPasskeyRoutes(app);
   registerGoogleRoutes(app);
+  registerMcpRoutes(app);
 
   // Serve the built web app (SPA fallback to index.html).
   if (fs.existsSync(path.join(config.webDist, 'index.html'))) {
