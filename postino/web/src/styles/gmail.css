@@ -2645,3 +2645,10 @@ a.btn {
   font-size: 14px;
   color: var(--mute);
 }
+
+.menu-pop button.danger {
+  color: var(--rose);
+}
+.menu-pop button.danger svg {
+  color: var(--rose);
+}

@@ -243,6 +243,7 @@ export function Reader({ view }: { view: string }) {
               onEditDraft={() => ui.openCompose({ mode: 'new', accountId: m.accountId, imapDraftId: m.id, to: m.to.map((a) => a.email).join(', '), cc: m.cc.map((a) => a.email).join(', '), subject: m.subject, text: m.body.text ?? '' })}
               onBlock={() => ui.setPendingBlock({ email: m.from.email, name: displayName(m.from), threadId: thread.id })}
               onRefetch={() => qc.invalidateQueries({ queryKey: ['thread', thread.id] })}
+              onThreadAct={(a) => { doAct(a); if (a === 'unread') nav.closeThread(); }}
             />
           ))}
           {!isDraft && lastIncoming && (
@@ -284,7 +285,8 @@ export function Reader({ view }: { view: string }) {
   );
 }
 
-function MessageCard({ message: m, thread, accountColor, myEmails, expanded, single, onToggle, onReply, onEditDraft, onBlock, onRefetch }: {
+function MessageCard({ message: m, thread, accountColor, myEmails, expanded, single, onToggle, onReply, onEditDraft, onBlock, onRefetch, onThreadAct }: {
+  onThreadAct: (a: 'archive' | 'trash' | 'junk' | 'unread') => void;
   message: Message;
   thread: ThreadSummary;
   accountColor?: string;
@@ -310,6 +312,9 @@ function MessageCard({ message: m, thread, accountColor, myEmails, expanded, sin
   const toast = useUI((s) => s.toast);
   const act = useThreadActions();
   void thread;
+  const setMoveTarget = useUI((u) => u.setMoveTarget);
+  const setGroupTarget = useUI((u) => u.setGroupTarget);
+  const addToTasks = useAddToTasks();
   const me = m.mine;
   const toLine = [...m.to, ...m.cc].map((a) => (myEmails.has(a.email.toLowerCase()) ? 'me' : firstName(a))).join(', ');
 
@@ -376,13 +381,30 @@ function MessageCard({ message: m, thread, accountColor, myEmails, expanded, sin
                 <button className="ib" aria-label="More actions" aria-expanded={menu} onClick={() => setMenu((v) => !v)}><Icon name="more" size={20} /></button>
                 {menu && (
                   <div className="menu-pop right" role="menu" onMouseLeave={() => setMenu(false)}>
-                    <button className="sug" onClick={() => { setMenu(false); onReply('replyAll'); }}><Icon name="replyAll" size={16} />Reply all</button>
+                    {defaultReplyFor(m, myEmails, rs?.compose.defaultReply) === 'replyAll' ? (
+                      <button className="sug" onClick={() => { setMenu(false); onReply('reply'); }}><Icon name="reply" size={16} />Reply</button>
+                    ) : (
+                      <button className="sug" onClick={() => { setMenu(false); onReply('replyAll'); }}><Icon name="replyAll" size={16} />Reply all</button>
+                    )}
                     <button className="sug" onClick={() => { setMenu(false); onReply('forward'); }}><Icon name="forward" size={16} />Forward</button>
                     <button className="sug" onClick={() => { setMenu(false); printMessage(m, showImages); }}><Icon name="print" size={16} />Print</button>
+                    <div className="ctx-sep" />
+                    <button className="sug" onClick={() => { setMenu(false); onThreadAct('unread'); }}><Icon name="mail" size={16} />Mark as unread</button>
                     <button className="sug" onClick={() => { setMenu(false); void act({ threadIds: [m.threadId], action: m.flagged ? 'unpin' : 'pin', view: 'inbox' }); }}><Icon name={m.flagged ? 'starFilled' : 'star'} size={16} />{m.flagged ? 'Remove star' : 'Add star'}</button>
+                    <button className="sug" onClick={() => { setMenu(false); onThreadAct('archive'); }}><Icon name="archive" size={16} />Archive</button>
+                    <button className="sug" onClick={() => { setMenu(false); setMoveTarget({ threadIds: [m.threadId], accountId: m.accountId }); }}><Icon name="move" size={16} />Move to folder…</button>
+                    <button className="sug" onClick={() => { setMenu(false); void addToTasks(m.threadId); }}><Icon name="addTask" size={16} />Add to Tasks</button>
                     {!me && (
-                      <button className="sug" onClick={() => { setMenu(false); onBlock(); }}><Icon name="block" size={16} />Block {m.from.email}</button>
+                      <button className="sug" onClick={() => { setMenu(false); setGroupTarget({ email: m.from.email, name: m.from.name || '' }); }}><Icon name="labelFilled" size={16} />Group emails from this sender…</button>
                     )}
+                    <div className="ctx-sep" />
+                    {!me && (
+                      <button className="sug" onClick={() => { setMenu(false); onThreadAct('junk'); }}><Icon name="spam" size={16} />Mark as spam</button>
+                    )}
+                    {!me && (
+                      <button className="sug danger" onClick={() => { setMenu(false); onBlock(); }}><Icon name="block" size={16} />Block {m.from.email}</button>
+                    )}
+                    <button className="sug danger" onClick={() => { setMenu(false); onThreadAct('trash'); }}><Icon name="trash" size={16} />Delete</button>
                   </div>
                 )}
               </div>
