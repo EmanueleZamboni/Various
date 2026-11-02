@@ -104,4 +104,24 @@ describe('Claude connector (MCP + OAuth)', () => {
     const after = await app.inject({ method: 'POST', url: '/mcp', headers: auth, payload: { jsonrpc: '2.0', id: 7, method: 'tools/list' } });
     expect(after.statusCode).toBe(401);
   });
+
+  it('also accepts a client that asks for a secret', async () => {
+    const app = await appP;
+    const reg = await app.inject({ method: 'POST', url: '/oauth/register', payload: { client_name: 'Claude', redirect_uris: [REDIRECT], token_endpoint_auth_method: 'client_secret_post' } });
+    expect(reg.statusCode).toBe(201);
+    const { client_id, client_secret } = reg.json() as { client_id: string; client_secret: string };
+    expect(client_secret).toBeTruthy();
+    const verifier = randomToken(40);
+    const challenge = crypto.createHash('sha256').update(verifier).digest('base64url');
+    const q = new URLSearchParams({ response_type: 'code', client_id, redirect_uri: REDIRECT, code_challenge: challenge, code_challenge_method: 'S256' });
+    const allow = await app.inject({ method: 'POST', url: '/oauth/authorize', headers: { cookie: session(), 'content-type': 'application/x-www-form-urlencoded' }, payload: `${q}&decision=allow` });
+    const code = new URL(String(allow.headers.location)).searchParams.get('code')!;
+    const noSecret = await app.inject({ method: 'POST', url: '/oauth/token', payload: { grant_type: 'authorization_code', code, client_id, code_verifier: verifier } });
+    expect(noSecret.statusCode).toBe(401);
+    const allow2 = await app.inject({ method: 'POST', url: '/oauth/authorize', headers: { cookie: session(), 'content-type': 'application/x-www-form-urlencoded' }, payload: `${q}&decision=allow` });
+    const code2 = new URL(String(allow2.headers.location)).searchParams.get('code')!;
+    const basic = Buffer.from(`${client_id}:${client_secret}`).toString('base64');
+    const ok = await app.inject({ method: 'POST', url: '/oauth/token', headers: { authorization: `Basic ${basic}` }, payload: { grant_type: 'authorization_code', code: code2, code_verifier: verifier, redirect_uri: REDIRECT } });
+    expect(ok.statusCode).toBe(200);
+  });
 });

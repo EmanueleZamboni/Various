@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS mcp_tokens (
   last_used_at TEXT
 );
 `);
+if (!(db.prepare('PRAGMA table_info(mcp_clients)').all() as { name: string }[]).some((c) => c.name === 'secret_hash')) db.exec('ALTER TABLE mcp_clients ADD COLUMN secret_hash TEXT');
 
 const ACCESS_TTL = 3600_000;
 const REFRESH_TTL = 60 * 86400_000;
@@ -64,8 +65,8 @@ function baseUrl(req: FastifyRequest): string {
   return (config.baseUrl || `${req.protocol}://${req.host}`).replace(/\/+$/, '');
 }
 
-function clientById(id: string): { client_id: string; name: string; redirect_uris: string[] } | null {
-  const r = db.prepare('SELECT * FROM mcp_clients WHERE client_id = ?').get(String(id)) as { client_id: string; name: string; redirect_uris: string } | undefined;
+function clientById(id: string): { client_id: string; name: string; redirect_uris: string[]; secret_hash: string | null } | null {
+  const r = db.prepare('SELECT * FROM mcp_clients WHERE client_id = ?').get(String(id)) as { client_id: string; name: string; redirect_uris: string; secret_hash: string | null } | undefined;
   return r ? { ...r, redirect_uris: JSON.parse(r.redirect_uris) as string[] } : null;
 }
 
@@ -500,24 +501,40 @@ export function registerMcpRoutes(app: FastifyInstance): void {
       response_types_supported: ['code'],
       grant_types_supported: ['authorization_code', 'refresh_token'],
       code_challenge_methods_supported: ['S256'],
-      token_endpoint_auth_methods_supported: ['none'],
+      token_endpoint_auth_methods_supported: ['none', 'client_secret_post', 'client_secret_basic'],
       scopes_supported: ['mail'],
     };
   });
 
-  app.post<{ Body: { redirect_uris?: unknown; client_name?: unknown } }>('/oauth/register', { config: { rateLimit: { max: 10, timeWindow: '1 hour' } } }, async (req, reply) => {
+  app.post<{ Body: { redirect_uris?: unknown; client_name?: unknown; token_endpoint_auth_method?: unknown } }>('/oauth/register', { config: { rateLimit: { max: 20, timeWindow: '1 hour' } } }, async (req, reply) => {
     prune();
     const uris = Array.isArray(req.body?.redirect_uris) ? req.body.redirect_uris.map(String) : [];
-    if (!uris.length || uris.length > 5 || !uris.every((u) => ALLOWED_REDIRECT.test(u))) {
+    if (!uris.length || uris.length > 10 || !uris.every((u) => ALLOWED_REDIRECT.test(u))) {
+      log.warn({ redirect_uris: uris.slice(0, 10) }, 'claude connector registration refused');
       return reply.code(400).send({ error: 'invalid_redirect_uri', error_description: 'Only Claude (claude.ai) can connect to Postino.' });
     }
     if ((db.prepare('SELECT COUNT(*) AS n FROM mcp_clients').get() as { n: number }).n >= 50) {
+      log.warn('claude connector registration refused: too many clients');
       return reply.code(400).send({ error: 'invalid_client_metadata', error_description: 'Too many connections. Disconnect some in Postino → Settings.' });
     }
     const clientId = randomToken(16);
     const name = str(req.body?.client_name, 80) || 'Claude';
-    db.prepare('INSERT INTO mcp_clients(client_id, name, redirect_uris) VALUES (?, ?, ?)').run(clientId, name, JSON.stringify(uris));
-    return reply.code(201).send({ client_id: clientId, client_name: name, redirect_uris: uris, grant_types: ['authorization_code', 'refresh_token'], response_types: ['code'], token_endpoint_auth_method: 'none' });
+    // Public client with PKCE by default; a confidential one gets a secret when it asks for it.
+    const asked = str(req.body?.token_endpoint_auth_method, 40);
+    const method = asked === 'client_secret_post' || asked === 'client_secret_basic' ? asked : 'none';
+    const secret = method === 'none' ? null : randomToken(32);
+    db.prepare('INSERT INTO mcp_clients(client_id, name, redirect_uris, secret_hash) VALUES (?, ?, ?, ?)').run(clientId, name, JSON.stringify(uris), secret ? sha256(secret) : null);
+    log.info({ name, method }, 'claude connector registered');
+    return reply.code(201).send({
+      client_id: clientId,
+      client_id_issued_at: Math.floor(Date.now() / 1000),
+      ...(secret ? { client_secret: secret, client_secret_expires_at: 0 } : {}),
+      client_name: name,
+      redirect_uris: uris,
+      grant_types: ['authorization_code', 'refresh_token'],
+      response_types: ['code'],
+      token_endpoint_auth_method: method,
+    });
   });
 
   app.get<{ Querystring: AuthParams }>('/oauth/authorize', async (req, reply) => {
@@ -570,8 +587,25 @@ export function registerMcpRoutes(app: FastifyInstance): void {
     reply.header('Cache-Control', 'no-store');
     const b = req.body || {};
     const bad = (error: string, desc: string) => reply.code(400).send({ error, error_description: desc });
-    const client = b.client_id ? clientById(b.client_id) : null;
-    if (!client) return bad('invalid_client', 'Unknown client.');
+    // Client credentials may come in the body or as HTTP Basic.
+    let clientIdIn = b.client_id;
+    let secretIn = b.client_secret;
+    const basic = /^Basic\s+(\S+)$/i.exec(String(req.headers.authorization || ''));
+    if (basic) {
+      const [u, p = ''] = Buffer.from(basic[1], 'base64').toString('utf8').split(':');
+      const dec = (x: string) => {
+        try {
+          return decodeURIComponent(x);
+        } catch {
+          return x;
+        }
+      };
+      clientIdIn = dec(u || '');
+      secretIn = dec(p);
+    }
+    const client = clientIdIn ? clientById(clientIdIn) : null;
+    if (!client) return reply.code(401).send({ error: 'invalid_client', error_description: 'Unknown client.' });
+    if (client.secret_hash && sha256(String(secretIn || '')) !== client.secret_hash) return reply.code(401).send({ error: 'invalid_client', error_description: 'Wrong client secret.' });
     if (b.grant_type === 'authorization_code') {
       const row = db.prepare('SELECT * FROM mcp_codes WHERE code_hash = ?').get(sha256(String(b.code || ''))) as { code_hash: string; client_id: string; redirect_uri: string; challenge: string; expires_at: string } | undefined;
       if (row) db.prepare('DELETE FROM mcp_codes WHERE code_hash = ?').run(row.code_hash); // single use
