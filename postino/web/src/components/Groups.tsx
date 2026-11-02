@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
 import { useGroups } from '../api/hooks';
@@ -86,6 +87,7 @@ export function GroupsSettings() {
       <h2>Groups</h2>
       <p className="help">Senders that flood the inbox (shop affiliates, security alerts…) collapsed into one line each. Add one with right-click (or long-press) on an email → “Group emails from…”.</p>
       {!groups.length && <p className="help">No groups yet.</p>}
+      <GroupSuggestions force />
       {groups.map((g) => (
         <div className="card group-card" key={g.name}>
           <div className="group-head">
@@ -106,5 +108,104 @@ export function GroupsSettings() {
         </div>
       ))}
     </div>
+  );
+}
+
+const DISMISS_KEY = 'postino.groupSuggest.dismissed';
+
+/** Inbox banner: "Postino found automatic emails, group them?", with a review dialog. */
+export function GroupSuggestions({ force = false, onDone }: { force?: boolean; onDone?: () => void }) {
+  const qc = useQueryClient();
+  const toast = useUI((s) => s.toast);
+  const { data } = useQuery({ queryKey: ['group-suggestions'], queryFn: api.groups.suggestions, staleTime: 10 * 60_000 });
+  const list = data?.suggestions ?? [];
+  const [dismissed, setDismissed] = useState(() => {
+    try {
+      return Number(localStorage.getItem(DISMISS_KEY) || 0) > Date.now() - 14 * 86_400_000;
+    } catch {
+      return false;
+    }
+  });
+  const [open, setOpen] = useState(force);
+  const [off, setOff] = useState<Set<string>>(new Set());
+  const [busy, setBusy] = useState(false);
+  if (!list.length) return force ? <p className="help">No suggestions right now: no sender writes to you often enough.</p> : null;
+  if (dismissed && !force && !open) return null;
+  const total = list.reduce((n, g) => n + g.senders.length, 0);
+  const toggle = (email: string) =>
+    setOff((o) => {
+      const n = new Set(o);
+      if (n.has(email)) n.delete(email);
+      else n.add(email);
+      return n;
+    });
+  const create = async () => {
+    setBusy(true);
+    try {
+      const groups = list.map((g) => ({ name: g.name, senders: g.senders.map((x) => x.email).filter((e) => !off.has(e)) })).filter((g) => g.senders.length);
+      const r = await api.groups.bulk(groups);
+      toast({ text: `${r.added} senders grouped`, kind: 'success' });
+      qc.invalidateQueries({ queryKey: ['groups'] });
+      qc.invalidateQueries({ queryKey: ['group-suggestions'] });
+      qc.invalidateQueries({ queryKey: ['threads'] });
+      setOpen(false);
+      onDone?.();
+    } catch (e) {
+      toast({ text: (e as Error).message, kind: 'error' });
+    } finally {
+      setBusy(false);
+    }
+  };
+  const later = () => {
+    try {
+      localStorage.setItem(DISMISS_KEY, String(Date.now()));
+    } catch {
+      /* ignore */
+    }
+    setDismissed(true);
+    setOpen(false);
+  };
+  return (
+    <>
+      {!force && (
+        <div className="suggest-bar">
+          <Icon name="labelFilled" size={18} />
+          <span>
+            <b>Tidy your inbox?</b> {total} automatic senders ({list.slice(0, 3).map((g) => g.name).join(', ')}{list.length > 3 ? '…' : ''}) can each become one line.
+          </span>
+          <button className="btn btn-quiet btn-sm" onClick={later}>Not now</button>
+          <button className="btn btn-primary btn-sm" onClick={() => setOpen(true)}>Review</button>
+        </div>
+      )}
+      {force && !open && (
+        <button className="btn btn-ghost" onClick={() => setOpen(true)}>Suggest groups ({total} senders)</button>
+      )}
+      {open && (
+        <div className="scrim" onMouseDown={(e) => e.target === e.currentTarget && setOpen(false)}>
+          <div className="sheet group-dialog suggest-sheet" role="dialog" aria-modal="true" aria-labelledby="suggest-title">
+            <h2 id="suggest-title">Group automatic emails</h2>
+            <p className="help">These addresses wrote to you at least 3 times and you never replied. Each group becomes one line at the top of the inbox; notifications keep coming. Untick anything you want to keep in the inbox.</p>
+            <div className="suggest-list">
+              {list.map((g) => (
+                <div key={g.name} className="suggest-group">
+                  <b>{g.name}</b>
+                  {g.senders.map((x) => (
+                    <label key={x.email} className="suggest-sender">
+                      <input type="checkbox" checked={!off.has(x.email)} onChange={() => toggle(x.email)} />
+                      <span>{x.email}</span>
+                      <small>{x.count} emails</small>
+                    </label>
+                  ))}
+                </div>
+              ))}
+            </div>
+            <div className="sheet-actions">
+              <button className="btn btn-quiet" onClick={() => setOpen(false)}>Cancel</button>
+              <button className="btn btn-primary" onClick={() => void create()} disabled={busy}>{busy ? 'Grouping…' : 'Create groups'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }

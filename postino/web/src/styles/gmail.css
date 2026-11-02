@@ -2652,3 +2652,60 @@ a.btn {
 .menu-pop button.danger svg {
   color: var(--rose);
 }
+.suggest-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 8px 12px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: var(--pine-tint);
+  color: var(--ink);
+  font-size: 14px;
+}
+.suggest-bar > svg {
+  color: var(--pine);
+}
+.suggest-bar > span {
+  flex: 1;
+  min-width: 200px;
+}
+.suggest-sheet {
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+}
+.suggest-list {
+  overflow-y: auto;
+  margin: 4px 0 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.suggest-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.suggest-sender {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+}
+.suggest-sender:hover {
+  background: var(--hover-ov);
+}
+.suggest-sender span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.suggest-sender small {
+  color: var(--mute);
+}

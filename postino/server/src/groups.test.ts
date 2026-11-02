@@ -21,3 +21,30 @@ describe('sender groups', () => {
     db.exec('DELETE FROM sender_groups');
   });
 });
+
+describe('group suggestions', () => {
+  it('offers regular automatic senders, never people, payments or my own threads', async () => {
+    const { groupSuggestions } = await import('./groups.js');
+    db.exec("DELETE FROM sender_groups; DELETE FROM messages WHERE account_id = 77; DELETE FROM threads WHERE account_id = 77");
+    const today = new Date().toISOString();
+    let id = 78000;
+    const add = (from: string, mine = 0) => {
+      id++;
+      db.prepare("INSERT INTO threads(id, account_id, subject, subject_norm, last_date) VALUES (?, 77, 's', 's', ?)").run(id, today);
+      db.prepare("INSERT INTO messages(id, account_id, folder_id, thread_id, uid, message_id, subject, subject_norm, from_email, date, size, mine) VALUES (?, 77, 770, ?, ?, ?, 's', 's', ?, ?, 1, ?)").run(id, id, id, `s${id}@x`, from, today, mine);
+    };
+    for (let i = 0; i < 4; i++) add('associates@amazon.de');
+    for (let i = 0; i < 3; i++) add('no-reply@vinted.it');
+    for (let i = 0; i < 5; i++) add('anna@studio.test');          // a person
+    for (let i = 0; i < 4; i++) add('no-reply@payments.paypal.it'); // money: kept in the inbox
+    add('no-reply@youtube.com');                                   // only once: not regular
+    const s = groupSuggestions();
+    const names = Object.fromEntries(s.map((g) => [g.name, g.senders.map((x) => x.email)]));
+    expect(names.Affiliates).toEqual(['associates@amazon.de']);
+    expect(names.Vinted).toEqual(['no-reply@vinted.it']);
+    expect(JSON.stringify(s)).not.toContain('anna@');
+    expect(JSON.stringify(s)).not.toContain('paypal');
+    expect(JSON.stringify(s)).not.toContain('youtube');
+    db.exec("DELETE FROM messages WHERE account_id = 77; DELETE FROM threads WHERE account_id = 77");
+  });
+});

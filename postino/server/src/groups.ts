@@ -39,7 +39,62 @@ export function groupedSenderNotifies(email: string): boolean {
   return Boolean(db.prepare('SELECT 1 FROM sender_groups WHERE email = ? AND notify = 1').get(email.toLowerCase()));
 }
 
+const BRANDS: Record<string, string> = {
+  amazon: 'Amazon', aliexpress: 'AliExpress', google: 'Google', vinted: 'Vinted', tiktok: 'TikTok', youtube: 'YouTube', impact: 'Impact',
+  instagram: 'Instagram', facebookmail: 'Facebook', linkedin: 'LinkedIn', imile: 'AliExpress', temu: 'Temu', shein: 'Shein', ebay: 'eBay', zalando: 'Zalando',
+};
+// Automatic senders: no-reply robots, notification and newsletter addresses, shop updates, affiliate programmes.
+const ROBOT = /^(no-?reply|noreply.*|do-?not-?reply|notifications?|notice|news(letter)?|updates?|alerts?|mailer|marketing|shipment-tracking|order-update|conferma-.*|shipping|associates|affiliate|partner|message|notes|product_team|ita)$/i;
+// Never suggested: money, bills, tickets and account codes stay in the inbox.
+const KEEP = /(fattur|invoice|billing|pagament|payment|paypal|bank|banca|ticket|bigliett|biglietteria|register|verify|code|otp)/i;
+
+/** Who sends you regular automatic mail and is not grouped yet: offered as ready-made groups. */
+export function groupSuggestions(): { name: string; senders: { email: string; count: number }[] }[] {
+  const rows = db
+    .prepare(
+      `SELECT m.from_email AS email, COUNT(*) AS n, MAX(m.category) AS cat
+       FROM messages m JOIN folders f ON f.id = m.folder_id
+       WHERE m.mine = 0 AND m.date >= strftime('%Y-%m-%d', 'now', '-120 days') AND f.role IN ('inbox', 'archive')
+         AND m.from_email <> '' AND m.from_email NOT IN (SELECT email FROM sender_groups)
+         AND m.from_email NOT IN (SELECT lower(email) FROM accounts)
+         AND NOT EXISTS (SELECT 1 FROM messages r WHERE r.thread_id = m.thread_id AND r.mine = 1)
+       GROUP BY m.from_email HAVING n >= 3 ORDER BY n DESC LIMIT 200`,
+    )
+    .all() as { email: string; n: number; cat: string }[];
+  const groups = new Map<string, { email: string; count: number }[]>();
+  for (const r of rows) {
+    const [local, domain = ''] = r.email.split('@');
+    if (KEEP.test(r.email)) continue;
+    if (!ROBOT.test(local) && r.cat === 'person') continue;
+    const labels = domain.toLowerCase().split('.');
+    const brandKey = labels.find((l) => BRANDS[l]) ?? labels[Math.max(0, labels.length - 2)];
+    const name = /associates|affiliate|^partner$/i.test(local) || brandKey === 'impact' ? 'Affiliates' : BRANDS[brandKey] ?? brandKey.charAt(0).toUpperCase() + brandKey.slice(1);
+    groups.set(name, [...(groups.get(name) ?? []), { email: r.email, count: r.n }]);
+  }
+  return [...groups].map(([name, senders]) => ({ name, senders })).sort((a, b) => b.senders.reduce((n, s) => n + s.count, 0) - a.senders.reduce((n, s) => n + s.count, 0));
+}
+
 export function registerGroupRoutes(app: FastifyInstance): void {
+  app.get('/api/groups/suggestions', async () => ({ suggestions: groupSuggestions() }));
+
+  app.post<{ Body: { groups?: { name?: string; senders?: string[] }[] } }>('/api/groups/bulk', async (req) => {
+    const ins = db.prepare('INSERT OR IGNORE INTO sender_groups(email, group_name) VALUES (?, ?)');
+    const own = new Set((db.prepare('SELECT lower(email) AS e FROM accounts').all() as { e: string }[]).map((r) => r.e));
+    let n = 0;
+    db.transaction(() => {
+      for (const g of (req.body?.groups ?? []).slice(0, 50)) {
+        const name = String(g.name || '').trim().slice(0, 60);
+        if (!name) continue;
+        for (const raw of (g.senders ?? []).slice(0, 200)) {
+          const email = String(raw).trim().toLowerCase();
+          if (EMAIL.test(email) && !own.has(email)) n += ins.run(email, name).changes;
+        }
+      }
+    })();
+    return { added: n };
+  });
+
+
   app.get('/api/groups', async () => {
     const rows = db.prepare('SELECT email, group_name, notify FROM sender_groups ORDER BY group_name, email').all() as { email: string; group_name: string; notify: number }[];
     const groups = new Map<string, { name: string; senders: string[]; notify: boolean }>();

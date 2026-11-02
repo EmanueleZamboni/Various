@@ -1,4 +1,5 @@
 import { useAddToTasks } from './GoogleApps';
+import { GroupSuggestions } from './Groups';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { InfiniteData } from '@tanstack/react-query';
 import { useAccountMap, useAccounts, useBlocked, useDrafts, useGroups, useMyEmails, useOutbox, useSearch, useSettings, useThreadList, useThreadActions } from '../api/hooks';
@@ -227,7 +228,12 @@ export function ThreadList({ view }: { view: string }) {
     setChecked(new Set());
   };
 
-  const groupBlock = groupNames.map((g) => <GroupBundle key={g} name={g} base={base} render={(t) => renderRow(t, true)} />);
+  const groupBlock = (
+    <>
+      {view === 'inbox' && !isSearch && !nav.accountId && <GroupSuggestions />}
+      {groupNames.map((g) => <GroupBundle key={g} name={g} base={base} render={(t) => renderRow(t, true)} />)}
+    </>
+  );
 
   let body: ReactNode;
   if (view === 'blocked') body = <BlockedList />;

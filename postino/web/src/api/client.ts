@@ -130,6 +130,8 @@ export const api = {
     add: (email: string, group: string) => post<{ ok: true }>('/api/groups', { email, group }),
     removeSender: (email: string) => del<{ ok: true }>(`/api/groups/sender/${encodeURIComponent(email)}`),
     update: (name: string, body: { newName?: string; notify?: boolean }) => patch<{ ok: true }>('/api/groups', { name, ...body }),
+    suggestions: () => get<{ suggestions: { name: string; senders: { email: string; count: number }[] }[] }>('/api/groups/suggestions'),
+    bulk: (groups: { name: string; senders: string[] }[]) => post<{ added: number }>('/api/groups/bulk', { groups }),
   },
   tasks: {
     list: () => get<{ tasks: GoogleTask[] }>('/api/tasks'),

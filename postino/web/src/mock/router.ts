@@ -346,6 +346,12 @@ on('GET', '/api/groups', () => {
 on('POST', '/api/groups', ({ body }) => { mockGroups[String(body.email).toLowerCase()] = String(body.group); return json({ ok: true }); });
 on('DELETE', '/api/groups/sender/:email', ({ params }) => { delete mockGroups[decodeURIComponent(params.email)]; return json({ ok: true }); });
 on('PATCH', '/api/groups', () => json({ ok: true }));
+on('GET', '/api/groups/suggestions', () => json({ suggestions: [
+  { name: 'Affiliates', senders: [{ email: 'associates@amazon.com', count: 12 }, { email: 'affiliate@notice.aliexpress.com', count: 6 }] },
+  { name: 'Vinted', senders: [{ email: 'no-reply@vinted.it', count: 9 }] },
+  { name: 'TikTok', senders: [{ email: 'notification@service.tiktok.com', count: 14 }] },
+].filter((g) => !g.senders.some((x) => mockGroups[x.email])) }));
+on('POST', '/api/groups/bulk', ({ body }) => { let n = 0; for (const g of body.groups) for (const e of g.senders) { mockGroups[e] = g.name; n++; } return json({ added: n }); });
 on('GET', '/api/backup/status', () => json({ driveConnected: true, lastDrive: new Date(Date.now() - 5 * 3600_000).toISOString(), lastDriveError: null, pendingMailboxes: [] }));
 on('POST', '/api/backup/drive-now', () => json({ ok: true }));
 on('POST', '/api/backup/restore', () => json({ mailboxes: [] }));
