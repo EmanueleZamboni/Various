@@ -6,6 +6,11 @@ import { randomToken, sha256 } from './crypto.js';
 
 const REDIRECT = 'https://claude.ai/api/mcp/auth_callback';
 
+async function csrfFor(app: Awaited<ReturnType<typeof buildApp>>, q: URLSearchParams, cookie: string): Promise<string> {
+  const r = await app.inject({ url: `/oauth/authorize?${q}`, headers: { cookie } });
+  return /name="csrf" value="([^"]+)"/.exec(r.body)![1];
+}
+
 function session(): string {
   const token = randomToken(32);
   db.prepare('INSERT INTO sessions(token_hash, expires_at, user_agent) VALUES (?, ?, ?)').run(sha256(token), new Date(Date.now() + 86400_000).toISOString(), 'test');
@@ -56,8 +61,13 @@ describe('Claude connector (MCP + OAuth)', () => {
     // A form posted from another site is refused.
     const csrf = await app.inject({ method: 'POST', url: '/oauth/authorize', headers: { cookie, origin: 'https://evil.example', 'content-type': 'application/x-www-form-urlencoded' }, payload: `${q}&decision=allow` });
     expect(csrf.statusCode).toBe(403);
+    const token = await csrfFor(app, q, cookie);
+    const forged = await app.inject({ method: 'POST', url: '/oauth/authorize', headers: { cookie, origin: 'https://evil.example', 'content-type': 'application/x-www-form-urlencoded' }, payload: `${q}&decision=allow&csrf=${token}` });
+    expect(forged.statusCode).toBe(403);
+    const otherSession = await app.inject({ method: 'POST', url: '/oauth/authorize', headers: { cookie: session(), origin: 'null', 'content-type': 'application/x-www-form-urlencoded' }, payload: `${q}&decision=allow&csrf=${token}` });
+    expect(otherSession.statusCode).toBe(403);
 
-    const allow = await app.inject({ method: 'POST', url: '/oauth/authorize', headers: { cookie, origin: 'https://postino.test', host: 'postino.test', 'content-type': 'application/x-www-form-urlencoded' }, payload: `${q}&decision=allow` });
+    const allow = await app.inject({ method: 'POST', url: '/oauth/authorize', headers: { cookie, origin: 'null', 'sec-fetch-site': 'same-origin', 'content-type': 'application/x-www-form-urlencoded' }, payload: `${q}&decision=allow&csrf=${token}` });
     expect(allow.statusCode).toBe(302);
     const back = new URL(String(allow.headers.location));
     expect(back.origin + back.pathname).toBe(REDIRECT);
@@ -68,7 +78,7 @@ describe('Claude connector (MCP + OAuth)', () => {
     expect(wrong.statusCode).toBe(400); // and the code is now spent
 
     // A fresh code, the right verifier.
-    const allow2 = await app.inject({ method: 'POST', url: '/oauth/authorize', headers: { cookie, 'content-type': 'application/x-www-form-urlencoded' }, payload: `${q}&decision=allow` });
+    const allow2 = await app.inject({ method: 'POST', url: '/oauth/authorize', headers: { cookie, 'content-type': 'application/x-www-form-urlencoded' }, payload: `${q}&decision=allow&csrf=${token}` });
     const code2 = new URL(String(allow2.headers.location)).searchParams.get('code')!;
     const tok = await app.inject({ method: 'POST', url: '/oauth/token', headers: { 'content-type': 'application/x-www-form-urlencoded' }, payload: new URLSearchParams({ grant_type: 'authorization_code', code: code2, client_id: clientId, redirect_uri: REDIRECT, code_verifier: verifier }).toString() });
     expect(tok.statusCode).toBe(200);
@@ -114,11 +124,13 @@ describe('Claude connector (MCP + OAuth)', () => {
     const verifier = randomToken(40);
     const challenge = crypto.createHash('sha256').update(verifier).digest('base64url');
     const q = new URLSearchParams({ response_type: 'code', client_id, redirect_uri: REDIRECT, code_challenge: challenge, code_challenge_method: 'S256' });
-    const allow = await app.inject({ method: 'POST', url: '/oauth/authorize', headers: { cookie: session(), 'content-type': 'application/x-www-form-urlencoded' }, payload: `${q}&decision=allow` });
+    const cookie = session();
+    const token = await csrfFor(app, q, cookie);
+    const allow = await app.inject({ method: 'POST', url: '/oauth/authorize', headers: { cookie, 'content-type': 'application/x-www-form-urlencoded' }, payload: `${q}&decision=allow&csrf=${token}` });
     const code = new URL(String(allow.headers.location)).searchParams.get('code')!;
     const noSecret = await app.inject({ method: 'POST', url: '/oauth/token', payload: { grant_type: 'authorization_code', code, client_id, code_verifier: verifier } });
     expect(noSecret.statusCode).toBe(401);
-    const allow2 = await app.inject({ method: 'POST', url: '/oauth/authorize', headers: { cookie: session(), 'content-type': 'application/x-www-form-urlencoded' }, payload: `${q}&decision=allow` });
+    const allow2 = await app.inject({ method: 'POST', url: '/oauth/authorize', headers: { cookie, 'content-type': 'application/x-www-form-urlencoded' }, payload: `${q}&decision=allow&csrf=${token}` });
     const code2 = new URL(String(allow2.headers.location)).searchParams.get('code')!;
     const basic = Buffer.from(`${client_id}:${client_secret}`).toString('base64');
     const ok = await app.inject({ method: 'POST', url: '/oauth/token', headers: { authorization: `Basic ${basic}` }, payload: { grant_type: 'authorization_code', code: code2, code_verifier: verifier, redirect_uri: REDIRECT } });

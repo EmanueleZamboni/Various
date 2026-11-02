@@ -110,18 +110,30 @@ button,a.btn{font:inherit;font-weight:500;border:0;border-radius:20px;padding:10
 </style></head><body><main><img src="/icon.svg" width="40" height="40" alt="">${body}</main></body></html>`;
 }
 
-/** Same-site form posts only: the consent form must come from this page, never from another site. */
-function sameOrigin(req: FastifyRequest): boolean {
+/**
+ * The approval form carries a token tied to this browser's Postino session and this client,
+ * so another site cannot submit it. (Browsers send "Origin: null" for it because Postino
+ * uses no-referrer, so the Origin header alone cannot be relied on.)
+ */
+function consentToken(req: FastifyRequest, clientId: string): string {
+  const session = String(req.cookies?.postino_session || '');
+  return crypto.createHmac('sha256', config.secret).update(`mcp-consent:${session}:${clientId}`).digest('base64url');
+}
+
+function consentOk(req: FastifyRequest, clientId: string, token: unknown): boolean {
+  const site = req.headers['sec-fetch-site'];
+  if (site && site !== 'same-origin' && site !== 'none') return false;
   const origin = req.headers.origin;
-  if (origin) {
+  if (origin && origin !== 'null') {
     try {
       if (new URL(origin).host !== req.host) return false;
     } catch {
       return false;
     }
   }
-  const site = req.headers['sec-fetch-site'];
-  return !site || site === 'same-origin' || site === 'none';
+  const want = Buffer.from(consentToken(req, clientId));
+  const got = Buffer.from(String(token || ''));
+  return got.length === want.length && crypto.timingSafeEqual(got, want);
 }
 
 type AuthParams = { response_type?: string; client_id?: string; redirect_uri?: string; code_challenge?: string; code_challenge_method?: string; state?: string; scope?: string; resource?: string };
@@ -548,7 +560,7 @@ export function registerMcpRoutes(app: FastifyInstance): void {
     const q = req.query;
     const hidden = (['client_id', 'redirect_uri', 'code_challenge', 'code_challenge_method', 'state', 'response_type'] as const)
       .map((k) => `<input type="hidden" name="${k}" value="${esc(String(q[k] ?? ''))}">`)
-      .join('');
+      .join('') + `<input type="hidden" name="csrf" value="${consentToken(req, check.client.client_id)}">`;
     return reply.type('text/html').send(
       page(
         'Connect Claude to Postino',
@@ -562,13 +574,13 @@ export function registerMcpRoutes(app: FastifyInstance): void {
     );
   });
 
-  app.post<{ Body: AuthParams & { decision?: string } }>('/oauth/authorize', async (req, reply) => {
+  app.post<{ Body: AuthParams & { decision?: string; csrf?: string } }>('/oauth/authorize', async (req, reply) => {
     reply.header('Cache-Control', 'no-store');
-    if (!sameOrigin(req)) return reply.code(403).type('text/html').send(page('Postino', '<h1>Refused</h1><p>This request did not come from Postino.</p>'));
     if (!isAuthenticated(req)) return reply.code(401).type('text/html').send(page('Postino', '<h1>Signed out</h1><p>Sign in to Postino, then start again from Claude.</p>'));
     const b = req.body || {};
     const check = checkAuthRequest(b);
     if ('error' in check) return reply.code(400).type('text/html').send(page('Postino', `<h1>Can't connect</h1><p>${esc(check.error)}</p>`));
+    if (!consentOk(req, check.client.client_id, b.csrf)) return reply.code(403).type('text/html').send(page('Postino', '<h1>Refused</h1><p>This request did not come from Postino. Start again from Claude.</p>'));
     const to = new URL(String(b.redirect_uri));
     if (b.state) to.searchParams.set('state', String(b.state).slice(0, 1000));
     to.searchParams.set('iss', baseUrl(req));
