@@ -125,7 +125,7 @@ export default function App() {
             <Route path="/:view/t/:threadId" element={<Shell me={me.data} onLogout={() => { rememberSignedIn(false); purgeClientState(qc); setAuth('login'); }} />} />
           </>
         )}
-        <Route path="*" element={<div className="auth" />} />
+        <Route path="*" element={<ServerPage />} />
       </Routes>
       <Toasts />
     </>
@@ -138,4 +138,32 @@ function resumeConnector(): boolean {
   if (!/^\/oauth\/authorize\?[^\\]*$/.test(next)) return false;
   window.location.assign(next);
   return true;
+}
+
+/**
+ * Pages the server renders itself (the Claude connector's approval page) must never be
+ * answered by an older offline copy of the app: drop that copy once and load from the server.
+ */
+function ServerPage() {
+  useEffect(() => {
+    if (!/^\/(oauth|mcp|\.well-known)(\/|$)/.test(window.location.pathname)) return;
+    let tried = false;
+    try {
+      tried = sessionStorage.getItem('postino.serverPage') === window.location.href;
+      sessionStorage.setItem('postino.serverPage', window.location.href);
+    } catch {
+      /* ignore */
+    }
+    if (tried) return;
+    void (async () => {
+      try {
+        const regs = (await navigator.serviceWorker?.getRegistrations()) ?? [];
+        await Promise.all(regs.map((r) => r.unregister()));
+      } catch {
+        /* reload anyway */
+      }
+      window.location.reload();
+    })();
+  }, []);
+  return <div className="auth" />;
 }
