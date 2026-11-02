@@ -1,5 +1,5 @@
 {
-	# No request lines in Caddy's error log: extra sites (the Keep connector) carry a password in the URL.
+	# No request lines in Caddy's error log: the Keep connector's URL carries its secret.
 	log default {
 		output stderr
 		exclude http.log.error
@@ -8,10 +8,22 @@
 
 {$POSTINO_DOMAIN} {
 	encode zstd gzip
-	reverse_proxy postino:8025 {
-		# Server-sent events must not be buffered.
-		flush_interval -1
+
+	# Google Keep connector (keep-mcp) running on this same server, on the Docker bridge.
+	# Without it installed this path just answers 502. Its secret is in the path: no access log.
+	handle_path /keep/* {
+		reverse_proxy 172.17.0.1:8765 {
+			flush_interval -1
+		}
 	}
+
+	handle {
+		reverse_proxy postino:8025 {
+			# Server-sent events must not be buffered.
+			flush_interval -1
+		}
+	}
+
 	header {
 		Strict-Transport-Security "max-age=31536000"
 		X-Content-Type-Options nosniff
@@ -19,6 +31,3 @@
 		-Server
 	}
 }
-
-# Extra sites added on the server itself (e.g. keep-mcp); none by default.
-import /etc/caddy/extra/*.caddy

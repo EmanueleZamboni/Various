@@ -6,4 +6,3 @@ data/
 .env
 .DS_Store
 dist-demo/
-caddy-extra/*.caddy
