@@ -1,3 +1,11 @@
+{
+	# No request lines in Caddy's error log: extra sites (the Keep connector) carry a password in the URL.
+	log default {
+		output stderr
+		exclude http.log.error
+	}
+}
+
 {$POSTINO_DOMAIN} {
 	encode zstd gzip
 	reverse_proxy postino:8025 {
@@ -11,3 +19,6 @@
 		-Server
 	}
 }
+
+# Extra sites added on the server itself (e.g. keep-mcp); none by default.
+import /etc/caddy/extra/*.caddy
