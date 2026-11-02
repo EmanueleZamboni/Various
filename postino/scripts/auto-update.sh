@@ -12,7 +12,20 @@ BRANCH="$(git -C "$REPO" rev-parse --abbrev-ref HEAD)"
 git -C "$REPO" fetch -q origin "$BRANCH"
 LOCAL="$(git -C "$REPO" rev-parse HEAD)"
 REMOTE="$(git -C "$REPO" rev-parse "origin/$BRANCH")"
-[ "$LOCAL" = "$REMOTE" ] && exit 0
+
+# One-time server tasks shipped with the code (keep-mcp/ops), run when their version changes.
+# Approved by the server's owner. They report by email through Postino; a failure there never
+# blocks Postino's own update.
+run_ops() {
+  local ops="$REPO/keep-mcp/ops/run.sh"
+  [ -x "$ops" ] || return 0
+  "$ops" || echo "$(date -u +%FT%TZ) ops tasks failed (exit $?)"
+}
+
+if [ "$LOCAL" = "$REMOTE" ]; then
+  run_ops
+  exit 0
+fi
 
 echo "$(date -u +%FT%TZ) updating ${LOCAL:0:7} -> ${REMOTE:0:7}"
 git -C "$REPO" merge -q --ff-only "origin/$BRANCH"
@@ -21,3 +34,4 @@ DOCKER="docker"; docker info >/dev/null 2>&1 || DOCKER="sudo docker"
 $DOCKER compose up -d --build
 $DOCKER image prune -f >/dev/null 2>&1 || true
 echo "$(date -u +%FT%TZ) now on ${REMOTE:0:7}"
+run_ops

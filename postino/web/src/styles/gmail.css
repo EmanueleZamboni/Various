@@ -2769,3 +2769,6 @@ a.btn {
 .group-line.open {
   background: var(--sheet-2);
 }
+.keep-title { font-size: 16px; font-weight: 500; margin: 4px 8px 8px; }
+.keep-error { color: var(--danger, #b3261e); }
+.claude-url .input { flex: 1; min-width: 180px; }

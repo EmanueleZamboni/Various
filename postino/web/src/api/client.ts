@@ -136,6 +136,12 @@ export const api = {
     seen: (name: string) => post<{ ok: true }>('/api/groups/seen', { name }),
     done: (name: string, account?: string) => post<{ affected: number }>('/api/groups/done', { name, account }),
   },
+  ops: {
+    keep: () => get<{ installed: boolean; stage: string | null; detail: string; email: string; urlReady: boolean }>('/api/ops/keep'),
+    keepCookie: (cookie: string) => post<{ ok: true }>('/api/ops/keep/cookie', { cookie }),
+    keepUrl: () => get<{ url: string }>('/api/ops/keep/url'),
+    forgetKeepUrl: () => del<{ ok: true }>('/api/ops/keep/url'),
+  },
   mcp: {
     connections: () => get<{ connections: { name: string; since: string; lastUsed: string | null }[] }>('/api/mcp/connections'),
     disconnect: () => del<{ ok: true }>('/api/mcp/connections'),

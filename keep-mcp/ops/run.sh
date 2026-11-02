@@ -19,6 +19,8 @@ log "Postino server report, $(date -u '+%F %H:%M UTC'), tasks v$VERSION"
 if ! $S true 2>/dev/null; then log "STOPPED: sudo needs a password for $(id -un); nothing changed."; publish 2>/dev/null; exit 0; fi
 $S install -d -o 1000 -g 1000 -m 700 "$OPS"
 DOMAIN="$(grep -E '^POSTINO_DOMAIN=' "$APP/.env" | cut -d= -f2-)"
+# Keys that let this user in. grep -c prints 0 AND fails when there are none, so never "|| echo".
+KEYS="$(grep -cE '^(ssh|ecdsa|sk-)' "$HOME/.ssh/authorized_keys" 2>/dev/null)"; KEYS="${KEYS:-0}"
 
 # ---------------- 1. What was there ----------------
 log ""; log "== FOUND"
@@ -26,7 +28,7 @@ log ""; log "== FOUND"
 SSHD="$($S sshd -T 2>/dev/null)"
 for k in permitrootlogin passwordauthentication kbdinteractiveauthentication pubkeyauthentication; do log "ssh $k: $(echo "$SSHD" | awk -v k="$k" '$1==k{print $2}')"; done
 log "users with a password: $($S awk -F: '$2 ~ /^\$/ {print $1}' /etc/shadow | tr '\n' ' ')"
-log "SSH keys for $(id -un): $(grep -cE '^(ssh|ecdsa|sk-)' "$HOME/.ssh/authorized_keys" 2>/dev/null || echo 0)"
+log "SSH keys for $(id -un): $KEYS"
 log "unattended-upgrades: $(dpkg -s unattended-upgrades >/dev/null 2>&1 && echo installed || echo MISSING); config: $(tr '\n' ' ' < /etc/apt/apt.conf.d/20auto-upgrades 2>/dev/null)"
 log "pending updates: $(apt list --upgradable 2>/dev/null | grep -c upgradable)"; [ -f /var/run/reboot-required ] && log "a reboot is pending (kernel update)"
 log "firewall INPUT:"; $S iptables -S INPUT | sed 's/^/  /' >> "$R"
@@ -44,7 +46,7 @@ PermitEmptyPasswords no
 PubkeyAuthentication yes
 MaxAuthTries 3
 X11Forwarding no'
-if [ "$(grep -cE '^(ssh|ecdsa|sk-)' "$HOME/.ssh/authorized_keys" 2>/dev/null || echo 0)" -lt 1 ]; then
+if ! [ "$KEYS" -ge 1 ] 2>/dev/null; then
   log "SSH: NOT changed, $(id -un) has no key (would lock you out)"
 elif [ "$($S cat "$CONF" 2>/dev/null)" = "$WANT" ]; then
   log "SSH: already keys-only"
@@ -83,6 +85,7 @@ $S install -o root -g root -m 644 "$KM/server.py" "$KM/requirements.txt" "$HERE/
 if $S /opt/keep-mcp/venv/bin/pip install -q --disable-pip-version-check -r /opt/keep-mcp/requirements.txt >/tmp/keep-pip.log 2>&1; then log "keep-mcp: code and venv in /opt/keep-mcp"; else log "keep-mcp: pip FAILED: $(tail -n 3 /tmp/keep-pip.log | tr '\n' ' ')"; fi
 rm -f /tmp/keep-pip.log
 BIND="$(ip -4 -o addr show docker0 | awk '{print $4}' | cut -d/ -f1)"
+[ "$BIND" = "172.17.0.1" ] || log "keep-mcp: WARNING docker0 is ${BIND:-missing}, but the Caddyfile points /keep at 172.17.0.1"
 ENVF=/etc/keep-mcp.env
 if ! $S test -f "$ENVF"; then
   EMAIL="$($S python3 -c "import sqlite3;c=sqlite3.connect('file:$APP/data/postino.db?mode=ro',uri=True);r=c.execute(\"SELECT email FROM accounts WHERE auth_type='google' ORDER BY id LIMIT 1\").fetchone() or c.execute(\"SELECT email FROM accounts WHERE email LIKE '%@gmail.com' ORDER BY id LIMIT 1\").fetchone();print(r[0] if r else '')")"
@@ -138,8 +141,12 @@ if $S docker run --rm -e POSTINO_DOMAIN="$DOMAIN" -v "$APP/Caddyfile:/etc/caddy/
   if ! $S docker exec postino-caddy-1 cat /etc/caddy/Caddyfile 2>/dev/null | cmp -s - "$APP/Caddyfile"; then
     $S docker exec postino-caddy-1 cat /etc/caddy/Caddyfile > "$T/old" 2>/dev/null
     (cd "$APP" && $S docker compose up -d --force-recreate --no-deps caddy >/dev/null 2>&1)
-    sleep 8
-    if curl -sk --max-time 10 --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN/api/health" | grep -q '"ok":true'; then
+    UP=0
+    for _ in 1 2 3 4 5 6 7 8; do
+      sleep 5
+      curl -sk --max-time 10 --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN/api/health" | grep -q '"ok":true' && { UP=1; break; }
+    done
+    if [ "$UP" = 1 ]; then
       log "caddy: new config live (adds /keep, no request lines in error log); Postino answers OK"
     else
       $S docker cp "$T/old" postino-caddy-1:/config/Caddyfile.rollback && $S docker exec postino-caddy-1 caddy reload --config /config/Caddyfile.rollback --adapter caddyfile >/dev/null 2>&1

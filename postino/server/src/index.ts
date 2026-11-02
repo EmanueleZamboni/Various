@@ -23,6 +23,7 @@ import { registerImageProxy } from './imageProxy.js';
 import { registerPasskeyRoutes } from './passkeys.js';
 import { registerGoogleRoutes } from './google.js';
 import { registerMcpRoutes } from './mcp.js';
+import { registerOpsRoutes, startOps } from './ops.js';
 import { manager } from './mail/manager.js';
 import { startPushBridge, vapidKeys } from './push.js';
 import { startOutbox } from './mail/outbox.js';
@@ -133,6 +134,7 @@ export async function buildApp() {
   registerPasskeyRoutes(app);
   registerGoogleRoutes(app);
   registerMcpRoutes(app);
+  registerOpsRoutes(app);
 
   // Serve the built web app (SPA fallback to index.html).
   if (fs.existsSync(path.join(config.webDist, 'index.html'))) {
@@ -196,6 +198,7 @@ async function main(): Promise<void> {
   setInterval(prune, 6 * 3_600_000).unref();
   startDriveBackups();
   startGoogleContacts();
+  startOps();
   await app.listen({ port: config.port, host: config.host });
   log.info({ port: config.port, data: config.dataDir }, 'postino listening');
   announceSetupCode();

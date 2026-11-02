@@ -1087,6 +1087,7 @@ function ClaudeSettings() {
             <li>Press <b>Connect</b>, then <b>Allow</b> on the Postino page that opens.</li>
           </ol>
         </div>
+        <KeepConnector />
         <div className="card">
           {list.length ? (
             list.map((c, i) => (
@@ -1103,5 +1104,96 @@ function ClaudeSettings() {
         </div>
       </div>
     </>
+  );
+}
+
+/** Google Keep connector (keep-mcp on the same server): one Google sign-in, then the URL for claude.ai. */
+function KeepConnector() {
+  const toast = useUI((s) => s.toast);
+  const qc = useQueryClient();
+  const [cookie, setCookie] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [url, setUrl] = useState('');
+  const { data: st } = useQuery({
+    queryKey: ['ops-keep'],
+    queryFn: api.ops.keep,
+    refetchInterval: (q) => (['submitted', 'exchanging'].includes(q.state.data?.stage ?? '') ? 2000 : 30_000),
+  });
+  const send = async () => {
+    setBusy(true);
+    try {
+      await api.ops.keepCookie(cookie.trim());
+      setCookie('');
+      qc.invalidateQueries({ queryKey: ['ops-keep'] });
+    } catch (e) {
+      toast({ text: (e as Error).message, kind: 'error' });
+    } finally {
+      setBusy(false);
+    }
+  };
+  const show = async () => {
+    try {
+      setUrl((await api.ops.keepUrl()).url);
+    } catch (e) {
+      toast({ text: (e as Error).message, kind: 'error' });
+    }
+  };
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(url);
+      toast({ text: 'Link copied', kind: 'success' });
+    } catch {
+      /* it is on screen */
+    }
+  };
+  const done = async () => {
+    await api.ops.forgetKeepUrl();
+    setUrl('');
+    qc.invalidateQueries({ queryKey: ['ops-keep'] });
+  };
+  const stage = st?.stage;
+  return (
+    <div className="card claude-steps">
+      <h3 className="keep-title">Google Keep</h3>
+      {!st?.installed ? (
+        <p className="help">Being installed on your server. This takes a few minutes; you will get an email with the report.</p>
+      ) : stage === 'connected' ? (
+        st.urlReady || url ? (
+          <>
+            <p className="help">Keep is connected. Add it to Claude: <b>Settings → Connectors → Add custom connector</b>, name <b>Google Keep</b>, and paste this link. It is the password of the connector: paste it only there.</p>
+            {url ? (
+              <div className="row-inline claude-url">
+                <code>{url}</code>
+                <button className="btn btn-ghost btn-sm" onClick={() => void copy()}>Copy</button>
+              </div>
+            ) : (
+              <button className="btn btn-primary btn-sm" onClick={() => void show()}>Show the link</button>
+            )}
+            <div className="sheet-actions">
+              <button className="btn btn-quiet btn-sm" onClick={() => void done()}>Added it, remove the link from the server</button>
+            </div>
+          </>
+        ) : (
+          <p className="help">Keep is connected and the link has been removed from the server, as it should. If you need it again, sign in again below.</p>
+        )
+      ) : stage === 'submitted' || stage === 'exchanging' ? (
+        <p className="help">Connecting to Google Keep…</p>
+      ) : (
+        <>
+          {stage === 'error' && <p className="help keep-error">{st.detail}</p>}
+          <p className="help">One sign-in, on a computer (it needs the browser&apos;s developer tools):</p>
+          <ol>
+            <li>Open a <b>private window</b> and go to <code>accounts.google.com/EmbeddedSetup</code>. Sign in as <b>{st.email || 'your Gmail address'}</b>. At the end it keeps spinning: that is normal.</li>
+            <li>Press <b>F12</b> (Mac: ⌥⌘I) → <b>Application</b> → <b>Cookies</b> → <b>accounts.google.com</b>. Copy the value of <b>oauth_token</b> (it starts with <code>oauth2_4/</code>).</li>
+            <li>Paste it here right away (it expires in a few minutes):</li>
+          </ol>
+          <form className="row-inline claude-url" onSubmit={(e) => { e.preventDefault(); void send(); }}>
+            <input className="input" type="password" autoComplete="off" value={cookie} onChange={(e) => setCookie(e.target.value)} placeholder="oauth2_4/…" aria-label="oauth_token value" />
+            <button className="btn btn-primary btn-sm" disabled={busy || !cookie.trim()}>Connect Keep</button>
+          </form>
+          <small className="help">The code is used once on your server to create Keep&apos;s key, then deleted. It never leaves your server.</small>
+        </>
+      )}
+    </div>
   );
 }
