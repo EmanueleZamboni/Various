@@ -218,4 +218,7 @@ export function useOutbox() {
   return useQuery<{ items: OutboxItem[] }>({ queryKey: ['outbox'], queryFn: api.outbox.list, staleTime: 5_000, refetchInterval: 15_000 });
 }
 
+// Under ['threads'] so every mail change refreshes where the group lines sit.
+export const useGroupSummary = (account: string | null | undefined, enabled = true) =>
+  useQuery({ queryKey: ['threads', 'groupSummary', account ?? 'all'], queryFn: () => api.groups.summary(account ?? undefined), enabled, staleTime: 30_000 });
 export const useGroups = () => useQuery({ queryKey: ['groups'], queryFn: api.groups.list, staleTime: 60_000 });

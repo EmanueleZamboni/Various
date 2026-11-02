@@ -1,4 +1,4 @@
-import { groupedThreadsSql, hasGroups } from '../groups.js';
+import { groupedThreadsSql, hasGroups, groupedInboxThreads, markGroupSeen } from '../groups.js';
 import type { FastifyInstance } from 'fastify';
 import { db } from '../db.js';
 import { bus } from '../events.js';
@@ -243,6 +243,16 @@ export async function runAction(body: ActionBody): Promise<{ affected: number }>
 
 export function registerThreadRoutes(app: FastifyInstance): void {
   app.get<{ Querystring: ListQuery }>('/api/threads', async (req) => listThreads(req.query));
+
+  // "Done" on a group: archive everything it holds in the inbox, like sweeping a bundle.
+  app.post<{ Body: { name?: string; account?: string } }>('/api/groups/done', async (req, reply) => {
+    const name = String(req.body?.name || '');
+    if (!name) return reply.code(400).send({ error: 'bad_group', message: 'Which group?' });
+    const ids = groupedInboxThreads(req.body?.account ? Number(req.body.account) : null, name).map((r) => String(r.id));
+    markGroupSeen(name);
+    if (!ids.length) return { affected: 0 };
+    return runAction({ threadIds: ids, action: 'archive' });
+  });
 
   app.get<{ Params: { id: string } }>('/api/threads/:id', async (req, reply) => {
     const d = threadDetail(Number(req.params.id));

@@ -2,14 +2,14 @@ import { useAddToTasks } from './GoogleApps';
 import { GroupSuggestions } from './Groups';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { InfiniteData } from '@tanstack/react-query';
-import { useAccountMap, useAccounts, useBlocked, useDrafts, useGroups, useMyEmails, useOutbox, useSearch, useSettings, useThreadList, useThreadActions } from '../api/hooks';
-import { api } from '../api/client';
+import { useAccountMap, useAccounts, useBlocked, useDrafts, useGroups, useGroupSummary, useMyEmails, useOutbox, useSearch, useSettings, useThreadList, useThreadActions } from '../api/hooks';
+import { api, type GroupSummary } from '../api/client';
 import type { ThreadSummary, ThreadsResponse } from '../api/types';
 import { Icon, type IconName } from '../icons';
 import { useNav, VIEW_LABEL } from '../nav';
 import { useNavigate } from 'react-router-dom';
 import { useUI } from '../store';
-import { accountLabel, pluralize } from '../util/format';
+import { accountLabel, formatListDate, pluralize } from '../util/format';
 import { ThreadRow } from './ThreadRow';
 import { BlockedList } from './BlockedList';
 import { useQueryClient } from '@tanstack/react-query';
@@ -48,10 +48,12 @@ export function ThreadList({ view }: { view: string }) {
   // Groups the user switched off fall back into the People list.
   const peopleCats = ['person', ...(groupNotif ? [] : ['notification']), ...(groupNews ? [] : ['newsletter'])].join(',');
 
-  // Sender groups collapse into one line each at the top of the inbox.
+  // Sender groups: one line each, placed in the timeline at their newest email (like Inbox bundles).
   const { data: groupsData } = useGroups();
-  const groupNames = view === 'inbox' && !isSearch ? (groupsData?.groups ?? []).map((g) => g.name) : [];
-  const people = useThreadList({ ...base, category: smart ? peopleCats : undefined, group: groupNames.length ? 'none' : undefined }, !isSearch && view !== 'blocked');
+  const groupsOn = view === 'inbox' && !isSearch && (groupsData?.groups ?? []).length > 0;
+  const groupSum = useGroupSummary(nav.accountId, groupsOn);
+  const groupLines = groupsOn ? [...(groupSum.data?.groups ?? [])].sort((a, b) => (a.latestDate < b.latestDate ? 1 : -1)) : [];
+  const people = useThreadList({ ...base, category: smart ? peopleCats : undefined, group: groupsOn ? 'none' : undefined }, !isSearch && view !== 'blocked');
   const notifs = useThreadList({ ...base, category: 'notification' }, smart && groupNotif);
   const news = useThreadList({ ...base, category: 'newsletter' }, smart && groupNews);
   const outbox = useOutbox();
@@ -228,12 +230,19 @@ export function ThreadList({ view }: { view: string }) {
     setChecked(new Set());
   };
 
-  const groupBlock = (
-    <>
-      {view === 'inbox' && !isSearch && !nav.accountId && <GroupSuggestions />}
-      {groupNames.map((g) => <GroupBundle key={g} name={g} base={base} render={(t) => renderRow(t, true)} />)}
-    </>
-  );
+  const groupBlock = <>{view === 'inbox' && !isSearch && !nav.accountId && <GroupSuggestions />}</>;
+  const groupLine = (g: GroupSummary) => <GroupBundle key={`g:${g.name}`} summary={g} base={base} render={(t) => renderRow(t, true)} />;
+  // Rows with each group line slotted in by date; lines older than the loaded page wait until it scrolls there.
+  const weave = (list: ThreadSummary[], more: boolean): ReactNode[] => {
+    const out: ReactNode[] = [];
+    let gi = 0;
+    for (const t of list) {
+      while (gi < groupLines.length && groupLines[gi].latestDate >= t.lastDate) out.push(groupLine(groupLines[gi++]));
+      out.push(renderRow(t));
+    }
+    if (!more) while (gi < groupLines.length) out.push(groupLine(groupLines[gi++]));
+    return out;
+  };
 
   let body: ReactNode;
   if (view === 'blocked') body = <BlockedList />;
@@ -247,7 +256,7 @@ export function ThreadList({ view }: { view: string }) {
         <button className="btn btn-ghost" onClick={() => void main.refetch()}>Try again</button>
       </div>
     );
-  else if (!rows.length && !notifRows.length && !newsRows.length) body = <>{groupBlock}{scheduled.length || drafts.length ? scheduledBlock : <Empty view={view} q={nav.q} />}</>;
+  else if (!rows.length && !notifRows.length && !newsRows.length && !groupLines.length) body = <>{groupBlock}{scheduled.length || drafts.length ? scheduledBlock : <Empty view={view} q={nav.q} />}</>;
   else if (smart) {
     body = (
       <>
@@ -261,16 +270,16 @@ export function ThreadList({ view }: { view: string }) {
         {/* Bundles sit above People so they stay reachable in a long inbox; closed, they are one line each. */}
         <Bundle k="notif" label="Notifications" icon="bell" rows={notifRows} query={notifs} render={(t) => renderRow(t, true)} />
         <Bundle k="news" label="Newsletters" icon="news" rows={newsRows} query={news} render={(t) => renderRow(t, true)} />
-        {peopleRows.length > 0 && (
+        {(peopleRows.length > 0 || groupLines.length > 0) && (
           <>
             <div className="sec">People <span className="n">{counts?.total ?? peopleRows.length}</span></div>
-            {peopleRows.map((t) => renderRow(t))}
+            {weave(peopleRows, !!main.hasNextPage)}
           </>
         )}
       </>
     );
   } else {
-    const list = rows.map((t) => renderRow(t));
+    const list = weave(rows, !!main.hasNextPage);
     body = (
       <>
         {groupBlock}
@@ -430,10 +439,54 @@ function Bundle({ k, label, icon, rows, query, render }: { k: string; label: str
   );
 }
 
-function GroupBundle({ name, base, render }: { name: string; base: { view: string; account?: string }; render: (t: ThreadSummary) => ReactNode }) {
-  const q = useThreadList({ ...base, group: name });
-  const rows = flat(q.data);
-  return <Bundle k={`group:${name}`} label={name} icon="labelFilled" rows={rows} query={q} render={render} />;
+function GroupBundle({ summary: g, base, render }: { summary: GroupSummary; base: { view: string; account?: string }; render: (t: ThreadSummary) => ReactNode }) {
+  const k = `group:${g.name}`;
+  const open = useUI((s) => !!s.bundlesOpen[k]);
+  const toggle = useUI((s) => s.toggleBundle);
+  const toast = useUI((s) => s.toast);
+  const qc = useQueryClient();
+  const q = useThreadList({ ...base, group: g.name }, open);
+  const rows = open ? flat(q.data) : [];
+  const flip = () => {
+    toggle(k);
+    // Opening it counts as having seen what is in it.
+    if (!open && g.fresh > 0) void api.groups.seen(g.name).then(() => qc.invalidateQueries({ queryKey: ['threads', 'groupSummary'] }));
+  };
+  const done = async () => {
+    try {
+      const r = await api.groups.done(g.name, base.account);
+      if (open) toggle(k);
+      toast({ text: `${pluralize(r.affected, 'conversation')} from ${g.name} archived`, kind: 'success' });
+      qc.invalidateQueries({ queryKey: ['threads'] });
+    } catch (e) {
+      toast({ text: (e as Error).message, kind: 'error' });
+    }
+  };
+  const who = g.latestFrom.name || g.latestFrom.email;
+  return (
+    <section className={`bundle group-line${open ? ' open' : ''}${g.fresh ? ' fresh' : ''}`} aria-label={g.name}>
+      <div className="bundle-head-row">
+        <button className="bundle-head" onClick={flip} aria-expanded={open}>
+          <span className="bundle-ico"><Icon name="labelFilled" size={16} /></span>
+          <span className="bundle-title">
+            <span>{g.name} <small className="group-count">{g.total}</small></span>
+            <small>{open ? pluralize(g.total, 'conversation') : `${who}: ${g.latestSubject}`}</small>
+          </span>
+          {g.fresh > 0 && <span className="pill">{g.fresh} new</span>}
+          <span className="group-date">{formatListDate(g.latestDate)}</span>
+        </button>
+        <button className="ib group-done" onClick={() => void done()} aria-label={`Archive everything from ${g.name}`} title="Done: archive the whole group">
+          <Icon name="check" size={20} />
+        </button>
+      </div>
+      {rows.map(render)}
+      {open && q.hasNextPage && (
+        <button className="bundle-more" onClick={() => void q.fetchNextPage()} disabled={q.isFetchingNextPage}>
+          {q.isFetchingNextPage ? 'Loading' : 'Load more'}
+        </button>
+      )}
+    </section>
+  );
 }
 
 function Skeletons() {

@@ -132,6 +132,9 @@ export const api = {
     update: (name: string, body: { newName?: string; notify?: boolean }) => patch<{ ok: true }>('/api/groups', { name, ...body }),
     suggestions: () => get<{ suggestions: { name: string; senders: { email: string; count: number }[] }[] }>('/api/groups/suggestions'),
     bulk: (groups: { name: string; senders: string[] }[]) => post<{ added: number }>('/api/groups/bulk', { groups }),
+    summary: (account?: string) => get<{ groups: GroupSummary[] }>(`/api/groups/summary${qs({ account })}`),
+    seen: (name: string) => post<{ ok: true }>('/api/groups/seen', { name }),
+    done: (name: string, account?: string) => post<{ affected: number }>('/api/groups/done', { name, account }),
   },
   mcp: {
     connections: () => get<{ connections: { name: string; since: string; lastUsed: string | null }[] }>('/api/mcp/connections'),
@@ -207,3 +210,6 @@ export const api = {
     test: () => post<void>('/api/push/test'),
   },
 };
+
+/** One sender group as a line in the inbox. */
+export type GroupSummary = { name: string; latestDate: string; latestThreadId: string; latestFrom: { name: string; email: string }; latestSubject: string; total: number; fresh: number };

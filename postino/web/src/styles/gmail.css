@@ -2715,3 +2715,57 @@ a.btn {
 .claude-steps li { margin: 10px 0; }
 .claude-url { gap: 8px; margin-top: 6px; flex-wrap: wrap; }
 .claude-url code { background: var(--search-bg); border-radius: 8px; padding: 6px 10px; font-size: 13px; overflow-wrap: anywhere; }
+
+/* Sender groups: a plain row in the timeline (bold only when something new came in) */
+.bundle.group-line {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  border-bottom: 1px solid var(--row-line);
+  background: transparent;
+}
+.group-line .bundle-head-row {
+  display: flex;
+  align-items: center;
+}
+.group-line .bundle-head {
+  flex: 1;
+  min-width: 0;
+  min-height: 52px;
+  padding: 6px 4px 6px 16px;
+}
+.group-line .bundle-title > span {
+  font-weight: 400;
+}
+.group-line.fresh .bundle-title > span,
+.group-line.fresh .group-date {
+  font-weight: 700;
+  color: var(--ink);
+}
+.group-line .group-count {
+  font-size: 12px;
+  color: var(--mute);
+  font-weight: 400;
+  margin-left: 4px;
+}
+.group-line .group-date {
+  font-size: 12px;
+  color: var(--mute);
+  margin-left: 8px;
+  white-space: nowrap;
+}
+.group-line .bundle-ico {
+  border: 0;
+  background: var(--search-bg);
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+}
+.group-line .group-done {
+  margin-right: 8px;
+  color: var(--mute);
+  flex: none;
+}
+.group-line.open {
+  background: var(--sheet-2);
+}

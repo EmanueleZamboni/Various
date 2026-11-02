@@ -337,7 +337,7 @@ on('GET', '/api/messages/:id/invite', () => json({ rsvp: null, calendarConnected
 on('POST', '/api/messages/:id/rsvp', () => json({ ok: true, response: 'accepted', calendar: true, organizerTold: true }));
 on('GET', '/api/google/contacts/status', () => json({ at: new Date().toISOString(), count: 312 }));
 on('POST', '/api/google/contacts/sync', () => json({ count: 312 }));
-const mockGroups: Record<string, string> = { 'no-reply@accounts.google.com': 'Google alerts' };
+const mockGroups: Record<string, string> = { 'no-reply@accounts.google.com': 'Google alerts', 'no-reply@vinted.it': 'Vinted' };
 on('GET', '/api/mcp/connections', () => json({ connections: [{ name: 'Claude', since: new Date(Date.now() - 86400_000).toISOString(), lastUsed: new Date().toISOString() }] }));
 on('DELETE', '/api/mcp/connections', () => json({ ok: true }));
 on('GET', '/api/groups', () => {
@@ -348,6 +348,12 @@ on('GET', '/api/groups', () => {
 on('POST', '/api/groups', ({ body }) => { mockGroups[String(body.email).toLowerCase()] = String(body.group); return json({ ok: true }); });
 on('DELETE', '/api/groups/sender/:email', ({ params }) => { delete mockGroups[decodeURIComponent(params.email)]; return json({ ok: true }); });
 on('PATCH', '/api/groups', () => json({ ok: true }));
+on('GET', '/api/groups/summary', () => {
+  const names = [...new Set(Object.values(mockGroups))];
+  return json({ groups: names.map((name, i) => ({ name, latestDate: new Date(Date.now() - (3 + i * 20) * 3600_000).toISOString(), latestThreadId: 't1', latestFrom: { name: name, email: 'no-reply@example.com' }, latestSubject: i ? 'Your weekly summary' : 'Security alert for your account', total: 4 + i, fresh: i ? 0 : 2 })) });
+});
+on('POST', '/api/groups/seen', () => json({ ok: true }));
+on('POST', '/api/groups/done', () => json({ affected: 4 }));
 on('GET', '/api/groups/suggestions', () => json({ suggestions: [
   { name: 'Affiliates', senders: [{ email: 'associates@amazon.com', count: 12 }, { email: 'affiliate@notice.aliexpress.com', count: 6 }] },
   { name: 'Vinted', senders: [{ email: 'no-reply@vinted.it', count: 9 }] },

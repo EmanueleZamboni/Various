@@ -16,6 +16,9 @@ db.exec(`CREATE TABLE IF NOT EXISTS sender_groups (
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 )`);
 
+// When each group was last opened: only mail after that counts as "new" on its bundle line.
+db.exec(`CREATE TABLE IF NOT EXISTS group_seen (group_name TEXT PRIMARY KEY, seen_at TEXT NOT NULL)`);
+
 const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 /** Thread ids whose every message comes from senders of one single group (optionally a given one). */
@@ -74,6 +77,61 @@ export function groupSuggestions(): { name: string; senders: { email: string; co
   return [...groups].map(([name, senders]) => ({ name, senders })).sort((a, b) => b.senders.reduce((n, s) => n + s.count, 0) - a.senders.reduce((n, s) => n + s.count, 0));
 }
 
+type SummaryRow = { id: number; last_date: string; unread_count: number; last_from: string; subject: string; g: string };
+
+/** Inbox threads that belong to a group, newest first, with the group name. */
+export function groupedInboxThreads(accountId: number | null, group?: string): SummaryRow[] {
+  const params: unknown[] = [];
+  let where = "t.roles LIKE '%,inbox,%'";
+  if (accountId) {
+    where += ' AND t.account_id = ?';
+    params.push(accountId);
+  }
+  if (group !== undefined) {
+    where += ' AND gt.g = ?';
+    params.push(group);
+  }
+  return db
+    .prepare(
+      `SELECT t.id, t.last_date, t.unread_count, t.last_from, t.subject, gt.g FROM threads t
+       JOIN (SELECT m.thread_id AS tid, MIN(sg.group_name) AS g FROM messages m LEFT JOIN sender_groups sg ON sg.email = lower(m.from_email)
+             WHERE m.thread_id IN (SELECT thread_id FROM messages WHERE from_email IN (SELECT email FROM sender_groups))
+             GROUP BY m.thread_id
+             HAVING SUM(CASE WHEN m.mine = 1 OR sg.email IS NULL THEN 1 ELSE 0 END) = 0 AND COUNT(DISTINCT sg.group_name) = 1) gt ON gt.tid = t.id
+       WHERE ${where} ORDER BY t.last_date DESC, t.id DESC`,
+    )
+    .all(...params) as SummaryRow[];
+}
+
+/**
+ * One line per group for the inbox: where it sits in time (its newest mail), what that mail is,
+ * how many conversations it holds, and how many arrived unread since the group was last opened.
+ */
+export function groupSummaries(accountId: number | null) {
+  const seen = new Map((db.prepare(`SELECT sg.group_name AS g, COALESCE(gs.seen_at, MIN(sg.created_at)) AS seen FROM sender_groups sg LEFT JOIN group_seen gs ON gs.group_name = sg.group_name GROUP BY sg.group_name`).all() as { g: string; seen: string }[]).map((r) => [r.g, r.seen]));
+  const out = new Map<string, { name: string; latestDate: string; latestThreadId: string; latestFrom: { name: string; email: string }; latestSubject: string; total: number; fresh: number }>();
+  for (const r of groupedInboxThreads(accountId)) {
+    let g = out.get(r.g);
+    if (!g) {
+      let from = { name: '', email: '' };
+      try {
+        from = JSON.parse(r.last_from) as typeof from;
+      } catch {
+        /* keep empty */
+      }
+      g = { name: r.g, latestDate: r.last_date, latestThreadId: String(r.id), latestFrom: from, latestSubject: r.subject, total: 0, fresh: 0 };
+      out.set(r.g, g);
+    }
+    g.total++;
+    if (r.unread_count > 0 && r.last_date > (seen.get(r.g) ?? '')) g.fresh++;
+  }
+  return [...out.values()];
+}
+
+export function markGroupSeen(name: string): void {
+  db.prepare("INSERT INTO group_seen(group_name, seen_at) VALUES (?, strftime('%Y-%m-%dT%H:%M:%fZ','now')) ON CONFLICT(group_name) DO UPDATE SET seen_at = excluded.seen_at").run(name);
+}
+
 /** All groups with their senders. */
 export function listGroups(): { name: string; senders: string[]; notify: boolean }[] {
   const rows = db.prepare('SELECT email, group_name, notify FROM sender_groups ORDER BY group_name, email').all() as { email: string; group_name: string; notify: number }[];
@@ -121,11 +179,21 @@ export function updateGroup(name: string, change: { newName?: string; notify?: b
   let n = 0;
   if (typeof change.notify === 'boolean') n = db.prepare('UPDATE sender_groups SET notify = ? WHERE group_name = ?').run(change.notify ? 1 : 0, name).changes;
   const newName = String(change.newName || '').trim().slice(0, 60);
-  if (newName) n = db.prepare('UPDATE sender_groups SET group_name = ? WHERE group_name = ?').run(newName, name).changes;
+  if (newName) {
+    n = db.prepare('UPDATE sender_groups SET group_name = ? WHERE group_name = ?').run(newName, name).changes;
+    db.prepare('UPDATE OR REPLACE group_seen SET group_name = ? WHERE group_name = ?').run(newName, name);
+  }
   return n;
 }
 
 export function registerGroupRoutes(app: FastifyInstance): void {
+  app.get<{ Querystring: { account?: string } }>('/api/groups/summary', async (req) => ({ groups: groupSummaries(req.query.account ? Number(req.query.account) : null) }));
+
+  app.post<{ Body: { name?: string } }>('/api/groups/seen', async (req) => {
+    if (req.body?.name) markGroupSeen(String(req.body.name).slice(0, 60));
+    return { ok: true };
+  });
+
   app.get('/api/groups/suggestions', async () => ({ suggestions: groupSuggestions() }));
 
   app.post<{ Body: { groups?: { name?: string; senders?: string[] }[] } }>('/api/groups/bulk', async (req) => {

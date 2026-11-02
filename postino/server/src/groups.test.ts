@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { db } from './db.js';
-import './groups.js';
+import { groupSummaries, markGroupSeen } from './groups.js';
 import { listThreads } from './routes/threads.js';
 
 describe('sender groups', () => {
@@ -18,7 +18,16 @@ describe('sender groups', () => {
     expect(ids(listThreads({ view: 'inbox', account: '77', group: 'Amazon' }))).toEqual([7701]);
     expect(ids(listThreads({ view: 'inbox', account: '77', group: 'none' }))).toEqual([7702, 7703]);
     expect(ids(listThreads({ view: 'inbox', account: '77' }))).toEqual([7701, 7702, 7703]);
-    db.exec('DELETE FROM sender_groups');
+    // The bundle line: one group, one conversation, and old unread mail is not "new".
+    db.exec("UPDATE threads SET unread_count = 1 WHERE id = 7701");
+    const s = groupSummaries(77);
+    expect(s.map((g) => [g.name, g.total, g.fresh, g.latestThreadId])).toEqual([['Amazon', 1, 0, '7701']]);
+    db.exec("UPDATE threads SET last_date = '2999-01-01' WHERE id = 7701");
+    expect(groupSummaries(77)[0].fresh).toBe(1);
+    markGroupSeen('Amazon');
+    db.exec("UPDATE threads SET last_date = '2026-11-01' WHERE id = 7701");
+    expect(groupSummaries(77)[0].fresh).toBe(0);
+    db.exec('DELETE FROM sender_groups; DELETE FROM group_seen');
   });
 });
 
