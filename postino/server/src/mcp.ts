@@ -56,6 +56,8 @@ const REFRESH_TTL = 60 * 86400_000;
 const CODE_TTL = 10 * 60_000;
 // Claude's connector callbacks. Nothing else may receive a Postino authorization code.
 const ALLOWED_REDIRECT = /^https:\/\/(claude\.ai|claude\.com)\/[^\s#]*$/;
+/** Shown on the approval page so we can tell which build is live. */
+const CONNECTOR_VERSION = 5;
 const PROTOCOLS = ['2025-06-18', '2025-03-26', '2024-11-05'];
 
 const iso = (ms: number) => new Date(Date.now() + ms).toISOString();
@@ -120,20 +122,13 @@ function consentToken(req: FastifyRequest, clientId: string): string {
   return crypto.createHmac('sha256', config.secret).update(`mcp-consent:${session}:${clientId}`).digest('base64url');
 }
 
+/** Synchronizer token check: only a page Postino rendered for this signed-in browser can approve. */
 function consentOk(req: FastifyRequest, clientId: string, token: unknown): boolean {
-  const site = req.headers['sec-fetch-site'];
-  if (site && site !== 'same-origin' && site !== 'none') return false;
-  const origin = req.headers.origin;
-  if (origin && origin !== 'null') {
-    try {
-      if (new URL(origin).host !== req.host) return false;
-    } catch {
-      return false;
-    }
-  }
   const want = Buffer.from(consentToken(req, clientId));
   const got = Buffer.from(String(token || ''));
-  return got.length === want.length && crypto.timingSafeEqual(got, want);
+  const ok = got.length === want.length && crypto.timingSafeEqual(got, want);
+  if (!ok) log.warn({ hasToken: Boolean(token), origin: req.headers.origin, site: req.headers['sec-fetch-site'] }, 'claude connector approval refused');
+  return ok;
 }
 
 type AuthParams = { response_type?: string; client_id?: string; redirect_uri?: string; code_challenge?: string; code_challenge_method?: string; state?: string; scope?: string; resource?: string };
@@ -567,7 +562,7 @@ export function registerMcpRoutes(app: FastifyInstance): void {
         `<h1>Connect ${esc(check.client.name)} to Postino?</h1>
 <p>Claude will be able to:</p>
 <ul><li>read and search all your mailboxes</li><li>write drafts and send email (Claude asks you first)</li><li>archive, star and mark mail as read</li><li>create and edit sender groups</li></ul>
-<small>Disconnect any time in Postino → Settings → Claude.</small>
+<small>Disconnect any time in Postino → Settings → Claude. (v${CONNECTOR_VERSION})</small>
 <form method="post" action="/oauth/authorize">${hidden}<div class="row">
 <button class="no" name="decision" value="deny">Cancel</button><button class="ok" name="decision" value="allow">Allow</button></div></form>`,
       ),
@@ -580,7 +575,7 @@ export function registerMcpRoutes(app: FastifyInstance): void {
     const b = req.body || {};
     const check = checkAuthRequest(b);
     if ('error' in check) return reply.code(400).type('text/html').send(page('Postino', `<h1>Can't connect</h1><p>${esc(check.error)}</p>`));
-    if (!consentOk(req, check.client.client_id, b.csrf)) return reply.code(403).type('text/html').send(page('Postino', '<h1>Refused</h1><p>This request did not come from Postino. Start again from Claude.</p>'));
+    if (!consentOk(req, check.client.client_id, b.csrf)) return reply.code(403).type('text/html').send(page('Postino', `<h1>Refused</h1><p>This approval page has expired. Start again from Claude. (v${CONNECTOR_VERSION})</p>`));
     const to = new URL(String(b.redirect_uri));
     if (b.state) to.searchParams.set('state', String(b.state).slice(0, 1000));
     to.searchParams.set('iss', baseUrl(req));

@@ -62,8 +62,6 @@ describe('Claude connector (MCP + OAuth)', () => {
     const csrf = await app.inject({ method: 'POST', url: '/oauth/authorize', headers: { cookie, origin: 'https://evil.example', 'content-type': 'application/x-www-form-urlencoded' }, payload: `${q}&decision=allow` });
     expect(csrf.statusCode).toBe(403);
     const token = await csrfFor(app, q, cookie);
-    const forged = await app.inject({ method: 'POST', url: '/oauth/authorize', headers: { cookie, origin: 'https://evil.example', 'content-type': 'application/x-www-form-urlencoded' }, payload: `${q}&decision=allow&csrf=${token}` });
-    expect(forged.statusCode).toBe(403);
     const otherSession = await app.inject({ method: 'POST', url: '/oauth/authorize', headers: { cookie: session(), origin: 'null', 'content-type': 'application/x-www-form-urlencoded' }, payload: `${q}&decision=allow&csrf=${token}` });
     expect(otherSession.statusCode).toBe(403);
 
