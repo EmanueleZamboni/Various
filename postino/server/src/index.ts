@@ -81,7 +81,9 @@ export async function buildApp() {
     // Pages are never framed (CSP frame-ancestors 'none'); inline attachments are framed by our own viewer.
     reply.header('X-Frame-Options', req.routeOptions?.url === '/api/attachments/:id' ? 'SAMEORIGIN' : 'DENY');
     reply.header('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()');
-    if (!req.url.startsWith('/api/')) {
+    // JSON-only endpoints (the Claude connector's) get no page CSP: some browsers then show them blank.
+    const jsonOnly = /^\/(\.well-known\/|mcp($|\?)|oauth\/(token|register)($|\?))/.test(req.url);
+    if (!req.url.startsWith('/api/') && !jsonOnly) {
       reply.header(
         'Content-Security-Policy',
         [
