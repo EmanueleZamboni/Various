@@ -42,6 +42,10 @@ function rememberSignedIn(v: boolean): void {
 export default function App() {
   const [auth, setAuth] = useState<AuthState>('loading');
   const me = useMe(auth === 'in');
+  // Notifications repair themselves on every start (a replaced offline copy loses them).
+  useEffect(() => {
+    if (auth === 'in' && me.data?.vapidPublicKey) void import('./push').then((p) => p.ensurePush(me.data!.vapidPublicKey));
+  }, [auth, me.data?.vapidPublicKey]);
   const accounts = useAccounts(auth === 'in');
   const qc = useQueryClient();
   const navigate = useNavigate();

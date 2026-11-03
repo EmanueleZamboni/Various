@@ -31,10 +31,40 @@ export async function enablePush(vapidPublicKey: string): Promise<'ok' | 'denied
     });
   }
   await api.push.subscribe(sub.toJSON());
+  try {
+    localStorage.removeItem(PUSH_OFF);
+  } catch {
+    /* ignore */
+  }
   return 'ok';
 }
 
+const PUSH_OFF = 'postino.pushOff';
+
+/**
+ * Keeps notifications working by themselves: if this device allowed notifications but its
+ * subscription is gone (the browser dropped it, or the app's offline copy was replaced),
+ * subscribe again; if it exists, remind the server of it. Never asks for permission.
+ */
+export async function ensurePush(vapidPublicKey: string): Promise<void> {
+  try {
+    if (!pushSupported() || Notification.permission !== 'granted' || !vapidPublicKey) return;
+    if (localStorage.getItem(PUSH_OFF) === '1') return;
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(vapidPublicKey) as BufferSource });
+    await api.push.subscribe(sub.toJSON());
+  } catch {
+    /* next start will try again */
+  }
+}
+
 export async function disablePush(): Promise<void> {
+  try {
+    localStorage.setItem(PUSH_OFF, '1');
+  } catch {
+    /* ignore */
+  }
   const sub = await currentSubscription();
   if (!sub) return;
   await api.push.unsubscribe(sub.endpoint).catch(() => undefined);

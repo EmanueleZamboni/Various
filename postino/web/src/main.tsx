@@ -12,6 +12,48 @@ import { initTheme } from './theme';
 
 initTheme();
 
+// An old copy of the app asking for files a new version removed: load the new version once
+// instead of showing a blank page.
+function reloadOnceForNewVersion() {
+  try {
+    const last = Number(sessionStorage.getItem('postino.chunkReload') || 0);
+    if (Date.now() - last < 60_000) return;
+    sessionStorage.setItem('postino.chunkReload', String(Date.now()));
+  } catch {
+    /* reload anyway */
+  }
+  window.location.reload();
+}
+window.addEventListener('vite:preloadError', (e) => {
+  e.preventDefault();
+  reloadOnceForNewVersion();
+});
+window.addEventListener('unhandledrejection', (e) => {
+  const msg = String((e.reason as Error | undefined)?.message ?? e.reason ?? '');
+  if (/dynamically imported module|Importing a module script failed|error loading dynamically/i.test(msg)) reloadOnceForNewVersion();
+});
+
+/** Never a blank page: if the app crashes, say so and offer a reload. */
+class Crash extends React.Component<{ children: React.ReactNode }, { error: Error | null }> {
+  state = { error: null as Error | null };
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+  componentDidCatch(error: Error) {
+    if (/dynamically imported module|Importing a module script failed|error loading dynamically/i.test(error.message)) reloadOnceForNewVersion();
+  }
+  render() {
+    if (!this.state.error) return this.props.children;
+    return (
+      <div className="empty" style={{ minHeight: '100vh' }}>
+        <h2>Something went wrong</h2>
+        <p>{this.state.error.message}</p>
+        <button className="btn btn-primary" onClick={() => window.location.reload()}>Reload Postino</button>
+      </div>
+    );
+  }
+}
+
 async function boot() {
   if (import.meta.env.VITE_MOCK === '1') {
     const { installMock } = await import('./mock');
@@ -31,7 +73,24 @@ async function boot() {
         }
       });
     };
-    registerSW({ immediate: true, onNeedReload: reloadWhenIdle } as Parameters<typeof registerSW>[0] & { onNeedReload: () => void });
+    registerSW({
+      immediate: true,
+      onNeedReload: reloadWhenIdle,
+      // An app left open never navigates, so the browser would almost never look for a new
+      // version: ask every 10 minutes and whenever the app comes back to the foreground.
+      onRegisteredSW(_url: string, reg: ServiceWorkerRegistration | undefined) {
+        if (!reg) return;
+        const check = () => void reg.update().catch(() => undefined);
+        window.setInterval(check, 10 * 60_000);
+        document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && check());
+      },
+    } as Parameters<typeof registerSW>[0] & { onNeedReload: () => void });
+    // A new version took over this page: switch to it (never in the middle of writing).
+    let hadController = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (hadController) reloadWhenIdle();
+      hadController = true;
+    });
   }
   const qc = new QueryClient({
     defaultOptions: {
@@ -40,11 +99,13 @@ async function boot() {
   });
   ReactDOM.createRoot(document.getElementById('root')!).render(
     <React.StrictMode>
+      <Crash>
       <QueryClientProvider client={qc}>
         <Router>
           <App />
         </Router>
       </QueryClientProvider>
+      </Crash>
     </React.StrictMode>,
   );
 }
