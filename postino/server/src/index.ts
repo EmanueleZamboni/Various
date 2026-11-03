@@ -24,6 +24,7 @@ import { registerPasskeyRoutes } from './passkeys.js';
 import { registerGoogleRoutes } from './google.js';
 import { registerMcpRoutes } from './mcp.js';
 import { registerOpsRoutes, startOps } from './ops.js';
+import { fixSentUnreadOnce } from './mail/store.js';
 import { registerWhatsAppRoutes, startWhatsApp } from './whatsapp.js';
 import { manager } from './mail/manager.js';
 import { startPushBridge, vapidKeys } from './push.js';
@@ -201,6 +202,7 @@ async function main(): Promise<void> {
   startDriveBackups();
   startGoogleContacts();
   startOps();
+  setTimeout(() => fixSentUnreadOnce(), 20_000);
   startWhatsApp();
   await app.listen({ port: config.port, host: config.host });
   log.info({ port: config.port, data: config.dataDir }, 'postino listening');

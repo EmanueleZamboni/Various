@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { db, nowIso } from '../db.js';
+import { db, nowIso, getSetting, setSetting } from '../db.js';
 import { config } from '../config.js';
 import { bus } from '../events.js';
 import { assignThread } from './threading.js';
@@ -404,6 +404,26 @@ export function deleteFolderMessages(folderId: number): void {
 }
 
 /**
+ * Unread messages of a conversation. What I sent never counts: my own messages, any copy in
+ * Sent or Drafts, and the inbox copy of a mail I sent myself (same Message-ID as a Sent copy).
+ */
+export function unreadCount(rows: { message_id: string; seen: number; mine: number; role: FolderRole }[]): number {
+  const sentIds = new Set(rows.filter((r) => r.message_id && (r.mine || r.role === 'sent' || r.role === 'drafts')).map((r) => r.message_id));
+  const counted = new Set<string>();
+  let n = 0;
+  for (const r of rows) {
+    if (r.seen || r.mine || r.role === 'sent' || r.role === 'drafts') continue;
+    if (r.message_id && sentIds.has(r.message_id)) continue;
+    if (r.message_id) {
+      if (counted.has(r.message_id)) continue;
+      counted.add(r.message_id);
+    }
+    n++;
+  }
+  return n;
+}
+
+/**
  * Recompute a thread's cached aggregates from its messages. Removes the thread
  * when it has no messages left.
  */
@@ -479,7 +499,7 @@ export function recomputeThread(threadId: number): void {
     last.date,
     unique[0].date,
     unique.length,
-    unique.filter((r) => !r.seen).length,
+    unreadCount(rows),
     rows.some((r) => r.flagged) ? 1 : 0,
     rows.some((r) => r.answered) ? 1 : 0,
     rows.some((r) => r.has_attachments) ? 1 : 0,
@@ -541,4 +561,26 @@ export function foldersByRole(accountId: number, role: FolderRole): FolderRow[] 
 export function refreshFolderCounts(folderId: number): void {
   const r = db.prepare('SELECT COUNT(*) AS total, SUM(CASE WHEN seen = 0 THEN 1 ELSE 0 END) AS unseen FROM messages WHERE folder_id = ?').get(folderId) as { total: number; unseen: number | null };
   db.prepare('UPDATE folders SET total = ?, unseen = ?, last_sync_at = ? WHERE id = ?').run(r.total, r.unseen || 0, nowIso(), folderId);
+}
+
+/** Once: recount conversations that showed my own sent mail as unread (before unreadCount existed). */
+export function fixSentUnreadOnce(): void {
+  if (getSetting<boolean>('migr.sentNeverUnread', false)) return;
+  const ids = (
+    db
+      .prepare(
+        `SELECT DISTINCT m.thread_id AS id FROM messages m JOIN folders f ON f.id = m.folder_id JOIN threads t ON t.id = m.thread_id
+         WHERE t.unread_count > 0 AND (m.mine = 1 OR f.role IN ('sent', 'drafts'))`,
+      )
+      .all() as { id: number }[]
+  ).map((r) => r.id);
+  let i = 0;
+  const step = () => {
+    db.transaction(() => {
+      for (const end = Math.min(i + 200, ids.length); i < end; i++) recomputeThread(ids[i]);
+    })();
+    if (i < ids.length) setImmediate(step);
+    else setSetting('migr.sentNeverUnread', true);
+  };
+  step();
 }

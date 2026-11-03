@@ -192,7 +192,7 @@ export function ThreadList({ view }: { view: string }) {
   const renderRow = (t: ThreadSummary, compact = false) => (
     <ThreadRow
       key={t.id}
-      thread={t}
+      thread={view === 'sent' && t.unread ? { ...t, unread: false } : t /* what I sent is never "to read" */}
       account={accountMap.get(t.accountId)}
       myEmails={myEmails}
       selected={nav.threadId === t.id}
