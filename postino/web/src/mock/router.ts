@@ -338,6 +338,7 @@ on('POST', '/api/messages/:id/rsvp', () => json({ ok: true, response: 'accepted'
 on('GET', '/api/google/contacts/status', () => json({ at: new Date().toISOString(), count: 312 }));
 on('POST', '/api/google/contacts/sync', () => json({ count: 312 }));
 const mockGroups: Record<string, string> = { 'no-reply@accounts.google.com': 'Google alerts', 'no-reply@vinted.it': 'Vinted' };
+on('GET', '/api/whatsapp/status', () => json({ state: 'off', qr: null, code: null, me: null, chats: 0, messages: 0 }));
 on('GET', '/api/ops/keep', () => json({ installed: true, stage: 'installed', detail: '', email: 'you@gmail.com', urlReady: false }));
 on('POST', '/api/ops/keep/cookie', () => json({ ok: true }));
 on('GET', '/api/mcp/connections', () => json({ connections: [{ name: 'Claude', since: new Date(Date.now() - 86400_000).toISOString(), lastUsed: new Date().toISOString() }] }));

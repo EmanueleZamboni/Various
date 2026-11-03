@@ -2798,3 +2798,6 @@ a.btn {
 .groups-row.open > .bundle-head { background: var(--sheet-2); }
 .groups-list { border-top: 1px solid var(--row-line); }
 .groups-list .group-line .bundle-head { padding-left: 32px; }
+.wa-qr { display: block; margin: 8px auto; border-radius: 12px; background: #fff; padding: 8px; }
+.wa-code { font: 600 28px/1.2 'Google Sans', system-ui, sans-serif; letter-spacing: 3px; text-align: center; margin: 12px 0; }
+.wa-actions { justify-content: flex-start; }

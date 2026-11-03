@@ -136,6 +136,11 @@ export const api = {
     seen: (name: string) => post<{ ok: true }>('/api/groups/seen', { name }),
     done: (name: string, account?: string) => post<{ affected: number }>('/api/groups/done', { name, account }),
   },
+  whatsapp: {
+    status: () => get<{ state: 'off' | 'connecting' | 'qr' | 'open' | 'logged_out'; qr: string | null; code: string | null; me: string | null; chats: number; messages: number }>('/api/whatsapp/status'),
+    link: (phone?: string) => post<{ ok: true }>('/api/whatsapp/link', phone ? { phone } : {}),
+    unlink: (forget: boolean) => post<{ ok: true }>('/api/whatsapp/unlink', { forget }),
+  },
   ops: {
     keep: () => get<{ installed: boolean; stage: string | null; detail: string; email: string; urlReady: boolean }>('/api/ops/keep'),
     keepCookie: (cookie: string) => post<{ ok: true }>('/api/ops/keep/cookie', { cookie }),

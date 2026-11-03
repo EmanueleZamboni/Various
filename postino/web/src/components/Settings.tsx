@@ -41,6 +41,7 @@ const NAV: { to: string; label: string; icon: IconName }[] = [
   { to: '/settings/notifications', label: 'Notifications', icon: 'bell' },
   { to: '/settings/google', label: 'Google', icon: 'folder' },
   { to: '/settings/claude', label: 'Claude', icon: 'sparkle' },
+  { to: '/settings/whatsapp', label: 'WhatsApp', icon: 'phone' },
   { to: '/settings/preferences', label: 'Swipes & look', icon: 'filter' },
   { to: '/settings/backup', label: 'Backup', icon: 'download' },
   { to: '/settings/security', label: 'Security', icon: 'shield' },
@@ -83,6 +84,7 @@ export function SettingsPage({ me, onLogout }: { me?: Me; onLogout: () => void }
           <Route path="notifications" element={<NotificationSettings me={me} />} />
           <Route path="google" element={<GoogleSettings />} />
           <Route path="claude" element={<ClaudeSettings />} />
+          <Route path="whatsapp" element={<WhatsAppSettings />} />
           <Route path="inbox" element={<InboxSettings />} />
           <Route path="reading" element={<ReadingSettings />} />
           <Route path="composing" element={<ComposeSettings />} />
@@ -1195,5 +1197,86 @@ function KeepConnector() {
         </>
       )}
     </div>
+  );
+}
+
+/** Settings > WhatsApp: link it as a "linked device" (off until the owner does it). */
+function WhatsAppSettings() {
+  const toast = useUI((s) => s.toast);
+  const [phone, setPhone] = useState('');
+  const [mode, setMode] = useState<'qr' | 'phone' | null>(null);
+  const [busy, setBusy] = useState(false);
+  const { data: st, refetch } = useQuery({
+    queryKey: ['whatsapp'],
+    queryFn: api.whatsapp.status,
+    refetchInterval: (q) => (['qr', 'connecting'].includes(q.state.data?.state ?? '') ? 2000 : 15_000),
+  });
+  const link = async (withPhone: boolean) => {
+    setBusy(true);
+    try {
+      await api.whatsapp.link(withPhone ? phone : undefined);
+      setMode(withPhone ? 'phone' : 'qr');
+      void refetch();
+    } catch (e) {
+      toast({ text: (e as Error).message, kind: 'error' });
+    } finally {
+      setBusy(false);
+    }
+  };
+  const unlink = async (forget: boolean) => {
+    if (!window.confirm(forget ? 'Unlink WhatsApp and delete the messages stored on your server?' : 'Unlink WhatsApp? The stored messages stay, Claude can still read them.')) return;
+    await api.whatsapp.unlink(forget);
+    setMode(null);
+    void refetch();
+  };
+  const state = st?.state ?? 'off';
+  return (
+    <>
+      <h2>WhatsApp</h2>
+      <div className="settings-section">
+        <p className="help">Link your WhatsApp to Postino like WhatsApp Web, so Claude can read and search your chats and send messages you approve one by one.</p>
+        {state === 'open' ? (
+          <div className="card">
+            <Row title={`Linked${st?.me ? ` as +${st.me.split('@')[0]}` : ''}`} hint={`${st?.chats ?? 0} chats, ${st?.messages ?? 0} messages kept on your server (text only).`} />
+            <div className="sheet-actions">
+              <button className="btn btn-quiet btn-sm" onClick={() => void unlink(false)}>Unlink</button>
+              <button className="btn btn-quiet btn-sm" onClick={() => void unlink(true)}>Unlink and delete messages</button>
+            </div>
+          </div>
+        ) : state === 'qr' ? (
+          <div className="card claude-steps wa-link">
+            {mode === 'phone' ? (
+              <>
+                <p className="help">On your phone: <b>WhatsApp → Settings → Linked devices → Link a device → Link with phone number instead</b>, then type this code:</p>
+                <div className="wa-code">{st?.code ? st.code.replace(/(.{4})(?=.)/g, '$1-') : 'Getting the code…'}</div>
+              </>
+            ) : (
+              <>
+                <p className="help">On your phone: <b>WhatsApp → Settings → Linked devices → Link a device</b>, and scan this code.</p>
+                {st?.qr ? <img className="wa-qr" src={st.qr} alt="WhatsApp link QR code" width={280} height={280} /> : <p className="help">Preparing the code…</p>}
+              </>
+            )}
+          </div>
+        ) : state === 'connecting' ? (
+          <div className="card"><Row title="Connecting to WhatsApp…" /></div>
+        ) : (
+          <div className="card claude-steps">
+            {state === 'logged_out' && <p className="help keep-error">WhatsApp was unlinked from the phone. Link it again to keep it updated.</p>}
+            <p className="help">
+              <b>Before you link:</b> WhatsApp has no official way to connect a personal account, so this uses the same method as WhatsApp Web through an unofficial library. It works well, but WhatsApp could, rarely, limit or ban numbers it thinks are automated. Postino only reads, and sends only what you approve, which keeps the risk low but not zero.
+            </p>
+            <p className="help">Only the text of your messages is kept, on your own server (photos and voice notes show as [photo], [voice message]). Unlink any time here or from the phone.</p>
+            <div className="sheet-actions wa-actions">
+              <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => void link(false)}>Link with QR code</button>
+            </div>
+            <p className="help">On this same phone? Link with your number instead:</p>
+            <form className="row-inline claude-url" onSubmit={(e) => { e.preventDefault(); void link(true); }}>
+              <input className="input" inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="39 333 123 4567" aria-label="Your WhatsApp number with country code" />
+              <button className="btn btn-ghost btn-sm" disabled={busy || phone.replace(/[^0-9]/g, '').length < 8}>Get a code</button>
+            </form>
+          </div>
+        )}
+      </div>
+    </>
   );
 }
