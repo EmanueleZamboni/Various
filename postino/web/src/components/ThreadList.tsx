@@ -25,18 +25,85 @@ export function ThreadList({ view }: { view: string }) {
   const act = useThreadActions();
   const addToTasks = useAddToTasks();
   const qc = useQueryClient();
-  // Pull down at the top of the list to refresh, like the Gmail app.
-  const pullStart = useRef<number | null>(null);
-  const [pull, setPull] = useState(0);
-  const [refreshing, setRefreshing] = useState(false);
-  const refresh = async () => {
-    setRefreshing(true);
-    try {
-      await Promise.all([qc.refetchQueries({ queryKey: ['threads'], type: 'active' }), qc.refetchQueries({ queryKey: ['accounts'] })]);
-    } finally {
-      setRefreshing(false);
-    }
-  };
+  // Pull down at the top of the list to refresh, like the Gmail app. The circle follows the
+  // finger through direct style updates on one element: the list itself never re-renders
+  // or moves while pulling, so it stays smooth on a phone.
+  const listRef = useRef<HTMLDivElement>(null);
+  const ptrRef = useRef<HTMLDivElement>(null);
+  const refreshRef = useRef<() => Promise<unknown>>(async () => undefined);
+  refreshRef.current = () => Promise.all([qc.refetchQueries({ queryKey: ['threads'], type: 'active' }), qc.refetchQueries({ queryKey: ['accounts'] }), qc.refetchQueries({ queryKey: ['groupSummary'] })]);
+  useEffect(() => {
+    const list = listRef.current;
+    const ptr = ptrRef.current;
+    if (!list || !ptr) return;
+    const THRESHOLD = 72;
+    let startY: number | null = null;
+    let dist = 0;
+    let busy = false;
+    let frame = 0;
+    const paint = () => {
+      frame = 0;
+      const p = Math.min(dist / THRESHOLD, 1);
+      ptr.style.transform = `translate3d(-50%, ${Math.min(dist, 120) - 48}px, 0) rotate(${dist * 2.4}deg)`;
+      ptr.style.opacity = String(Math.min(1, dist / 30));
+      ptr.classList.toggle('ready', p >= 1);
+    };
+    const settle = (cls: string, transform: string) => {
+      ptr.className = cls;
+      ptr.style.transform = transform;
+    };
+    const onStart = (e: TouchEvent) => {
+      if (busy || list.scrollTop > 0 || e.touches.length !== 1) return;
+      startY = e.touches[0].clientY;
+      dist = 0;
+      ptr.style.top = `${list.offsetTop}px`; // just under the list's header
+      ptr.className = 'ptr pulling';
+    };
+    const onMove = (e: TouchEvent) => {
+      if (startY === null) return;
+      const dy = e.touches[0].clientY - startY;
+      if (dy <= 0 || list.scrollTop > 0) {
+        dist = 0;
+      } else {
+        dist = dy * 0.55;
+      }
+      if (!frame) frame = requestAnimationFrame(paint);
+    };
+    const onEnd = () => {
+      if (startY === null) return;
+      startY = null;
+      if (frame) cancelAnimationFrame(frame);
+      frame = 0;
+      if (dist >= THRESHOLD) {
+        busy = true;
+        settle('ptr spinning', 'translate3d(-50%, 20px, 0)');
+        ptr.style.opacity = '1';
+        void refreshRef.current().finally(() => {
+          settle('ptr done', 'translate3d(-50%, 20px, 0) scale(0)');
+          window.setTimeout(() => {
+            busy = false;
+            settle('ptr', 'translate3d(-50%, -48px, 0)');
+            ptr.style.opacity = '0';
+          }, 220);
+        });
+      } else {
+        settle('ptr back', 'translate3d(-50%, -48px, 0)');
+        ptr.style.opacity = '0';
+      }
+      dist = 0;
+    };
+    list.addEventListener('touchstart', onStart, { passive: true });
+    list.addEventListener('touchmove', onMove, { passive: true });
+    list.addEventListener('touchend', onEnd);
+    list.addEventListener('touchcancel', onEnd);
+    return () => {
+      list.removeEventListener('touchstart', onStart);
+      list.removeEventListener('touchmove', onMove);
+      list.removeEventListener('touchend', onEnd);
+      list.removeEventListener('touchcancel', onEnd);
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }, []);
   const account = nav.accountId ? accountMap.get(nav.accountId) : undefined;
 
   const isSearch = view === 'search';
@@ -370,31 +437,10 @@ export function ThreadList({ view }: { view: string }) {
           </div>
         )}
       </header>
-      <div
-        className="list"
-        role="list"
-        onTouchStart={(e) => {
-          const el = e.currentTarget;
-          pullStart.current = el.scrollTop <= 0 ? e.touches[0].clientY : null;
-        }}
-        onTouchMove={(e) => {
-          if (pullStart.current === null) return;
-          const dy = e.touches[0].clientY - pullStart.current;
-          setPull(dy > 0 ? Math.min(dy * 0.5, 90) : 0);
-        }}
-        onTouchEnd={() => {
-          if (pull > 60 && !refreshing) void refresh();
-          pullStart.current = null;
-          setPull(0);
-        }}
-      >
-        {(pull > 0 || refreshing) && (
-          <div className="ptr" style={{ height: refreshing ? 48 : pull }} aria-hidden="true">
-            <span className={`ptr-spin${refreshing ? ' on' : ''}`} style={{ transform: `rotate(${pull * 4}deg)`, opacity: refreshing ? 1 : Math.min(pull / 60, 1) }}>
-              <Icon name="refresh" size={20} />
-            </span>
-          </div>
-        )}
+      <div className="ptr" ref={ptrRef} aria-hidden="true">
+        <Icon name="refresh" size={20} />
+      </div>
+      <div className="list" role="list" ref={listRef}>
         {body}
         {main.hasNextPage && <div ref={sentinel} style={{ height: 1 }} />}
         {main.isFetchingNextPage && <div className="load-more">Loading more</div>}

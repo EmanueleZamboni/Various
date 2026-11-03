@@ -195,6 +195,8 @@ export function ThreadRow({ thread: t, account, myEmails, selected, focused, hig
         onFocus={onPrefetch}
         onPointerDown={(e) => {
           onPointerDown(e);
+          // On a phone, start loading the email the moment the finger lands, not when it lifts.
+          if (e.pointerType !== 'mouse') onPrefetch();
           // Long-press on touch screens opens the same menu as a right-click.
           if (e.pointerType === 'touch') {
             const { clientX, clientY } = e;

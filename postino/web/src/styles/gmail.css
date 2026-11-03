@@ -2437,28 +2437,64 @@ a.btn {
   }
 }
 
-/* Pull to refresh */
-.ptr {
-  display: grid;
-  place-items: center;
-  overflow: hidden;
+/* Pull to refresh: a circle over the list, moved only with transform/opacity (GPU) */
+.list-pane {
+  position: relative;
 }
-.ptr-spin {
+.ptr {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  z-index: 6;
   display: grid;
   place-items: center;
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
   background: var(--sheet);
-  color: var(--pine);
-  box-shadow: var(--shadow-pop);
+  color: var(--mute);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18), 0 4px 10px rgba(0, 0, 0, 0.12);
+  pointer-events: none;
+  opacity: 0;
+  transform: translate3d(-50%, -48px, 0);
+  will-change: transform, opacity;
 }
-.ptr-spin.on svg {
-  animation: ptr-turn 0.8s linear infinite;
+.ptr.pulling {
+  transition: none;
+}
+.ptr.ready {
+  color: var(--pine);
+}
+.ptr.back {
+  transition: transform 0.2s cubic-bezier(0.2, 0, 0, 1), opacity 0.2s;
+}
+.ptr.spinning {
+  color: var(--pine);
+  transition: transform 0.18s cubic-bezier(0.2, 0, 0, 1);
+}
+.ptr.spinning svg {
+  animation: ptr-turn 0.7s linear infinite;
+}
+.ptr.done {
+  transition: transform 0.2s cubic-bezier(0.4, 0, 1, 1);
 }
 @keyframes ptr-turn {
   to {
     transform: rotate(360deg);
+  }
+}
+
+/* Instant touch feedback and lighter long lists on phones */
+@media (hover: none) {
+  .row:active {
+    background: var(--hover-ov, rgba(0, 0, 0, 0.06));
+    transition: none;
+  }
+}
+@media (max-width: 759px) {
+  .list > .row {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 76px;
   }
 }
 
