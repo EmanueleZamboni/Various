@@ -26,6 +26,7 @@ import { registerMcpRoutes } from './mcp.js';
 import { registerOpsRoutes, startOps } from './ops.js';
 import { fixSentUnreadOnce } from './mail/store.js';
 import { registerWhatsAppRoutes, startWhatsApp } from './whatsapp.js';
+import { registerCallRoutes } from './calls.js';
 import { manager } from './mail/manager.js';
 import { startPushBridge, vapidKeys } from './push.js';
 import { startOutbox } from './mail/outbox.js';
@@ -138,6 +139,7 @@ export async function buildApp() {
   registerMcpRoutes(app);
   registerOpsRoutes(app);
   registerWhatsAppRoutes(app);
+  registerCallRoutes(app);
 
   // Serve the built web app (SPA fallback to index.html).
   if (fs.existsSync(path.join(config.webDist, 'index.html'))) {

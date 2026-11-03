@@ -136,6 +136,17 @@ export const api = {
     seen: (name: string) => post<{ ok: true }>('/api/groups/seen', { name }),
     done: (name: string, account?: string) => post<{ affected: number }>('/api/groups/done', { name, account }),
   },
+  calls: {
+    setup: () => get<{ hookUrl: string; count: number; last: string | null; lastHook: { at: string; fields: Record<string, string> } | null }>('/api/calls/setup'),
+    list: (q?: string) => get<{ total: number; calls: { name: string; number: string; type: string; at: string; duration: string }[] }>(`/api/calls${qs({ q, limit: '30' })}`),
+    import: (file: File) => {
+      const f = new FormData();
+      f.append('file', file);
+      return post<{ added: number; skipped: number }>('/api/calls/import', f);
+    },
+    newLink: () => post<{ ok: true }>('/api/calls/token'),
+    clear: () => del<{ ok: true }>('/api/calls'),
+  },
   whatsapp: {
     status: () => get<{ state: 'off' | 'connecting' | 'qr' | 'open' | 'logged_out'; qr: string | null; code: string | null; me: string | null; chats: number; messages: number }>('/api/whatsapp/status'),
     link: (phone?: string) => post<{ ok: true }>('/api/whatsapp/link', phone ? { phone } : {}),

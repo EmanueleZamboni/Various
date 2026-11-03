@@ -16,6 +16,7 @@ import { listGroups, groupSuggestions, addSenders, removeSender, updateGroup } f
 import { bus } from './events.js';
 import { blockSender } from './routes/blocked.js';
 import { waChats, waMessages, waSearch, waSend, waStatus, resolveChat } from './whatsapp.js';
+import { listCalls, callStats } from './calls.js';
 import { log } from './log.js';
 
 /**
@@ -473,6 +474,36 @@ const TOOLS: Tool[] = [
     },
   },
   {
+    name: 'list_calls',
+    title: 'Phone calls',
+    description: 'The user\'s phone call log (from their Android phone): who, incoming/outgoing/missed, when, how long. Newest first. Filter by person (name or number), type and dates (ISO). Never contains what was said.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Name or phone number.' },
+        type: { type: 'string', enum: ['all', 'incoming', 'outgoing', 'missed', 'rejected', 'blocked', 'voicemail'], default: 'all' },
+        since: { type: 'string', description: 'ISO date, e.g. 2026-10-01' },
+        until: { type: 'string' },
+        limit: { type: 'integer', minimum: 1, maximum: 500, default: 50 },
+      },
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+    run: (a) => listCalls({ query: str(a.query, 100), type: str(a.type, 20) || 'all', since: str(a.since, 40), until: str(a.until, 40), limit: clamp(a.limit, 1, 500, 50) }),
+  },
+  {
+    name: 'call_stats',
+    title: 'Who you call most',
+    description: 'Per person in a period: number of calls, missed calls, total talk time and last call, sorted by talk time.',
+    inputSchema: {
+      type: 'object',
+      properties: { since: { type: 'string' }, until: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 100, default: 20 } },
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+    run: (a) => callStats({ since: str(a.since, 40), until: str(a.until, 40), limit: clamp(a.limit, 1, 100, 20) }),
+  },
+  {
     name: 'list_groups',
     title: 'List sender groups',
     description: 'Sender groups: exact addresses whose mail is bundled into one line at the top of the inbox (notifications still arrive).',
@@ -663,7 +694,7 @@ export function registerMcpRoutes(app: FastifyInstance): void {
         'Connect Claude to Postino',
         `<h1>Connect ${esc(check.client.name)} to Postino?</h1>
 <p>Claude will be able to:</p>
-<ul><li>read and search all your mailboxes</li><li>write drafts and send email (Claude asks you first)</li><li>archive, star and mark mail as read</li><li>create and edit sender groups, block scam senders</li><li>read WhatsApp and send messages (only after you OK each one), if you link WhatsApp</li></ul>
+<ul><li>read and search all your mailboxes</li><li>write drafts and send email (Claude asks you first)</li><li>archive, star and mark mail as read</li><li>create and edit sender groups, block scam senders</li><li>read WhatsApp and send messages (only after you OK each one), if you link WhatsApp</li><li>read your phone call log, if you connect it</li></ul>
 <small>Disconnect any time in Postino → Settings → Claude. (v${CONNECTOR_VERSION})</small>
 <form method="post" action="/oauth/authorize">${hidden}<div class="row">
 <button class="no" name="decision" value="deny">Cancel</button><button class="ok" name="decision" value="allow">Allow</button></div></form>`,

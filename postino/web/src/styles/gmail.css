@@ -2801,3 +2801,7 @@ a.btn {
 .wa-qr { display: block; margin: 8px auto; border-radius: 12px; background: #fff; padding: 8px; }
 .wa-code { font: 600 28px/1.2 'Google Sans', system-ui, sans-serif; letter-spacing: 3px; text-align: center; margin: 12px 0; }
 .wa-actions { justify-content: flex-start; }
+.calls-upload { display: inline-flex; margin: 4px 0 6px 28px; cursor: pointer; }
+.calls-macro { margin: 10px 8px; }
+.calls-macro code { font-size: 12px; }
+.linkish { background: none; border: 0; padding: 0; color: var(--pine); text-decoration: underline; cursor: pointer; font: inherit; }

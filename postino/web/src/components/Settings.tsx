@@ -42,6 +42,7 @@ const NAV: { to: string; label: string; icon: IconName }[] = [
   { to: '/settings/google', label: 'Google', icon: 'folder' },
   { to: '/settings/claude', label: 'Claude', icon: 'sparkle' },
   { to: '/settings/whatsapp', label: 'WhatsApp', icon: 'phone' },
+  { to: '/settings/calls', label: 'Calls', icon: 'phone' },
   { to: '/settings/preferences', label: 'Swipes & look', icon: 'filter' },
   { to: '/settings/backup', label: 'Backup', icon: 'download' },
   { to: '/settings/security', label: 'Security', icon: 'shield' },
@@ -85,6 +86,7 @@ export function SettingsPage({ me, onLogout }: { me?: Me; onLogout: () => void }
           <Route path="google" element={<GoogleSettings />} />
           <Route path="claude" element={<ClaudeSettings />} />
           <Route path="whatsapp" element={<WhatsAppSettings />} />
+          <Route path="calls" element={<CallsSettings />} />
           <Route path="inbox" element={<InboxSettings />} />
           <Route path="reading" element={<ReadingSettings />} />
           <Route path="composing" element={<ComposeSettings />} />
@@ -1276,6 +1278,101 @@ function WhatsAppSettings() {
             </form>
           </div>
         )}
+      </div>
+    </>
+  );
+}
+
+/** Settings > Calls: phone call log for Claude (history from a file, new calls from MacroDroid). */
+function CallsSettings() {
+  const toast = useUI((s) => s.toast);
+  const qc = useQueryClient();
+  const [busy, setBusy] = useState(false);
+  const { data: setup } = useQuery({ queryKey: ['calls-setup'], queryFn: api.calls.setup, refetchInterval: 15_000 });
+  const { data: recent } = useQuery({ queryKey: ['calls'], queryFn: () => api.calls.list(), refetchInterval: 15_000 });
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ['calls'] });
+    qc.invalidateQueries({ queryKey: ['calls-setup'] });
+  };
+  const upload = async (file: File | undefined) => {
+    if (!file) return;
+    setBusy(true);
+    try {
+      const r = await api.calls.import(file);
+      toast({ text: `${r.added} calls added${r.skipped ? `, ${r.skipped} already there or unreadable` : ''}`, kind: 'success' });
+      refresh();
+    } catch (e) {
+      toast({ text: (e as Error).message, kind: 'error' });
+    } finally {
+      setBusy(false);
+    }
+  };
+  const copy = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast({ text: 'Copied', kind: 'success' });
+    } catch {
+      /* on screen */
+    }
+  };
+  const url = setup?.hookUrl ?? '';
+  const lines = [
+    { label: 'Incoming call ended', type: 'in' },
+    { label: 'Outgoing call ended', type: 'out' },
+    { label: 'Missed call', type: 'missed' },
+  ];
+  return (
+    <>
+      <h2>Calls</h2>
+      <div className="settings-section">
+        <p className="help">Your phone&apos;s call log (who, when, which way, how long; never what was said), so Claude can answer things like “when did I last call Marco?”. {setup ? `${setup.count} calls stored.` : ''}</p>
+        <div className="card claude-steps">
+          <h3 className="keep-title">1. Past calls, from a file</h3>
+          <ol>
+            <li>On the phone install <b>SMS Backup &amp; Restore</b> (Play Store, free).</li>
+            <li>Open it → <b>Back up</b> → keep only <b>Phone calls</b> → save the backup to your phone or Google Drive.</li>
+            <li>Upload the <code>calls-….xml</code> file here (from the phone, or from a computer):</li>
+          </ol>
+          <label className="btn btn-primary btn-sm calls-upload">
+            {busy ? 'Importing…' : 'Choose the calls file'}
+            <input type="file" accept=".xml,text/xml,application/xml" hidden onChange={(e) => void upload(e.target.files?.[0])} disabled={busy} />
+          </label>
+          <small className="help">You can upload a newer backup any time: calls already here are skipped.</small>
+        </div>
+        <div className="card claude-steps">
+          <h3 className="keep-title">2. New calls, automatically</h3>
+          <p className="help">Install <b>MacroDroid</b> (Play Store, free) and make 3 macros. In each: <b>Trigger</b> as below, <b>Action → Connectivity → HTTP Request</b>, method GET, and this URL. In the URL, <code>[call_number]</code> and <code>[call_name]</code> are MacroDroid&apos;s “magic text” for the caller&apos;s number and contact name: if your version names them differently, pick them from the <b>[…]</b> button.</p>
+          {lines.map((l) => {
+            const full = `${url}?type=${l.type}&number=[call_number]&name=[call_name]`;
+            return (
+              <div key={l.type} className="calls-macro">
+                <b>{l.label}</b>
+                <div className="row-inline claude-url">
+                  <code>{full}</code>
+                  <button className="btn btn-ghost btn-sm" onClick={() => void copy(full)} disabled={!url}>Copy</button>
+                </div>
+              </div>
+            );
+          })}
+          <small className="help">This link is a password for adding calls: keep it in MacroDroid only. <button className="linkish" onClick={() => void api.calls.newLink().then(refresh)}>Make a new link</button> if it leaks (then update the macros).</small>
+          {setup?.lastHook && (
+            <p className="help">Last call received from the phone: {new Date(setup.lastHook.at).toLocaleString()} with {Object.entries(setup.lastHook.fields).filter(([k]) => k !== 'name').map(([k, v]) => `${k}=${v}`).join(', ')}{Object.values(setup.lastHook.fields).some((v) => /[[\]%]/.test(v)) ? '. Some fields were not filled in: check the magic text in the macro.' : '.'}</p>
+          )}
+        </div>
+        <div className="card">
+          {(recent?.calls ?? []).length ? (
+            (recent?.calls ?? []).slice(0, 15).map((c, i) => (
+              <Row key={i} title={`${c.type === 'incoming' ? '↙' : c.type === 'outgoing' ? '↗' : '✕'} ${c.name || c.number}`} hint={`${new Date(c.at).toLocaleString()} · ${c.type}${c.duration !== '0:00' ? ` · ${c.duration}` : ''}`} />
+            ))
+          ) : (
+            <Row title="No calls yet" hint="Import the file or set up the macros above." />
+          )}
+          {(setup?.count ?? 0) > 0 && (
+            <div className="sheet-actions">
+              <button className="btn btn-quiet btn-sm" onClick={() => { if (window.confirm('Delete every stored call?')) void api.calls.clear().then(refresh); }}>Delete all calls</button>
+            </div>
+          )}
+        </div>
       </div>
     </>
   );
