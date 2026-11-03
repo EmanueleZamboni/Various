@@ -468,15 +468,23 @@ function GroupBundle({ summary: g, base, render }: { summary: GroupSummary; base
   const flip = () => {
     toggle(k);
     // Opening it counts as having seen what is in it.
-    if (!open && g.fresh > 0) void api.groups.seen(g.name).then(() => qc.invalidateQueries({ queryKey: ['threads', 'groupSummary'] }));
+    if (!open && g.fresh > 0) void api.groups.seen(g.name).then(() => qc.invalidateQueries({ queryKey: ['groupSummary'] }));
   };
   const done = async () => {
+    // Gone from the list at once; the server archives in the background.
+    const key = ['groupSummary', base.account ?? 'all'];
+    const before = qc.getQueryData<{ groups: GroupSummary[] }>(key);
+    qc.setQueryData<{ groups: GroupSummary[] }>(key, (d) => (d ? { groups: d.groups.filter((x) => x.name !== g.name) } : d));
+    if (open) toggle(k);
     try {
       const r = await api.groups.done(g.name, base.account);
-      if (open) toggle(k);
-      toast({ text: `${pluralize(r.affected, 'conversation')} from ${g.name} archived`, kind: 'success' });
-      qc.invalidateQueries({ queryKey: ['threads'] });
+      toast({ text: `Archiving ${pluralize(r.affected, 'conversation')} from ${g.name}`, kind: 'success' });
+      window.setTimeout(() => {
+        qc.invalidateQueries({ queryKey: ['groupSummary'] });
+        qc.invalidateQueries({ queryKey: ['threads'] });
+      }, 4000);
     } catch (e) {
+      qc.setQueryData(key, before);
       toast({ text: (e as Error).message, kind: 'error' });
     }
   };

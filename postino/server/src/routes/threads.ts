@@ -251,7 +251,12 @@ export function registerThreadRoutes(app: FastifyInstance): void {
     const ids = groupedInboxThreads(req.body?.account ? Number(req.body.account) : null, name).map((r) => String(r.id));
     markGroupSeen(name);
     if (!ids.length) return { affected: 0 };
-    return runAction({ threadIds: ids, action: 'archive' });
+    // Big groups hold thousands of emails: answer now, move them on the mail server in the background.
+    void runAction({ threadIds: ids, action: 'archive' }).catch((err: Error) => {
+      log.warn({ err: err.message, group: name }, 'group archive failed');
+      bus.publish({ type: 'action.failed', message: `Could not archive all of ${name}: ${err.message}` });
+    });
+    return { affected: ids.length, queued: true };
   });
 
   app.get<{ Params: { id: string } }>('/api/threads/:id', async (req, reply) => {

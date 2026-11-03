@@ -21,16 +21,31 @@ db.exec(`CREATE TABLE IF NOT EXISTS group_seen (group_name TEXT PRIMARY KEY, see
 
 const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
+// Which conversations belong to a group. Working it out scans every message from grouped
+// senders, so it is kept in a small table and recomputed at most once a minute (or at once
+// when the groups themselves change), instead of on every list, action and new email.
+db.exec(`CREATE TABLE IF NOT EXISTS group_threads (thread_id INTEGER PRIMARY KEY, group_name TEXT NOT NULL)`);
+let groupThreadsAt = 0;
+
+export function refreshGroupThreads(force = false): void {
+  if (!force && Date.now() - groupThreadsAt < 60_000) return;
+  groupThreadsAt = Date.now();
+  db.transaction(() => {
+    db.exec('DELETE FROM group_threads');
+    db.exec(`INSERT INTO group_threads(thread_id, group_name)
+      SELECT m.thread_id, MIN(sg.group_name) FROM messages m LEFT JOIN sender_groups sg ON sg.email = lower(m.from_email)
+      WHERE m.thread_id IN (SELECT thread_id FROM messages WHERE from_email IN (SELECT email FROM sender_groups))
+      GROUP BY m.thread_id
+      HAVING SUM(CASE WHEN m.mine = 1 OR sg.email IS NULL THEN 1 ELSE 0 END) = 0 AND COUNT(DISTINCT sg.group_name) = 1`);
+  })();
+}
+
 /** Thread ids whose every message comes from senders of one single group (optionally a given one). */
 export function groupedThreadsSql(group?: string): { sql: string; params: unknown[] } {
-  return {
-    sql: `SELECT m.thread_id FROM messages m LEFT JOIN sender_groups sg ON sg.email = lower(m.from_email)
-          WHERE m.thread_id IN (SELECT thread_id FROM messages WHERE from_email IN (SELECT email FROM sender_groups))
-          GROUP BY m.thread_id
-          HAVING SUM(CASE WHEN m.mine = 1 OR sg.email IS NULL THEN 1 ELSE 0 END) = 0
-             AND COUNT(DISTINCT sg.group_name) = 1${group !== undefined ? ' AND MIN(sg.group_name) = ?' : ''}`,
-    params: group !== undefined ? [group] : [],
-  };
+  refreshGroupThreads();
+  return group !== undefined
+    ? { sql: 'SELECT thread_id FROM group_threads WHERE group_name = ?', params: [group] }
+    : { sql: 'SELECT thread_id FROM group_threads', params: [] };
 }
 
 export function hasGroups(): boolean {
@@ -81,6 +96,7 @@ type SummaryRow = { id: number; last_date: string; unread_count: number; last_fr
 
 /** Inbox threads that belong to a group, newest first, with the group name. */
 export function groupedInboxThreads(accountId: number | null, group?: string): SummaryRow[] {
+  refreshGroupThreads();
   const params: unknown[] = [];
   let where = "t.roles LIKE '%,inbox,%'";
   if (accountId) {
@@ -88,16 +104,13 @@ export function groupedInboxThreads(accountId: number | null, group?: string): S
     params.push(accountId);
   }
   if (group !== undefined) {
-    where += ' AND gt.g = ?';
+    where += ' AND gt.group_name = ?';
     params.push(group);
   }
   return db
     .prepare(
-      `SELECT t.id, t.last_date, t.unread_count, t.last_from, t.subject, gt.g FROM threads t
-       JOIN (SELECT m.thread_id AS tid, MIN(sg.group_name) AS g FROM messages m LEFT JOIN sender_groups sg ON sg.email = lower(m.from_email)
-             WHERE m.thread_id IN (SELECT thread_id FROM messages WHERE from_email IN (SELECT email FROM sender_groups))
-             GROUP BY m.thread_id
-             HAVING SUM(CASE WHEN m.mine = 1 OR sg.email IS NULL THEN 1 ELSE 0 END) = 0 AND COUNT(DISTINCT sg.group_name) = 1) gt ON gt.tid = t.id
+      `SELECT t.id, t.last_date, t.unread_count, t.last_from, t.subject, gt.group_name AS g FROM threads t
+       JOIN group_threads gt ON gt.thread_id = t.id
        WHERE ${where} ORDER BY t.last_date DESC, t.id DESC`,
     )
     .all(...params) as SummaryRow[];
@@ -168,11 +181,14 @@ export function addSenders(group: string, senders: string[], move = false): { ad
       else skipped.push(email);
     }
   })();
+  if (added) refreshGroupThreads(true);
   return { added, skipped };
 }
 
 export function removeSender(email: string): boolean {
-  return db.prepare('DELETE FROM sender_groups WHERE email = ?').run(String(email).trim().toLowerCase()).changes > 0;
+  const gone = db.prepare('DELETE FROM sender_groups WHERE email = ?').run(String(email).trim().toLowerCase()).changes > 0;
+  if (gone) refreshGroupThreads(true);
+  return gone;
 }
 
 export function updateGroup(name: string, change: { newName?: string; notify?: boolean }): number {
@@ -182,6 +198,7 @@ export function updateGroup(name: string, change: { newName?: string; notify?: b
   if (newName) {
     n = db.prepare('UPDATE sender_groups SET group_name = ? WHERE group_name = ?').run(newName, name).changes;
     db.prepare('UPDATE OR REPLACE group_seen SET group_name = ? WHERE group_name = ?').run(newName, name);
+    refreshGroupThreads(true);
   }
   return n;
 }
@@ -215,6 +232,7 @@ export function registerGroupRoutes(app: FastifyInstance): void {
     const own = db.prepare('SELECT 1 FROM accounts WHERE lower(email) = ?').get(email);
     if (own) return reply.code(400).send({ error: 'own_address', message: 'Your own addresses cannot be grouped.' });
     db.prepare('INSERT INTO sender_groups(email, group_name) VALUES (?, ?) ON CONFLICT(email) DO UPDATE SET group_name = excluded.group_name').run(email, group);
+    refreshGroupThreads(true);
     return { ok: true };
   });
 

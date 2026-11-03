@@ -6,7 +6,10 @@ set -uo pipefail
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 HERE="$(cd "$(dirname "$0")" && pwd)"; KM="$(cd "$HERE/.." && pwd)"; REPO="$(cd "$KM/.." && pwd)"; APP="$REPO/postino"
 OPS="$APP/data/ops"; VERSION="$(cat "$HERE/VERSION")"; STAMP="$HOME/.keep-ops-version"
+STAMP2="$OPS/.ops-version"
+# Done already? Checked in two places, so one unwritable file can never make it run again and again.
 [ "$(cat "$STAMP" 2>/dev/null)" = "$VERSION" ] && exit 0
+[ "$(sudo -n cat "$STAMP2" 2>/dev/null)" = "$VERSION" ] && exit 0
 S="sudo -n"
 R="$(mktemp)"; log() { printf '%s\n' "$*" >> "$R"; }
 publish() {
@@ -18,6 +21,9 @@ status() { printf '{"stage":"%s","detail":"%s","at":"%s"}\n' "$1" "${2:-}" "$(da
 log "Postino server report, $(date -u '+%F %H:%M UTC'), tasks v$VERSION"
 if ! $S true 2>/dev/null; then log "STOPPED: sudo needs a password for $(id -un); nothing changed."; publish 2>/dev/null; exit 0; fi
 $S install -d -o 1000 -g 1000 -m 700 "$OPS"
+# Mark this version done before doing anything: these tasks run once, never on every update.
+echo "$VERSION" > "$STAMP" 2>/dev/null || log "note: could not write $STAMP"
+echo "$VERSION" | $S tee "$STAMP2" >/dev/null
 DOMAIN="$(grep -E '^POSTINO_DOMAIN=' "$APP/.env" | cut -d= -f2-)"
 # Keys that let this user in. grep -c prints 0 AND fails when there are none, so never "|| echo".
 KEYS="$(grep -cE '^(ssh|ecdsa|sk-)' "$HOME/.ssh/authorized_keys" 2>/dev/null)"; KEYS="${KEYS:-0}"

@@ -46,13 +46,24 @@ async function mailReport(): Promise<void> {
   } catch {
     return;
   }
-  const hash = crypto.createHash('sha256').update(text).digest('hex');
+  // The first line carries the time of the run: compare what the report says, not when.
+  const body = text.split('\n').slice(1).join('\n');
+  const hash = crypto.createHash('sha256').update(body).digest('hex');
   if (getSetting('ops.mailedReport', '') === hash) return;
+  // Never more than one report a day, whatever happens on the server.
+  if (Date.now() - getSetting('ops.mailedAt', 0) < 24 * 3600_000) return;
   const acc = ownerAccount();
   if (!acc) return;
+  // Mark first: a send that half-fails must not turn into a mail every minute.
+  setSetting('ops.mailedReport', hash);
+  setSetting('ops.mailedAt', Date.now());
   try {
-    await executeSend(buildSendJob({ accountId: String(acc.id), to: acc.email, subject: 'Postino server: rapporto sicurezza e Google Keep', text, signatureId: 'none' }));
-    setSetting('ops.mailedReport', hash);
+    const job = buildSendJob({ accountId: String(acc.id), to: acc.email, subject: 'Postino server: rapporto', text, signatureId: 'none' });
+    // All reports in one conversation.
+    const root = getSetting<string>('ops.reportThreadId', '');
+    if (root) job.inReplyTo = { messageId: root, references: [root], row: 0 };
+    const r = await executeSend(job);
+    if (!root && r.messageId) setSetting('ops.reportThreadId', r.messageId);
     log.info('ops report mailed');
   } catch (err) {
     log.warn({ err: (err as Error).message }, 'ops report mail failed');

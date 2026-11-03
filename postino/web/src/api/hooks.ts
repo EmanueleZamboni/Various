@@ -126,7 +126,8 @@ export function useThreadActions() {
         }
       };
       for (const [key, data] of snapshots) {
-        if (!data) continue;
+        // Only conversation lists; anything else under ['threads'] is left alone.
+        if (!data || !Array.isArray((data as Partial<InfiniteData<ThreadsResponse>>).pages)) continue;
         const p = key[1] as ListParams | undefined;
         const removeFromThisList = DESTRUCTIVE.includes(v.action) || (v.action === 'unpin' && p?.view === 'pinned');
         qc.setQueryData<InfiniteData<ThreadsResponse>>(key, {
@@ -185,6 +186,7 @@ export function useThreadActions() {
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ['threads'] });
+      qc.invalidateQueries({ queryKey: ['groupSummary'] });
       qc.invalidateQueries({ queryKey: ['accounts'] });
       qc.invalidateQueries({ queryKey: ['search'] });
     },
@@ -218,7 +220,7 @@ export function useOutbox() {
   return useQuery<{ items: OutboxItem[] }>({ queryKey: ['outbox'], queryFn: api.outbox.list, staleTime: 5_000, refetchInterval: 15_000 });
 }
 
-// Under ['threads'] so every mail change refreshes where the group lines sit.
+// Its own key (not under ['threads']): thread actions patch every ['threads'] list in place.
 export const useGroupSummary = (account: string | null | undefined, enabled = true) =>
-  useQuery({ queryKey: ['threads', 'groupSummary', account ?? 'all'], queryFn: () => api.groups.summary(account ?? undefined), enabled, staleTime: 30_000 });
+  useQuery({ queryKey: ['groupSummary', account ?? 'all'], queryFn: () => api.groups.summary(account ?? undefined), enabled, staleTime: 30_000 });
 export const useGroups = () => useQuery({ queryKey: ['groups'], queryFn: api.groups.list, staleTime: 60_000 });
