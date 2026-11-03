@@ -75,6 +75,20 @@ while IFS= read -r rule; do
   $S iptables ${rule/-A INPUT/-D INPUT} && log "firewall: closed  $rule"
 done < <($S iptables -S INPUT | grep -- '-j ACCEPT' | grep -E -- '--dport ' | grep -vE -- '--dport (22|80|443)( |$)' | grep -v -- '--dport 8765')
 $S iptables -S INPUT | grep -qE -- '-j (REJECT|DROP)' || log "firewall: WARNING, no final REJECT rule in INPUT"
+# rpcbind (port 111) is only for NFS, which this server does not use.
+if systemctl is-active --quiet rpcbind.socket rpcbind.service 2>/dev/null || systemctl is-enabled --quiet rpcbind.socket 2>/dev/null; then
+  if grep -qE '\snfs4?\s' /proc/mounts; then
+    log "rpcbind: kept, an NFS share is mounted"
+  else
+    $S systemctl disable --now rpcbind.socket rpcbind.service >/dev/null 2>&1 && log "rpcbind (port 111, unused NFS helper): stopped and disabled"
+  fi
+fi
+# IPv6: only matters if the server has a public IPv6 address.
+if ip -6 addr show scope global 2>/dev/null | grep -q inet6; then
+  log "IPv6: public address present; ip6tables INPUT:"; $S ip6tables -S INPUT | sed 's/^/  /' >> "$R"
+else
+  log "IPv6: no public IPv6 address, nothing reachable over IPv6"
+fi
 
 # ---------------- 5. keep-mcp ----------------
 $S env DEBIAN_FRONTEND=noninteractive apt-get install -y -q python3-venv >/dev/null 2>&1
