@@ -3,8 +3,9 @@
 Auth: the MCP endpoint lives at /<KEEP_MCP_SECRET>/mcp. Anyone without the
 secret gets a 404. Treat the full URL like a password.
 
-Least authority: no delete, trash or share tools. Every overwrite is backed
-up to KEEP_BACKUP_DIR first and can be restored. Note contents returned to
+Least authority: no permanent delete and no sharing. Deleting moves a note to
+Keep's trash (restorable there for 7 days, or with untrash_note), and every
+overwrite or deletion is backed up to KEEP_BACKUP_DIR first. Note contents returned to
 the model are user data, not instructions.
 """
 
@@ -331,6 +332,51 @@ def set_pinned_archived(note_id: str, pinned: bool | None = None, archived: bool
             note.archived = archived
         _sync()
         return _summary(note)
+
+
+@mcp.tool()
+def trash_note(note_id: str) -> dict:
+    """Delete a note or list: it goes to Keep's trash, where it can be restored for 7 days
+    (untrash_note, or the Keep app). A backup is saved first. Protected notes cannot be deleted."""
+    with lock:
+        _sync()
+        note = _guard(_get(note_id))
+        backup = _backup(note)
+        title = note.title
+        note.trash()
+        _sync()
+        return {"id": note_id, "title": title, "trashed": True, "backup": backup}
+
+
+@mcp.tool()
+def untrash_note(note_id: str) -> dict:
+    """Bring a note back from Keep's trash."""
+    with lock:
+        _sync()
+        note = keep.get(note_id)
+        if note is None or not note.trashed:
+            raise ValueError("That note is not in the trash")
+        note.untrash()
+        _sync()
+        return _summary(note)
+
+
+@mcp.tool()
+def delete_list_item(note_id: str, item_id: str) -> dict:
+    """Remove one item from a checklist (the list is backed up first)."""
+    with lock:
+        _sync()
+        note = _guard(_get(note_id))
+        if not isinstance(note, gkeepapi.node.List):
+            raise ValueError("Note is not a checklist")
+        item = next((i for i in note.items if i.id == item_id), None)
+        if item is None:
+            raise ValueError("Item not found")
+        backup = _backup(note)
+        text = item.text
+        item.delete()
+        _sync()
+        return {"id": note.id, "removed": text, "backup": backup}
 
 
 @mcp.tool()

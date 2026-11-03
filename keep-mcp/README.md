@@ -7,11 +7,12 @@ Tools:
 - Read: list_notes (by text or label), get_note, list_labels
 - Add: create_note, create_list, add_list_items, append_to_note, set_item_checked
 - Organize: rewrite_note, edit_list_item, set_labels, set_pinned_archived
+- Delete: trash_note, untrash_note, delete_list_item
 - Undo: list_backups, restore_note
 
-No delete or trash on purpose. Every rewrite, item edit and label change first saves the note to KEEP_BACKUP_DIR, so any change can be undone with restore_note.
+No permanent delete: trash_note moves a note to Keep's trash (restorable there for 7 days, or with untrash_note). Every rewrite, item edit, label change and deletion first saves the note to KEEP_BACKUP_DIR, so it can be undone.
 
-Notes labeled with anything in KEEP_PROTECTED_LABELS (default Finance, Finanze, Soldi, Money) are read-only for Claude apart from adding new lines or items: no rewrites, item edits, ticking, label changes, archiving or restores.
+Notes labeled with anything in KEEP_PROTECTED_LABELS (default Finance, Finanze, Soldi, Money) are read-only for Claude apart from adding new lines or items: no rewrites, item edits, ticking, label changes, archiving, deleting or restores.
 
 ## How it runs
 
