@@ -230,19 +230,14 @@ export function ThreadList({ view }: { view: string }) {
     setChecked(new Set());
   };
 
-  const groupBlock = <>{view === 'inbox' && !isSearch && !nav.accountId && <GroupSuggestions />}</>;
-  const groupLine = (g: GroupSummary) => <GroupBundle key={`g:${g.name}`} summary={g} base={base} render={(t) => renderRow(t, true)} />;
-  // Rows with each group line slotted in by date; lines older than the loaded page wait until it scrolls there.
-  const weave = (list: ThreadSummary[], more: boolean): ReactNode[] => {
-    const out: ReactNode[] = [];
-    let gi = 0;
-    for (const t of list) {
-      while (gi < groupLines.length && groupLines[gi].latestDate >= t.lastDate) out.push(groupLine(groupLines[gi++]));
-      out.push(renderRow(t));
-    }
-    if (!more) while (gi < groupLines.length) out.push(groupLine(groupLines[gi++]));
-    return out;
-  };
+  // All sender groups fold into ONE row at the top (like Gmail's Promotions row); open it to see each group.
+  const groupBlock = (
+    <>
+      {view === 'inbox' && !isSearch && !nav.accountId && <GroupSuggestions />}
+      {groupLines.length > 0 && <GroupsRow lines={groupLines} base={base} render={(t) => renderRow(t, true)} />}
+    </>
+  );
+  const weave = (list: ThreadSummary[]): ReactNode[] => list.map((t) => renderRow(t));
 
   let body: ReactNode;
   if (view === 'blocked') body = <BlockedList />;
@@ -270,16 +265,16 @@ export function ThreadList({ view }: { view: string }) {
         {/* Bundles sit above People so they stay reachable in a long inbox; closed, they are one line each. */}
         <Bundle k="notif" label="Notifications" icon="bell" rows={notifRows} query={notifs} render={(t) => renderRow(t, true)} />
         <Bundle k="news" label="Newsletters" icon="news" rows={newsRows} query={news} render={(t) => renderRow(t, true)} />
-        {(peopleRows.length > 0 || groupLines.length > 0) && (
+        {peopleRows.length > 0 && (
           <>
             <div className="sec">People <span className="n">{counts?.total ?? peopleRows.length}</span></div>
-            {weave(peopleRows, !!main.hasNextPage)}
+            {weave(peopleRows)}
           </>
         )}
       </>
     );
   } else {
-    const list = weave(rows, !!main.hasNextPage);
+    const list = weave(rows);
     body = (
       <>
         {groupBlock}
@@ -435,6 +430,29 @@ function Bundle({ k, label, icon, rows, query, render }: { k: string; label: str
           {query.isFetchingNextPage ? 'Loading' : 'Load more'}
         </button>
       )}
+    </section>
+  );
+}
+
+function GroupsRow({ lines, base, render }: { lines: GroupSummary[]; base: { view: string; account?: string }; render: (t: ThreadSummary) => ReactNode }) {
+  const open = useUI((s) => !!s.bundlesOpen.groups);
+  const toggle = useUI((s) => s.toggleBundle);
+  const fresh = lines.filter((g) => g.fresh > 0);
+  const newCount = fresh.reduce((n, g) => n + g.fresh, 0);
+  const names = (fresh.length ? fresh : lines).map((g) => g.name);
+  const summary = names.slice(0, 4).join(', ') + (names.length > 4 ? ` +${names.length - 4}` : '');
+  return (
+    <section className={`bundle groups-row${open ? ' open' : ''}${newCount ? ' fresh' : ''}`} aria-label="Groups">
+      <button className="bundle-head" onClick={() => toggle('groups')} aria-expanded={open}>
+        <span className="bundle-ico"><Icon name="labelFilled" size={18} /></span>
+        <span className="bundle-title">
+          <span>Groups <small className="group-count">{lines.length}</small></span>
+          <small>{summary}</small>
+        </span>
+        {newCount > 0 && <span className="pill">{newCount} new</span>}
+        <Icon name="chevronDown" size={18} className="bundle-chev" />
+      </button>
+      {open && <div className="groups-list">{lines.map((g) => <GroupBundle key={g.name} summary={g} base={base} render={render} />)}</div>}
     </section>
   );
 }

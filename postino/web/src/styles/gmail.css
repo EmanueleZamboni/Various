@@ -2772,3 +2772,29 @@ a.btn {
 .keep-title { font-size: 16px; font-weight: 500; margin: 4px 8px 8px; }
 .keep-error { color: var(--danger, #b3261e); }
 .claude-url .input { flex: 1; min-width: 180px; }
+
+/* All groups in one row at the top of the inbox */
+.bundle.groups-row {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  border-bottom: 1px solid var(--row-line);
+  background: transparent;
+}
+.groups-row > .bundle-head {
+  min-height: 56px;
+  padding: 8px 16px;
+}
+.groups-row > .bundle-head .bundle-ico {
+  border: 0;
+  background: var(--postal);
+  color: var(--pine);
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+}
+.groups-row .bundle-title > span { font-weight: 400; }
+.groups-row.fresh > .bundle-head .bundle-title > span { font-weight: 700; }
+.groups-row.open > .bundle-head { background: var(--sheet-2); }
+.groups-list { border-top: 1px solid var(--row-line); }
+.groups-list .group-line .bundle-head { padding-left: 32px; }
