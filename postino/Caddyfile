@@ -17,6 +17,14 @@
 		}
 	}
 
+	# Segretario (memoria condivisa per Claude): repo EmanueleZamboni/segretario, container sulla rete di Caddy.
+	# Il segreto è nel percorso: niente access log.
+	handle_path /segretario/* {
+		reverse_proxy segretario:8766 {
+			flush_interval -1
+		}
+	}
+
 	handle {
 		reverse_proxy postino:8025 {
 			# Server-sent events must not be buffered.

@@ -180,6 +180,27 @@ else
 fi
 $S rm -rf "$T"
 
+# ---------------- 7. Segretario (repo separato, container sulla rete di Caddy) ----------------
+# Clona https://github.com/EmanueleZamboni/segretario in ~/segretario, installa il suo aggiornamento
+# automatico (cron) e lo avvia. Nessun sudo: tutto come l'utente normale. Idempotente.
+SEG="$HOME/segretario"
+if [ ! -d "$SEG/.git" ]; then
+  if git clone -q https://github.com/EmanueleZamboni/segretario.git "$SEG" 2>/dev/null; then log "segretario: cloned into $SEG"; else log "segretario: clone FAILED"; fi
+else
+  git -C "$SEG" fetch -q origin 2>/dev/null && git -C "$SEG" merge -q --ff-only origin/main 2>/dev/null && log "segretario: updated to $(git -C "$SEG" log -1 --format=%h)"
+fi
+chmod +x "$SEG"/scripts/*.sh 2>/dev/null
+if [ -f "$SEG/scripts/install.sh" ]; then
+  bash "$SEG/scripts/install.sh" >> "$R" 2>&1 || log "segretario: install.sh failed (exit $?)"
+fi
+# Lo stato del Segretario (con l'URL del connettore) in ops/keep-url: Postino lo serve su /api/ops/keep/url
+# e lo cancella dopo 24 ore. Scritto con sudo, così non dipende dai permessi dell'utente.
+if [ -f "$SEG/STATUS.txt" ]; then
+  $S install -o 1000 -g 1000 -m 600 "$SEG/STATUS.txt" "$OPS/keep-url" && log "segretario: stato copiato in ops/keep-url"
+else
+  log "segretario: STATUS.txt mancante (report.sh non ha girato)"
+fi
+
 log ""; log "== Next: Postino > Settings > Claude > Google Keep (sign in once)."
 publish
 echo "$VERSION" > "$STAMP"
