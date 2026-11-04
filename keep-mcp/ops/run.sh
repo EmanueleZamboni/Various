@@ -186,7 +186,10 @@ $S rm -rf "$T"
 SEG="$HOME/segretario"
 if [ ! -d "$SEG/.git" ]; then
   if git clone -q https://github.com/EmanueleZamboni/segretario.git "$SEG" 2>/dev/null; then log "segretario: cloned into $SEG"; else log "segretario: clone FAILED"; fi
+else
+  git -C "$SEG" fetch -q origin 2>/dev/null && git -C "$SEG" merge -q --ff-only origin/main 2>/dev/null && log "segretario: updated to $(git -C "$SEG" log -1 --format=%h)"
 fi
+chmod +x "$SEG"/scripts/*.sh 2>/dev/null
 if [ -x "$SEG/scripts/install.sh" ]; then
   "$SEG/scripts/install.sh" >> "$R" 2>&1 || log "segretario: install.sh failed (exit $?)"
 elif [ -f "$SEG/scripts/install.sh" ]; then
