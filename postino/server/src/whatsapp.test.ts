@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { db } from './db.js';
-import { messageText, storeMessages, waChats, waMessages, waSearch, resolveChat, waStatus } from './whatsapp.js';
+import { messageText, storeMessages, waChats, waMessages, waSearch, resolveChat, waStatus, transcribeAudio, applyTranscript, transcriptionStatus, setTranscriptionKey, transcriptionKey } from './whatsapp.js';
 
 describe('whatsapp store', () => {
   it('starts off: nothing connects until linked', () => {
@@ -29,6 +29,49 @@ describe('whatsapp store', () => {
     expect(waMessages('393330000001@s.whatsapp.net', 10).map((m) => `${m.from}: ${m.text}`)).toEqual(['Marco: Ci vediamo domani?', 'Me: Sì, alle 9']);
     expect(waChats('', 10)[1].unread).toBe(0);
     expect(waSearch('domani', 5)[0]).toMatchObject({ chat: 'Marco', from: 'Marco' });
+    db.exec('DELETE FROM wa_messages; DELETE FROM wa_chats; DELETE FROM wa_contacts;');
+  });
+});
+
+describe('whatsapp voice notes', () => {
+  const jid = '393330000001@s.whatsapp.net';
+  const note = { key: { remoteJid: jid, id: 'v1', fromMe: false }, pushName: 'Marco', messageTimestamp: 1_800_000_500, message: { audioMessage: { ptt: true, seconds: 7, mimetype: 'audio/ogg; codecs=opus' } } };
+  it('is off until a key is saved; the key is stored encrypted', () => {
+    delete process.env.GROQ_API_KEY;
+    setTranscriptionKey('');
+    expect(transcriptionStatus().enabled).toBe(false);
+    setTranscriptionKey('gsk_testtesttesttesttesttest');
+    expect(transcriptionKey()).toEqual({ key: 'gsk_testtesttesttesttesttest', source: 'settings' });
+    const raw = db.prepare("SELECT value FROM settings WHERE key = 'whatsapp.transcribeKey'").get() as { value: string };
+    expect(raw.value).not.toContain('gsk_');
+    setTranscriptionKey('');
+    expect(transcriptionKey()).toBeNull();
+  });
+  it('sends the audio to Groq as a file and returns the text', async () => {
+    const seen: { url: string; auth: string; name: string; model: string; size: number }[] = [];
+    const fakeFetch = (async (url: string | URL | Request, init?: RequestInit) => {
+      const form = init?.body as FormData;
+      const file = form.get('file') as File;
+      seen.push({ url: String(url), auth: String((init?.headers as Record<string, string>).Authorization), name: file.name, model: String(form.get('model')), size: file.size });
+      return new Response(JSON.stringify({ text: '  Ci vediamo alle nove davanti al bar.  ' }), { status: 200 });
+    }) as typeof fetch;
+    const text = await transcribeAudio(Buffer.from('OggS fake audio'), 'audio/ogg; codecs=opus', 'gsk_abc', fakeFetch);
+    expect(text).toBe('Ci vediamo alle nove davanti al bar.');
+    expect(seen[0]).toMatchObject({ url: 'https://api.groq.com/openai/v1/audio/transcriptions', auth: 'Bearer gsk_abc', name: 'voice.ogg', model: 'whisper-large-v3-turbo', size: 15 });
+    const failing = (async () => new Response(JSON.stringify({ error: { message: 'Invalid API Key' } }), { status: 401 })) as typeof fetch;
+    await expect(transcribeAudio(Buffer.from('x'), 'audio/ogg', 'gsk_bad', failing)).rejects.toThrow('Invalid API Key');
+  });
+  it('keeps the tag in front of the transcript, searches it, and a redelivery does not wipe it', () => {
+    db.exec('DELETE FROM wa_messages; DELETE FROM wa_chats; DELETE FROM wa_contacts;');
+    expect(storeMessages([note] as never, true)).toBe(1);
+    expect(waMessages(jid, 5)[0].text).toBe('[voice message]');
+    applyTranscript(jid, 'v1', 'Ci vediamo alle nove\n davanti al bar.');
+    expect(waMessages(jid, 5)[0].text).toBe('[voice message] Ci vediamo alle nove davanti al bar.');
+    expect(waSearch('davanti al bar', 5)[0]).toMatchObject({ from: 'Marco' });
+    storeMessages([note] as never, true); // WhatsApp delivers the same message again
+    expect(waMessages(jid, 5)[0].text).toBe('[voice message] Ci vediamo alle nove davanti al bar.');
+    applyTranscript(jid, 'v1', '   ');
+    expect(waMessages(jid, 5)[0].text).toBe('[voice message] (nothing understood)');
     db.exec('DELETE FROM wa_messages; DELETE FROM wa_chats; DELETE FROM wa_contacts;');
   });
 });

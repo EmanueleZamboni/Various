@@ -1301,7 +1301,7 @@ function WhatsAppSettings() {
             <p className="help">
               <b>Before you link:</b> WhatsApp has no official way to connect a personal account, so this uses the same method as WhatsApp Web through an unofficial library. It works well, but WhatsApp could, rarely, limit or ban numbers it thinks are automated. Postino only reads, and sends only what you approve, which keeps the risk low but not zero.
             </p>
-            <p className="help">Only the text of your messages is kept, on your own server (photos and voice notes show as [photo], [voice message]). Unlink any time here or from the phone.</p>
+            <p className="help">Only the text of your messages is kept, on your own server (photos show as [photo]; voice notes as [voice message], or as text if you turn on transcription below). Unlink any time here or from the phone.</p>
             <div className="sheet-actions wa-actions">
               <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => void link(false)}>Link with QR code</button>
             </div>
@@ -1312,8 +1312,46 @@ function WhatsAppSettings() {
             </form>
           </div>
         )}
+        <VoiceNotesCard />
       </div>
     </>
+  );
+}
+
+/** Voice notes to text: optional, needs a free Groq key; new voice notes become "[voice message] <text>". */
+function VoiceNotesCard() {
+  const toast = useUI((s) => s.toast);
+  const [key, setKey] = useState('');
+  const [busy, setBusy] = useState(false);
+  const { data: tr, refetch } = useQuery({ queryKey: ['whatsapp-transcription'], queryFn: api.whatsapp.transcription, refetchInterval: 30_000 });
+  const save = async (value: string) => {
+    setBusy(true);
+    try {
+      await api.whatsapp.setTranscriptionKey(value);
+      setKey('');
+      toast({ text: value ? 'Voice notes will be transcribed from now on.' : 'Transcription turned off.', kind: 'success' });
+      void refetch();
+    } catch (e) {
+      toast({ text: (e as Error).message, kind: 'error' });
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="card claude-steps">
+      <Row
+        title="Voice notes to text"
+        hint={tr?.enabled ? `On${tr.source === 'env' ? ' (key from the server environment)' : ''}: ${tr.done} transcribed, ${tr.failed} failed${tr.lastError ? ` (last error: ${tr.lastError})` : ''}.` : 'Off. New voice notes stay "[voice message]".'}
+      />
+      <p className="help">
+        Paste a Groq API key (free at console.groq.com &gt; API Keys) and every new voice note is turned into text with Whisper, so Claude can read and search it. The audio is sent to Groq and not kept. Old voice notes are not transcribed.
+      </p>
+      <form className="row-inline claude-url" onSubmit={(e) => { e.preventDefault(); void save(key.trim()); }}>
+        <input className="input" type="password" autoComplete="off" value={key} onChange={(e) => setKey(e.target.value)} placeholder="gsk_…" aria-label="Groq API key" />
+        <button className="btn btn-primary btn-sm" disabled={busy || !key.trim()}>Save</button>
+        {tr?.source === 'settings' && <button type="button" className="btn btn-quiet btn-sm" disabled={busy} onClick={() => void save('')}>Turn off</button>}
+      </form>
+    </div>
   );
 }
 
