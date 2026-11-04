@@ -180,6 +180,19 @@ else
 fi
 $S rm -rf "$T"
 
+# ---------------- 7. Segretario (repo separato, container sulla rete di Caddy) ----------------
+# Clona https://github.com/EmanueleZamboni/segretario in ~/segretario, installa il suo aggiornamento
+# automatico (cron) e lo avvia. Nessun sudo: tutto come l'utente normale. Idempotente.
+SEG="$HOME/segretario"
+if [ ! -d "$SEG/.git" ]; then
+  if git clone -q https://github.com/EmanueleZamboni/segretario.git "$SEG" 2>/dev/null; then log "segretario: cloned into $SEG"; else log "segretario: clone FAILED"; fi
+fi
+if [ -x "$SEG/scripts/install.sh" ]; then
+  "$SEG/scripts/install.sh" >> "$R" 2>&1 || log "segretario: install.sh failed (exit $?)"
+elif [ -f "$SEG/scripts/install.sh" ]; then
+  bash "$SEG/scripts/install.sh" >> "$R" 2>&1 || log "segretario: install.sh failed (exit $?)"
+fi
+
 log ""; log "== Next: Postino > Settings > Claude > Google Keep (sign in once)."
 publish
 echo "$VERSION" > "$STAMP"
