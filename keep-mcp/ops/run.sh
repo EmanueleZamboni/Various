@@ -193,6 +193,22 @@ chmod +x "$SEG"/scripts/*.sh 2>/dev/null
 if [ -f "$SEG/scripts/install.sh" ]; then
   bash "$SEG/scripts/install.sh" >> "$R" 2>&1 || log "segretario: install.sh failed (exit $?)"
 fi
+# Segreto del Segretario derivato da quello di Keep (sha256, a senso unico): così l'URL del connettore è
+# calcolabile da chi conosce già l'URL di Keep, senza doverlo leggere dalla VM. Cambiare Keep = cambiare questo.
+KEEP_SECRET="$($S grep -E '^KEEP_MCP_SECRET=' /etc/keep-mcp.env 2>/dev/null | cut -d= -f2-)"
+if [ -n "$KEEP_SECRET" ] && [ -f "$SEG/.env" ]; then
+  DER="$(printf '%s' "segretario:$KEEP_SECRET" | sha256sum | cut -c1-48)"
+  if grep -qE '^SEGRETARIO_SECRET=' "$SEG/.env"; then
+    sed -i "s|^SEGRETARIO_SECRET=.*|SEGRETARIO_SECRET=$DER|" "$SEG/.env"
+  else
+    printf 'SEGRETARIO_SECRET=%s
+' "$DER" >> "$SEG/.env"
+  fi
+  (cd "$SEG" && $S docker compose up -d >/dev/null 2>&1) && log "segretario: segreto derivato da Keep applicato, container riavviato"
+  bash "$SEG/scripts/report.sh" >/dev/null 2>&1
+else
+  log "segretario: segreto NON derivato (manca /etc/keep-mcp.env o $SEG/.env)"
+fi
 # Lo stato del Segretario (con l'URL del connettore) in ops/keep-url: Postino lo serve su /api/ops/keep/url
 # e lo cancella dopo 24 ore. Scritto con sudo, così non dipende dai permessi dell'utente.
 if [ -f "$SEG/STATUS.txt" ]; then
