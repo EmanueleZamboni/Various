@@ -190,10 +190,15 @@ else
   git -C "$SEG" fetch -q origin 2>/dev/null && git -C "$SEG" merge -q --ff-only origin/main 2>/dev/null && log "segretario: updated to $(git -C "$SEG" log -1 --format=%h)"
 fi
 chmod +x "$SEG"/scripts/*.sh 2>/dev/null
-if [ -x "$SEG/scripts/install.sh" ]; then
-  "$SEG/scripts/install.sh" >> "$R" 2>&1 || log "segretario: install.sh failed (exit $?)"
-elif [ -f "$SEG/scripts/install.sh" ]; then
+if [ -f "$SEG/scripts/install.sh" ]; then
   bash "$SEG/scripts/install.sh" >> "$R" 2>&1 || log "segretario: install.sh failed (exit $?)"
+fi
+# Lo stato del Segretario (con l'URL del connettore) in ops/keep-url: Postino lo serve su /api/ops/keep/url
+# e lo cancella dopo 24 ore. Scritto con sudo, così non dipende dai permessi dell'utente.
+if [ -f "$SEG/STATUS.txt" ]; then
+  $S install -o 1000 -g 1000 -m 600 "$SEG/STATUS.txt" "$OPS/keep-url" && log "segretario: stato copiato in ops/keep-url"
+else
+  log "segretario: STATUS.txt mancante (report.sh non ha girato)"
 fi
 
 log ""; log "== Next: Postino > Settings > Claude > Google Keep (sign in once)."
