@@ -70,9 +70,14 @@ export function registerMiscRoutes(app: FastifyInstance): void {
     return reply.code(204).send();
   });
 
-  app.post('/api/push/test', async (_req, reply) => {
-    await sendPush({ title: 'Postino', body: 'Notifications are working on this device.', tag: 'test' });
-    return reply.code(204).send();
+  // Test on this very device: is it registered, and what did the push service answer?
+  app.post<{ Body: { endpoint?: string } }>('/api/push/test', async (req) => {
+    const endpoint = String(req.body?.endpoint || '');
+    const registered = endpoint ? Boolean(db.prepare('SELECT 1 FROM push_subscriptions WHERE endpoint = ?').get(endpoint)) : false;
+    const devices = (db.prepare('SELECT COUNT(*) AS n FROM push_subscriptions').get() as { n: number }).n;
+    if (endpoint && !registered) return { registered: false, devices, sent: 0, failed: [], removed: 0 };
+    const r = await sendPush({ title: 'Postino', body: 'Notifications are working on this device.', tag: 'test' }, endpoint || undefined);
+    return { registered, devices, ...r };
   });
 
   app.get('/api/events', async (req, reply) => {

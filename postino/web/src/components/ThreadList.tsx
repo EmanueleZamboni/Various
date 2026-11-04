@@ -12,7 +12,7 @@ import { useUI } from '../store';
 import { accountLabel, formatListDate, pluralize } from '../util/format';
 import { ThreadRow } from './ThreadRow';
 import { BlockedList } from './BlockedList';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 const flat = (d?: InfiniteData<ThreadsResponse>) => d?.pages.flatMap((p) => p.threads) ?? [];
 
@@ -485,8 +485,17 @@ function GroupsRow({ lines, base, render }: { lines: GroupSummary[]; base: { vie
   const toggle = useUI((s) => s.toggleBundle);
   const fresh = lines.filter((g) => g.fresh > 0);
   const newCount = fresh.reduce((n, g) => n + g.fresh, 0);
+  const importantCount = lines.reduce((n, g) => n + (g.important ?? 0), 0);
   const names = (fresh.length ? fresh : lines).map((g) => g.name);
   const summary = names.slice(0, 4).join(', ') + (names.length > 4 ? ` +${names.length - 4}` : '');
+  // Important grouped mail (sales, codes, failed payments…) shows right here while unread.
+  const important = useQuery({
+    queryKey: ['groupSummary', 'important', base.account ?? 'all'],
+    queryFn: () => api.groups.important(base.account),
+    enabled: importantCount > 0,
+    staleTime: 30_000,
+  });
+  const imp = importantCount > 0 ? important.data?.threads ?? [] : [];
   return (
     <section className={`bundle groups-row${open ? ' open' : ''}${newCount ? ' fresh' : ''}`} aria-label="Groups">
       <button className="bundle-head" onClick={() => toggle('groups')} aria-expanded={open}>
@@ -495,9 +504,11 @@ function GroupsRow({ lines, base, render }: { lines: GroupSummary[]; base: { vie
           <span>Groups <small className="group-count">{lines.length}</small></span>
           <small>{summary}</small>
         </span>
+        {importantCount > 0 && <span className="pill pill-imp">{importantCount} important</span>}
         {newCount > 0 && <span className="pill">{newCount} new</span>}
         <Icon name="chevronDown" size={18} className="bundle-chev" />
       </button>
+      {!open && imp.length > 0 && <div className="groups-important" aria-label="Important in groups">{imp.map(render)}</div>}
       {open && <div className="groups-list">{lines.map((g) => <GroupBundle key={g.name} summary={g} base={base} render={render} />)}</div>}
     </section>
   );
@@ -544,6 +555,7 @@ function GroupBundle({ summary: g, base, render }: { summary: GroupSummary; base
             <span>{g.name} <small className="group-count">{g.total}</small></span>
             <small>{open ? pluralize(g.total, 'conversation') : `${who}: ${g.latestSubject}`}</small>
           </span>
+          {(g.important ?? 0) > 0 && <span className="pill pill-imp">{g.important} important</span>}
           {g.fresh > 0 && <span className="pill">{g.fresh} new</span>}
           <span className="group-date">{formatListDate(g.latestDate)}</span>
         </button>

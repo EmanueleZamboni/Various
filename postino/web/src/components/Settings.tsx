@@ -537,6 +537,39 @@ function NotificationSettings({ me }: { me?: Me }) {
       setBusy(false);
     }
   };
+  // The test checks this very device step by step and says where it breaks.
+  const [testInfo, setTestInfo] = useState('');
+  const runTest = async () => {
+    if (!me) return;
+    setBusy(true);
+    setTestInfo('Checking…');
+    try {
+      if (typeof Notification !== 'undefined' && Notification.permission === 'denied') {
+        setTestInfo('Notifications are blocked for postino in this browser. Chrome: ⋮ → Settings → Site settings → Notifications → allow postino.emazamboni.com, then try again.');
+        return;
+      }
+      let sub = await currentSubscription();
+      if (!sub) {
+        const r = await enablePush(me.vapidPublicKey);
+        if (r !== 'ok') {
+          setTestInfo(r === 'denied' ? 'Permission was not given, so this device cannot be notified.' : 'This browser cannot receive push notifications.');
+          return;
+        }
+        sub = await currentSubscription();
+        setSubscribed(true);
+      } else {
+        await api.push.subscribe(sub.toJSON()); // make sure the server knows this device
+      }
+      const r = await api.push.test(sub?.endpoint);
+      if (!r.registered) setTestInfo('The server did not know this device; it has been registered again. Press the test once more.');
+      else if (r.sent) setTestInfo(`Sent: Google's push service accepted it (${r.devices} device${r.devices === 1 ? '' : 's'} registered). If nothing appears within a few seconds, notifications for Chrome are off on the phone (Android Settings → Apps → Chrome → Notifications) or battery saving is holding them back.`);
+      else setTestInfo(`The push service refused it: ${r.failed.map((f) => `${f.status ?? ''} ${f.message}`).join('; ') || 'no answer'}. Send this message to Claude.`);
+    } catch (e) {
+      setTestInfo(`Error: ${(e as Error).message}`);
+    } finally {
+      setBusy(false);
+    }
+  };
   const cats: { id: Category; label: string; hint: string }[] = [
     { id: 'person', label: 'People', hint: 'Mail written by a person to you' },
     { id: 'notification', label: 'Notifications', hint: 'Receipts, shares, alerts from services' },
@@ -577,9 +610,10 @@ function NotificationSettings({ me }: { me?: Me }) {
             </div>
           ))}
         </div>
-        <button className="btn btn-ghost" style={{ alignSelf: 'flex-start' }} disabled={!subscribed} onClick={() => api.push.test().then(() => toast({ text: 'Test notification sent' })).catch((e) => toast({ text: (e as Error).message, kind: 'error' }))}>
+        <button className="btn btn-ghost" style={{ alignSelf: 'flex-start' }} disabled={busy || !supported || !me} onClick={() => void runTest()}>
           Send a test notification
         </button>
+        {testInfo && <p className="help push-test">{testInfo}</p>}
       </div>
     </>
   );

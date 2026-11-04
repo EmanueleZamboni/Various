@@ -1554,6 +1554,10 @@ h3 {
   }
   .shell[data-view='reader'] .reader {
     display: flex;
+    animation: reader-in 0.2s cubic-bezier(0.2, 0, 0, 1);
+  }
+  .shell[data-view='list'] .list-pane {
+    animation: list-back 0.18s cubic-bezier(0.2, 0, 0, 1);
   }
   .shell[data-reading='side'] .list-pane {
     flex: 1 1 auto;
@@ -2841,3 +2845,38 @@ a.btn {
 .calls-macro { margin: 10px 8px; }
 .calls-macro code { font-size: 12px; }
 .linkish { background: none; border: 0; padding: 0; color: var(--pine); text-decoration: underline; cursor: pointer; font: inherit; }
+.pill.pill-imp { background: #fde7c4; color: #7a4100; }
+:root[data-theme='dark'] .pill.pill-imp { background: #5c3b00; color: #ffdcae; }
+.groups-important { border-top: 1px solid var(--row-line); }
+.groups-important .row { border-left: 3px solid #f29900; }
+
+/* Phone page changes: transform/opacity only, so the GPU does the work */
+@keyframes reader-in {
+  from {
+    transform: translate3d(24px, 0, 0);
+    opacity: 0.4;
+  }
+}
+@keyframes list-back {
+  from {
+    transform: translate3d(-12px, 0, 0);
+    opacity: 0.6;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .shell[data-view='reader'] .reader,
+  .shell[data-view='list'] .list-pane {
+    animation: none;
+  }
+}
+/* Loading placeholders fade instead of repainting a gradient every frame */
+.skel-av,
+.skel-line {
+  background: var(--search-bg, #eef0f5);
+  animation: skel-pulse 1.2s ease-in-out infinite;
+}
+@keyframes skel-pulse {
+  50% {
+    opacity: 0.45;
+  }
+}

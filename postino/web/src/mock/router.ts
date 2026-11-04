@@ -355,9 +355,10 @@ on('DELETE', '/api/groups/sender/:email', ({ params }) => { delete mockGroups[de
 on('PATCH', '/api/groups', () => json({ ok: true }));
 on('GET', '/api/groups/summary', () => {
   const names = [...new Set(Object.values(mockGroups))];
-  return json({ groups: names.map((name, i) => ({ name, latestDate: new Date(Date.now() - (3 + i * 20) * 3600_000).toISOString(), latestThreadId: 't1', latestFrom: { name: name, email: 'no-reply@example.com' }, latestSubject: i ? 'Your weekly summary' : 'Security alert for your account', total: 4 + i, fresh: i ? 0 : 2 })) });
+  return json({ groups: names.map((name, i) => ({ name, latestDate: new Date(Date.now() - (3 + i * 20) * 3600_000).toISOString(), latestThreadId: 't1', latestFrom: { name: name, email: 'no-reply@example.com' }, latestSubject: i ? 'Your weekly summary' : 'Security alert for your account', total: 4 + i, fresh: i ? 0 : 2, important: i ? 1 : 0 })) });
 });
 on('POST', '/api/groups/seen', () => json({ ok: true }));
+on('GET', '/api/groups/important', () => json({ threads: [{ id: 'imp1', accountId: 'a1', subject: 'Hai venduto Lettore Dvd Sony', snippet: 'Prepara il pacco e spediscilo entro 5 giorni', participants: [{ name: 'Vinted', email: 'no-reply@vinted.it' }], lastFrom: { name: 'Vinted', email: 'no-reply@vinted.it' }, lastDate: new Date(Date.now() - 2 * 3600_000).toISOString(), firstDate: new Date().toISOString(), count: 1, unread: true, unreadCount: 1, pinned: false, answered: false, hasAttachments: true, draft: false, category: 'notification', folderRoles: ['inbox'] }] }));
 on('POST', '/api/groups/done', () => json({ affected: 4 }));
 on('GET', '/api/groups/suggestions', () => json({ suggestions: [
   { name: 'Affiliates', senders: [{ email: 'associates@amazon.com', count: 12 }, { email: 'affiliate@notice.aliexpress.com', count: 6 }] },
@@ -633,7 +634,7 @@ on('GET', '/api/outbox', () => json({ items: outbox.filter((o) => o.status === '
 on('DELETE', '/api/outbox/:id', ({ params }) => { const i = outbox.findIndex((o) => o.id === params.id); if (i < 0) return fail(404, 'gone', 'Already sent.'); const o = outbox.splice(i, 1)[0]; const d = { id: nid('d'), accountId: o.accountId, to: o.to, cc: o.cc, bcc: '', subject: o.subject, text: o.text, inReplyTo: null, threadId: o.threadId, updatedAt: new Date().toISOString() }; drafts.unshift(d); return json({ ok: true, draft: d }); });
 on('POST', '/api/push/subscribe', () => empty());
 on('DELETE', '/api/push/subscribe', () => empty());
-on('POST', '/api/push/test', () => empty());
+on('POST', '/api/push/test', () => json({ registered: true, devices: 1, sent: 1, failed: [], removed: 0 }));
 
 function match(pattern: string, path: string): Record<string, string> | null {
   const a = pattern.split('/');

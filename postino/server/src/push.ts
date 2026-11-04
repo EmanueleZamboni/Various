@@ -3,6 +3,7 @@ import webpush from 'web-push';
 import { db, getSetting, setSetting } from './db.js';
 import { bus } from './events.js';
 import { log } from './log.js';
+import { config } from './config.js';
 
 type Vapid = { publicKey: string; privateKey: string };
 
@@ -21,24 +22,40 @@ export function notificationSettings(): NotificationSettings {
   return getSetting<NotificationSettings>('notifications', { enabled: true, categories: ['person'] });
 }
 
-export async function sendPush(payload: { title: string; body: string; threadId?: string; accountId?: string; tag?: string }): Promise<void> {
+export type PushResult = { sent: number; failed: { status: number | null; message: string }[]; removed: number };
+
+/** Who the push services can contact about this sender: a real address or URL, never localhost. */
+function vapidSubject(): string {
+  if (config.baseUrl && /^https:\/\//.test(config.baseUrl)) return config.baseUrl;
+  const acc = db.prepare('SELECT email FROM accounts ORDER BY id LIMIT 1').get() as { email: string } | undefined;
+  return acc ? `mailto:${acc.email}` : 'mailto:postino@example.com';
+}
+
+export async function sendPush(payload: { title: string; body: string; threadId?: string; accountId?: string; tag?: string }, onlyEndpoint?: string): Promise<PushResult> {
   const keys = vapidKeys();
-  webpush.setVapidDetails('mailto:postino@localhost', keys.publicKey, keys.privateKey);
-  const subs = db.prepare('SELECT id, subscription_json FROM push_subscriptions').all() as { id: number; subscription_json: string }[];
+  webpush.setVapidDetails(vapidSubject(), keys.publicKey, keys.privateKey);
+  const all = db.prepare('SELECT id, endpoint, subscription_json FROM push_subscriptions').all() as { id: number; endpoint: string; subscription_json: string }[];
+  const subs = onlyEndpoint ? all.filter((s) => s.endpoint === onlyEndpoint) : all;
+  const result: PushResult = { sent: 0, failed: [], removed: 0 };
   await Promise.all(
     subs.map(async (s) => {
       try {
         await webpush.sendNotification(JSON.parse(s.subscription_json), JSON.stringify(payload), { TTL: 3600, urgency: 'high' });
+        result.sent++;
       } catch (err) {
-        const code = (err as { statusCode?: number }).statusCode;
-        if (code === 404 || code === 410 || code === 400 || code === 401 || code === 403 || code === 413 || /keys|p256dh|auth/i.test((err as Error).message || '')) {
+        const code = (err as { statusCode?: number }).statusCode ?? null;
+        const body = String((err as { body?: string }).body || (err as Error).message || '').slice(0, 200);
+        result.failed.push({ status: code, message: body });
+        // Gone for good: the browser dropped this subscription.
+        if (code === 404 || code === 410) {
           db.prepare('DELETE FROM push_subscriptions WHERE id = ?').run(s.id);
-        } else {
-          log.warn({ err: (err as Error).message }, 'push failed');
+          result.removed++;
         }
+        log.warn({ status: code, err: body }, 'push failed');
       }
     }),
   );
+  return result;
 }
 
 /** Push a notification for new inbox mail that matches the user's settings. */

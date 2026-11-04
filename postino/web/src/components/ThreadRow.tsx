@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type PointerEvent } from 'react';
+import { useEffect, useRef, useState, type PointerEvent, memo } from 'react';
 import type { Account, ThreadAction, ThreadSummary, SwipeAction } from '../api/types';
 import { Icon, type IconName } from '../icons';
 import { displayName, formatListDate, participantsLabel } from '../util/format';
@@ -79,7 +79,7 @@ const SWIPE_META: Record<SwipeAction, { label: (t: ThreadSummary) => string; ico
   read: { label: (t) => (t.unread ? 'Mark read' : 'Mark unread'), icon: 'mailOpen', removes: false, tone: 'blue' },
 };
 
-export function ThreadRow({ thread: t, account, myEmails, selected, focused, highlight, compact, previewLines = 1, showAvatar = true, showAccount, accountLabel, onOpen, onSwipe, onAction, onPrefetch, swipeActions, onMove, onBlock, checked = false, onCheck, onAddTask, onGroup }: Props) {
+function ThreadRowInner({ thread: t, account, myEmails, selected, focused, highlight, compact, previewLines = 1, showAvatar = true, showAccount, accountLabel, onOpen, onSwipe, onAction, onPrefetch, swipeActions, onMove, onBlock, checked = false, onCheck, onAddTask, onGroup }: Props) {
   const [ctx, setCtx] = useState<{ x: number; y: number } | null>(null);
   const longPress = useRef<number | undefined>(undefined);
   const menuItems: MenuItem[] = [
@@ -276,3 +276,32 @@ export function ThreadRow({ thread: t, account, myEmails, selected, focused, hig
     </div>
   );
 }
+
+const sameSet = (a: Set<string>, b: Set<string>) => a === b || (a.size === b.size && [...a].every((x) => b.has(x)));
+
+/**
+ * A row only re-renders when what it shows changes. List refetches keep unchanged thread
+ * objects identical (structural sharing), so new mail or a read in one conversation no
+ * longer repaints the whole list: that was the jank while scrolling and refreshing.
+ * Callbacks are deliberately not compared: they only close over the same thread and view.
+ */
+export const ThreadRow = memo(
+  ThreadRowInner,
+  (a, b) =>
+    a.thread === b.thread &&
+    a.account === b.account &&
+    a.selected === b.selected &&
+    a.focused === b.focused &&
+    a.checked === b.checked &&
+    a.highlight === b.highlight &&
+    a.compact === b.compact &&
+    a.previewLines === b.previewLines &&
+    a.showAvatar === b.showAvatar &&
+    a.showAccount === b.showAccount &&
+    a.accountLabel === b.accountLabel &&
+    a.swipeActions?.left === b.swipeActions?.left &&
+    a.swipeActions?.right === b.swipeActions?.right &&
+    !a.onGroup === !b.onGroup &&
+    !a.onBlock === !b.onBlock &&
+    sameSet(a.myEmails, b.myEmails),
+);

@@ -57,3 +57,11 @@ describe('group suggestions', () => {
     db.exec("DELETE FROM messages WHERE account_id = 77; DELETE FROM threads WHERE account_id = 77");
   });
 });
+
+describe('important grouped mail', () => {
+  it('spots sales, codes, failed payments and deliveries, not plain news', async () => {
+    const { isImportant } = await import('./groups.js');
+    for (const s of ['Hai venduto Lettore Dvd Sony', 'Your verification code', 'Pagamento non riuscito', 'Spedizione da ritirare', 'Security alert for ezamboni96@gmail.com', 'Etichetta di spedizione - da usare entro il 09/10']) expect(isImportant(s), s).toBe(true);
+    for (const s of ['4 new image styles to try', 'Il tuo riepilogo settimanale', 'Barcode scanner deals']) expect(isImportant(s), s).toBe(false);
+  });
+});

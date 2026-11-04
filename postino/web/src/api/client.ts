@@ -17,6 +17,7 @@ import type {
   ThreadAction,
   ThreadDetail,
   ThreadsResponse,
+  ThreadSummary,
  Signature, Passkey, DeepPartial, OutboxItem, Template } from './types';
 
 export class ApiError extends Error {
@@ -134,6 +135,7 @@ export const api = {
     bulk: (groups: { name: string; senders: string[] }[]) => post<{ added: number }>('/api/groups/bulk', { groups }),
     summary: (account?: string) => get<{ groups: GroupSummary[] }>(`/api/groups/summary${qs({ account })}`),
     seen: (name: string) => post<{ ok: true }>('/api/groups/seen', { name }),
+    important: (account?: string) => get<{ threads: ThreadSummary[] }>(`/api/groups/important${qs({ account })}`),
     done: (name: string, account?: string) => post<{ affected: number }>('/api/groups/done', { name, account }),
   },
   calls: {
@@ -229,9 +231,9 @@ export const api = {
   push: {
     subscribe: (subscription: PushSubscriptionJSON) => post<void>('/api/push/subscribe', { subscription }),
     unsubscribe: (endpoint: string) => del<void>('/api/push/subscribe', { endpoint }),
-    test: () => post<void>('/api/push/test'),
+    test: (endpoint?: string) => post<{ registered: boolean; devices: number; sent: number; failed: { status: number | null; message: string }[]; removed: number }>('/api/push/test', { endpoint }),
   },
 };
 
 /** One sender group as a line in the inbox. */
-export type GroupSummary = { name: string; latestDate: string; latestThreadId: string; latestFrom: { name: string; email: string }; latestSubject: string; total: number; fresh: number };
+export type GroupSummary = { name: string; latestDate: string; latestThreadId: string; latestFrom: { name: string; email: string }; latestSubject: string; total: number; fresh: number; important?: number };

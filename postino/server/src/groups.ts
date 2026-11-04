@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { db } from './db.js';
+import { threadView } from './views.js';
 
 /**
  * Sender groups: mail from a few exact addresses (e.g. Amazon Associates, Google security
@@ -92,7 +93,25 @@ export function groupSuggestions(): { name: string; senders: { email: string; co
   return [...groups].map(([name, senders]) => ({ name, senders })).sort((a, b) => b.senders.reduce((n, s) => n + s.count, 0) - a.senders.reduce((n, s) => n + s.count, 0));
 }
 
-type SummaryRow = { id: number; last_date: string; unread_count: number; last_from: string; subject: string; g: string };
+/**
+ * Grouped mail that still deserves a look: money that did not go through, codes and sign-ins,
+ * sales and shipping labels, deliveries in trouble, bills, things about to expire.
+ * Shown under the Groups row while unread, never hidden inside a group.
+ */
+const IMPORTANT = new RegExp(
+  [
+    'security alert', 'avviso di sicurezza', 'nuovo accesso', 'new sign-?in', 'unusual', 'insolit', 'password', 'codice', 'verification code', '\\bcode\\b', '\\botp\\b', 'verific',
+    'payment (failed|declined|unsuccessful)', 'pagamento (non riuscito|rifiutato|fallito|non andato)', 'declined', 'rifiutat', 'insolut', 'overdue', 'scadut', 'in scadenza', 'expir', 'scade',
+    'rimborso', 'refund', 'fattura', 'invoice', 'ricevuta di pagamento',
+    'hai venduto', 'venduto', 'you sold', 'etichetta di spedizione', 'shipping label', 'da spedire', 'ricorda di spedire', 'offerta', 'new offer', 'ti ha (scritto|inviato)', 'nuovo messaggio', 'new message',
+    'consegna (non riuscita|fallita|tentata)', 'delivery (failed|attempt|exception)', 'giacenza', 'da ritirare', 'ready for pickup', 'reso', 'return',
+    'sospes', 'suspend', 'bloccat', 'locked', 'azione richiesta', 'action required', 'urgent', 'importante', 'important', 'disputa', 'dispute', 'reclamo', 'problema', 'problem', 'annullat', 'cancel',
+  ].join('|'),
+  'i',
+);
+export const isImportant = (subject: string, snippet = '') => IMPORTANT.test(subject) || IMPORTANT.test(snippet.slice(0, 200));
+
+type SummaryRow = { id: number; last_date: string; unread_count: number; last_from: string; subject: string; snippet: string; g: string };
 
 /** Inbox threads that belong to a group, newest first, with the group name. */
 export function groupedInboxThreads(accountId: number | null, group?: string): SummaryRow[] {
@@ -109,7 +128,7 @@ export function groupedInboxThreads(accountId: number | null, group?: string): S
   }
   return db
     .prepare(
-      `SELECT t.id, t.last_date, t.unread_count, t.last_from, t.subject, gt.group_name AS g FROM threads t
+      `SELECT t.id, t.last_date, t.unread_count, t.last_from, t.subject, t.snippet, gt.group_name AS g FROM threads t
        JOIN group_threads gt ON gt.thread_id = t.id
        WHERE ${where} ORDER BY t.last_date DESC, t.id DESC`,
     )
@@ -122,7 +141,7 @@ export function groupedInboxThreads(accountId: number | null, group?: string): S
  */
 export function groupSummaries(accountId: number | null) {
   const seen = new Map((db.prepare(`SELECT sg.group_name AS g, COALESCE(gs.seen_at, MIN(sg.created_at)) AS seen FROM sender_groups sg LEFT JOIN group_seen gs ON gs.group_name = sg.group_name GROUP BY sg.group_name`).all() as { g: string; seen: string }[]).map((r) => [r.g, r.seen]));
-  const out = new Map<string, { name: string; latestDate: string; latestThreadId: string; latestFrom: { name: string; email: string }; latestSubject: string; total: number; fresh: number }>();
+  const out = new Map<string, { name: string; latestDate: string; latestThreadId: string; latestFrom: { name: string; email: string }; latestSubject: string; total: number; fresh: number; important: number }>();
   for (const r of groupedInboxThreads(accountId)) {
     let g = out.get(r.g);
     if (!g) {
@@ -132,13 +151,22 @@ export function groupSummaries(accountId: number | null) {
       } catch {
         /* keep empty */
       }
-      g = { name: r.g, latestDate: r.last_date, latestThreadId: String(r.id), latestFrom: from, latestSubject: r.subject, total: 0, fresh: 0 };
+      g = { name: r.g, latestDate: r.last_date, latestThreadId: String(r.id), latestFrom: from, latestSubject: r.subject, total: 0, fresh: 0, important: 0 };
       out.set(r.g, g);
     }
     g.total++;
     if (r.unread_count > 0 && r.last_date > (seen.get(r.g) ?? '')) g.fresh++;
+    if (r.unread_count > 0 && isImportant(r.subject, r.snippet)) g.important++;
   }
   return [...out.values()];
+}
+
+/** Unread grouped conversations that look important, newest first. */
+export function importantGroupedThreadIds(accountId: number | null, limit = 5): number[] {
+  return groupedInboxThreads(accountId)
+    .filter((r) => r.unread_count > 0 && isImportant(r.subject, r.snippet))
+    .slice(0, limit)
+    .map((r) => r.id);
 }
 
 export function markGroupSeen(name: string): void {
@@ -205,6 +233,12 @@ export function updateGroup(name: string, change: { newName?: string; notify?: b
 
 export function registerGroupRoutes(app: FastifyInstance): void {
   app.get<{ Querystring: { account?: string } }>('/api/groups/summary', async (req) => ({ groups: groupSummaries(req.query.account ? Number(req.query.account) : null) }));
+
+  app.get<{ Querystring: { account?: string } }>('/api/groups/important', async (req) => {
+    const ids = importantGroupedThreadIds(req.query.account ? Number(req.query.account) : null);
+    const stmt = db.prepare('SELECT * FROM threads WHERE id = ?');
+    return { threads: ids.map((id) => stmt.get(id)).filter(Boolean).map((t) => threadView(t as never)) };
+  });
 
   app.post<{ Body: { name?: string } }>('/api/groups/seen', async (req) => {
     if (req.body?.name) markGroupSeen(String(req.body.name).slice(0, 60));
