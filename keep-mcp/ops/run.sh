@@ -181,8 +181,8 @@ fi
 $S rm -rf "$T"
 
 # ---------------- 7. Segretario (repo separato, container sulla rete di Caddy) ----------------
-# Clona https://github.com/EmanueleZamboni/segretario in ~/segretario, installa il suo aggiornamento
-# automatico (cron) e lo avvia. Nessun sudo: tutto come l'utente normale. Idempotente.
+# Clona https://github.com/EmanueleZamboni/segretario in ~/segretario (o lo aggiorna), fissa il suo segreto,
+# poi lancia il suo install.sh (rete di Caddy, .env, container, cron, rapporto). Nessun sudo oltre a docker.
 SEG="$HOME/segretario"
 if [ ! -d "$SEG/.git" ]; then
   if git clone -q https://github.com/EmanueleZamboni/segretario.git "$SEG" 2>/dev/null; then log "segretario: cloned into $SEG"; else log "segretario: clone FAILED"; fi
@@ -190,11 +190,34 @@ else
   git -C "$SEG" fetch -q origin 2>/dev/null && git -C "$SEG" merge -q --ff-only origin/main 2>/dev/null && log "segretario: updated to $(git -C "$SEG" log -1 --format=%h)"
 fi
 chmod +x "$SEG"/scripts/*.sh 2>/dev/null
+# Segreto del Segretario derivato da quello di Keep (sha256, a senso unico): così l'URL del connettore è
+# calcolabile da chi conosce già l'URL di Keep, senza doverlo leggere dalla VM. Va in .env PRIMA del container.
+# Per usare un segreto proprio: in .env mettere SEGRETARIO_SECRET=<tuo> e SEGRETARIO_SECRET_SOURCE=manual.
+KEEP_SECRET="$($S grep -E '^KEEP_MCP_SECRET=' /etc/keep-mcp.env 2>/dev/null | cut -d= -f2-)"
+if [ -n "$KEEP_SECRET" ] && [ -d "$SEG" ]; then
+  DER="$(printf '%s' "segretario:$KEEP_SECRET" | sha256sum | cut -c1-48)"
+  ENVS="$SEG/.env"
+  if [ -f "$ENVS" ] && grep -qE '^SEGRETARIO_SECRET_SOURCE=manual' "$ENVS"; then
+    log "segretario: segreto manuale in .env, non toccato"
+  else
+    [ -f "$ENVS" ] || { umask 077; printf 'CADDY_NETWORK=postino_default
+SEGRETARIO_PUBLIC_HOST=%s
+' "$DOMAIN" > "$ENVS"; }
+    if grep -qE '^SEGRETARIO_SECRET=' "$ENVS"; then
+      sed -i "s|^SEGRETARIO_SECRET=.*|SEGRETARIO_SECRET=$DER|" "$ENVS"
+    else
+      printf 'SEGRETARIO_SECRET=%s
+' "$DER" >> "$ENVS"
+    fi
+    log "segretario: segreto derivato da Keep in .env"
+  fi
+else
+  log "segretario: segreto NON derivato (manca /etc/keep-mcp.env)"
+fi
 if [ -f "$SEG/scripts/install.sh" ]; then
   bash "$SEG/scripts/install.sh" >> "$R" 2>&1 || log "segretario: install.sh failed (exit $?)"
 fi
-# Lo stato del Segretario (con l'URL del connettore) in ops/keep-url: Postino lo serve su /api/ops/keep/url
-# e lo cancella dopo 24 ore. Scritto con sudo, così non dipende dai permessi dell'utente.
+# Lo stato del Segretario in ops/keep-url: Postino lo serve su /api/ops/keep/url e lo cancella dopo 24 ore.
 if [ -f "$SEG/STATUS.txt" ]; then
   $S install -o 1000 -g 1000 -m 600 "$SEG/STATUS.txt" "$OPS/keep-url" && log "segretario: stato copiato in ops/keep-url"
 else
