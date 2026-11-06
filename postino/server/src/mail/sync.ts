@@ -820,6 +820,17 @@ export class AccountSync {
     return file;
   }
 
+  /** The sender-authentication headers of one message (SPF/DKIM/DMARC verdicts added by the receiving server). */
+  async authHeaders(messageRow: number): Promise<Map<string, string>> {
+    const m = db.prepare('SELECT uid, folder_id FROM messages WHERE id = ?').get(messageRow) as { uid: number; folder_id: number } | undefined;
+    if (!m) return new Map();
+    const folder = db.prepare('SELECT * FROM folders WHERE id = ?').get(m.folder_id) as FolderRow;
+    return this.withMailbox(folder.path, async (client) => {
+      const msg = await client.fetchOne(String(m.uid), { uid: true, headers: ['authentication-results', 'received-spf', 'return-path', 'arc-authentication-results', 'x-spam-status', 'x-spam-score'] }, { uid: true });
+      return parseHeaderBlock(msg ? msg.headers : undefined);
+    });
+  }
+
   // ---- actions ---------------------------------------------------------
 
   private applyMoveResult(src: FolderRow, dest: FolderRow, uids: number[], uidMap: Map<number, number> | null): void {
