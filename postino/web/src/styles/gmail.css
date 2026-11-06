@@ -3184,3 +3184,220 @@ a.btn {
     overflow: hidden;
   }
 }
+
+/* ======================================================================
+   Phone: the Gmail Android app, measured from a screenshot (dp = CSS px).
+   Dark: page #1f1f1f, cards #131313, search pill #393939, read text #ababab,
+   unread sender #e2e2e2, unread subject #fff.
+   ====================================================================== */
+:root {
+  --g-page: #f6f8fc;
+  --g-card: #ffffff;
+  --g-pill: #e9eef6;
+  --g-read: #444746;
+  --g-unread: #1f1f1f;
+  --g-unread-subj: #1f1f1f;
+  --g-dot: #0b57d0;
+  --g-label: #444746;
+}
+:root[data-theme='dark'] {
+  --g-page: #1f1f1f;
+  --g-card: #131313;
+  --g-pill: #393939;
+  --g-read: #ababab;
+  --g-unread: #e2e2e2;
+  --g-unread-subj: #ffffff;
+  --g-dot: #c6c6c6;
+  --g-label: #c6c6c6;
+}
+@media (max-width: 760px) {
+  .shell,
+  .main-card,
+  .list-pane,
+  .list {
+    background: var(--g-page);
+  }
+  /* Top bar: menu, then the search pill, then your picture, as three separate things. */
+  .topbar,
+  .topbar:focus-within {
+    height: 56px;
+    margin: 8px 0 0;
+    padding: 0 7px 0 4px;
+    gap: 8px;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+  .top-menu {
+    width: 48px;
+    height: 48px;
+    flex: none;
+  }
+  .topbar .search {
+    flex: 1;
+    min-width: 0;
+  }
+  .topbar .search-box,
+  .topbar .search-box:focus-within {
+    height: 56px;
+    padding: 0 12px 0 20px;
+    border-radius: 28px;
+    background: var(--g-pill);
+    box-shadow: none;
+  }
+  .topbar .search-box input {
+    text-align: center;
+    font: 400 16px var(--font-display);
+  }
+  .topbar .search-box input:focus {
+    text-align: left;
+  }
+  .topbar .search-box input::placeholder {
+    color: var(--g-label);
+  }
+  /* The AI toggle is Gmail's sparkle button. */
+  .topbar .search-ai {
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    justify-content: center;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    font-size: 0;
+    color: var(--g-label);
+  }
+  .topbar .search-ai svg {
+    width: 26px;
+    height: 26px;
+  }
+  .topbar .search-ai.on {
+    background: var(--pine-soft);
+    color: var(--on-soft);
+  }
+  .topbar .search-box .ib[aria-label='Clear search'] {
+    width: 36px;
+    height: 36px;
+  }
+  .me-wrap {
+    margin: 0;
+  }
+  .me-btn {
+    width: 40px;
+    height: 40px;
+    font-size: 18px;
+    box-shadow: 0 0 0 2px var(--g-page), 0 0 0 4px #4285f4;
+  }
+  /* "Posta in arrivo": a quiet label above the cards. */
+  .list-head {
+    background: var(--g-page);
+    border: 0;
+  }
+  .list-title-row {
+    padding: 14px 17px 10px;
+  }
+  .list-title {
+    font: 400 15px/20px var(--font-display);
+    color: var(--g-label);
+  }
+  .list-sub {
+    display: none;
+  }
+}
+@container list (max-width: 759px) {
+  .list {
+    padding: 0 8px 96px;
+  }
+  :root .list .row-wrap > .row,
+  :root .list .row-wrap > .row.unread,
+  :root .list .groups-row {
+    background: var(--g-card);
+    border-radius: 4px;
+    margin: 0 0 2px;
+  }
+  :root .list > .row-wrap:first-child > .row,
+  :root .list > .bundle:first-child {
+    border-top-left-radius: 16px;
+    border-top-right-radius: 16px;
+  }
+  :root .list .row-wrap > .row:active {
+    background: var(--hover);
+  }
+  :root .list .row-wrap > .row.sel,
+  :root .list .row-wrap > .row.checked {
+    background: var(--pine-soft);
+  }
+  .row {
+    grid-template-columns: 40px minmax(0, 1fr) auto;
+    column-gap: 17px;
+    min-height: 89px;
+    padding: 14px 16px 12px;
+    align-items: start;
+  }
+  .row-av {
+    padding-top: 2px;
+  }
+  .row .av {
+    width: 40px;
+    height: 40px;
+    font-size: 20px;
+  }
+  :root .list .who {
+    font: 400 14px/20px var(--font-display);
+    color: var(--g-read);
+  }
+  :root .list .row.unread .who {
+    font-weight: 700;
+    color: var(--g-unread);
+  }
+  :root .list .row-line,
+  :root .list .row-text > .snip {
+    font: 400 11.5px/18px var(--font);
+    color: var(--g-read);
+  }
+  :root .list .row-text {
+    margin-top: -3.7px;
+  }
+  :root .list .subj {
+    color: var(--g-read);
+    font-weight: 400;
+  }
+  :root .list .row.unread .subj {
+    font-weight: 700;
+    color: var(--g-unread-subj);
+  }
+  .row-text > .snip {
+    margin-top: 0;
+  }
+  :root .list .when {
+    font: 400 10.5px/20px var(--font);
+    color: var(--g-read);
+    padding: 0 0 0 8px;
+    position: relative;
+    top: 3.5px;
+  }
+  :root .list .row.unread .when {
+    font-weight: 700;
+    color: var(--g-unread);
+  }
+  :root .list .row.unread .when::after {
+    width: 8px;
+    height: 8px;
+    margin-left: 13px;
+    background: var(--g-dot);
+    vertical-align: 1px;
+  }
+  :root .list .row-star {
+    width: 24px;
+    height: 24px;
+    margin: 0 0 0 0;
+    color: var(--g-read);
+  }
+  .row-star svg {
+    width: 24px;
+    height: 24px;
+  }
+  .row.unread .snip {
+    color: var(--g-read);
+  }
+}
