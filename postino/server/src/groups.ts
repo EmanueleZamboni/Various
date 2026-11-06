@@ -100,7 +100,9 @@ export function groupSuggestions(): { name: string; senders: { email: string; co
  */
 const IMPORTANT = new RegExp(
   [
-    'security alert', 'avviso di sicurezza', 'nuovo accesso', 'new sign-?in', 'unusual', 'insolit', 'password', 'codice', 'verification code', '\\bcode\\b', '\\botp\\b', 'verific',
+    // Routine sign-in alerts ("Security alert", "new sign-in") stay inside their group: they come
+    // for every login, often to two mailboxes. Unusual activity still stands out.
+    'unusual', 'insolit', 'suspicious', 'sospett', 'password', 'codice', 'verification code', '\\bcode\\b', '\\botp\\b', 'verific',
     'payment (failed|declined|unsuccessful)', 'pagamento (non riuscito|rifiutato|fallito|non andato)', 'declined', 'rifiutat', 'insolut', 'overdue', 'scadut', 'in scadenza', 'expir', 'scade',
     'rimborso', 'refund', 'fattura', 'invoice', 'ricevuta di pagamento',
     'hai venduto', 'venduto', 'you sold', 'etichetta di spedizione', 'shipping label', 'da spedire', 'ricorda di spedire', 'offerta', 'new offer', 'ti ha (scritto|inviato)', 'nuovo messaggio', 'new message',

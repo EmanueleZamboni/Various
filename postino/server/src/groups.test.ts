@@ -61,8 +61,8 @@ describe('group suggestions', () => {
 describe('important grouped mail', () => {
   it('spots sales, codes, failed payments and deliveries, not plain news', async () => {
     const { isImportant } = await import('./groups.js');
-    for (const s of ['Hai venduto Lettore Dvd Sony', 'Your verification code', 'Pagamento non riuscito', 'Spedizione da ritirare', 'Security alert for ezamboni96@gmail.com', 'Etichetta di spedizione - da usare entro il 09/10']) expect(isImportant(s), s).toBe(true);
-    for (const s of ['4 new image styles to try', 'Il tuo riepilogo settimanale', 'Barcode scanner deals']) expect(isImportant(s), s).toBe(false);
+    for (const s of ['Hai venduto Lettore Dvd Sony', 'Your verification code', 'Pagamento non riuscito', 'Spedizione da ritirare', 'Etichetta di spedizione - da usare entro il 09/10']) expect(isImportant(s), s).toBe(true);
+    for (const s of ['4 new image styles to try', 'Il tuo riepilogo settimanale', 'Barcode scanner deals', 'Security alert for ezamboni96@gmail.com']) expect(isImportant(s), s).toBe(false);
   });
 });
 
@@ -75,13 +75,23 @@ describe('important grouped mail', () => {
       db.prepare("INSERT OR REPLACE INTO threads(id, account_id, subject, subject_norm, last_date, inbox_date, roles, msg_count, unread_count) VALUES (?, ?, ?, ?, '2026-11-05T17:15:40.000Z', '2026-11-05', ',inbox,', 1, 1)").run(id, acc, subject, subject);
       db.prepare("INSERT OR REPLACE INTO messages(id, account_id, folder_id, thread_id, uid, message_id, subject, subject_norm, from_email, date, size) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'no-reply@accounts.google.test', '2026-11-05T17:15:40.000Z', 1)").run(id, acc, folder, id, id, `g${id}@x`, subject, subject);
     };
-    put(7801, 77, 770, 'Security alert');
-    put(7802, 78, 780, 'Security alert for me@grp.test');
+    put(7801, 77, 770, 'Unusual sign-in activity');
+    put(7802, 78, 780, 'Unusual sign-in activity for me@grp.test');
     db.exec('DELETE FROM sender_groups');
     addSenders('Google Alert', ['no-reply@accounts.google.test']);
     refreshGroupThreads(true);
     expect(importantGroupedThreadIds(null)).toHaveLength(1);
     expect(listGroups()[0].lastUsed).toMatch(/^\d{4}-/);
     db.exec('DELETE FROM sender_groups; DELETE FROM messages WHERE id IN (7801, 7802); DELETE FROM threads WHERE id IN (7801, 7802)');
+  });
+});
+
+describe('routine sign-in alerts', () => {
+  it('stay inside their group', async () => {
+    const { isImportant } = await import('./groups.js');
+    expect(isImportant('Security alert', 'A new sign-in on Mac OS ezamboni96@gmail.com We noticed a new sign-in to your Google Account')).toBe(false);
+    expect(isImportant('Security alert for ezamboni96@gmail.com', 'This is a copy of a security alert sent to ezamboni96@gmail.com.')).toBe(false);
+    expect(isImportant('Suspicious sign-in prevented', '')).toBe(true);
+    expect(isImportant('Il tuo codice di verifica', '')).toBe(true);
   });
 });

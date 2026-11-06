@@ -1,4 +1,5 @@
 import { groupedSenderNotifies } from './groups.js';
+import { getAvatar } from './avatars.js';
 import webpush from 'web-push';
 import { db, getSetting, setSetting } from './db.js';
 import { bus } from './events.js';
@@ -59,7 +60,9 @@ function vapidSubject(): string {
   return acc ? `mailto:${acc.email}` : 'mailto:postino@example.com';
 }
 
-export async function sendPush(payload: { title: string; body: string; threadId?: string; accountId?: string; tag?: string }, onlyEndpoint?: string): Promise<PushResult> {
+export type PushPayload = { title: string; body: string; threadId?: string; accountId?: string; tag?: string; from?: string; account?: string; at?: number };
+
+export async function sendPush(payload: PushPayload, onlyEndpoint?: string): Promise<PushResult> {
   const keys = vapidKeys();
   webpush.setVapidDetails(vapidSubject(), keys.publicKey, keys.privateKey);
   const all = db.prepare('SELECT id, endpoint, subscription_json FROM push_subscriptions').all() as { id: number; endpoint: string; subscription_json: string }[];
@@ -102,16 +105,28 @@ export function startPushBridge(): void {
     const grouped = Boolean(ev.from?.email) && groupedSenderNotifies(ev.from.email);
     if (!grouped && level === 'people' && ev.category !== 'person') return skip(`mailbox notifies people only, this is ${ev.category}`);
     if (!grouped && level === 'default' && !s.categories.includes(ev.category as never)) return skip(`category ${ev.category} is not chosen in Settings`);
-    void sendPush({
-      title: who,
-      body: ev.subject || '(no subject)',
-      threadId: ev.threadId,
-      accountId: ev.accountId,
-      tag: `thread-${ev.threadId}`,
-      ...(acct ? { account: acct.email } : {}),
-    } as never).then(
-      (r) => logPush({ kind: 'mail', title: who, outcome: r.sent ? 'sent' : r.failed.length ? 'failed' : 'no devices', sent: r.sent, failed: r.failed }),
-      (err: Error) => logPush({ kind: 'mail', title: who, outcome: `error: ${err.message}` }),
-    );
+    void (async () => {
+      // Wait a few seconds for the body, so the notification can show the first lines like Gmail does,
+      // and start fetching the sender's picture meanwhile.
+      if (ev.from?.email) void getAvatar(ev.from.email).catch(() => null);
+      const snip = db.prepare('SELECT snippet FROM messages WHERE thread_id = ? AND mine = 0 ORDER BY date DESC, id DESC LIMIT 1');
+      let snippet = '';
+      for (let i = 0; i < 12 && !snippet; i++) {
+        snippet = ((snip.get(Number(ev.threadId)) as { snippet: string } | undefined)?.snippet || '').trim();
+        if (!snippet) await new Promise((r) => setTimeout(r, 1000));
+      }
+      const many = (db.prepare('SELECT COUNT(*) AS n FROM accounts').get() as { n: number }).n > 1;
+      const r = await sendPush({
+        title: who,
+        body: [ev.subject || '(no subject)', snippet.replace(/\[image:[^\]]*\]/gi, '').replace(/\s+/g, ' ').trim().slice(0, 160)].filter(Boolean).join('\n'),
+        threadId: ev.threadId,
+        accountId: ev.accountId,
+        tag: `thread-${ev.threadId}`,
+        from: ev.from?.email || '',
+        account: many && acct ? acct.email : '',
+        at: Date.now(),
+      });
+      logPush({ kind: 'mail', title: who, outcome: r.sent ? 'sent' : r.failed.length ? 'failed' : 'no devices', sent: r.sent, failed: r.failed });
+    })().catch((err: Error) => logPush({ kind: 'mail', title: who, outcome: `error: ${err.message}` }));
   });
 }
