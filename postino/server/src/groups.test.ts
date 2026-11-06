@@ -65,3 +65,23 @@ describe('important grouped mail', () => {
     for (const s of ['4 new image styles to try', 'Il tuo riepilogo settimanale', 'Barcode scanner deals']) expect(isImportant(s), s).toBe(false);
   });
 });
+
+describe('important grouped mail', () => {
+  it('shows an alert copied to two mailboxes once, across accounts', async () => {
+    const { importantGroupedThreadIds, refreshGroupThreads, listGroups, addSenders } = await import('./groups.js');
+    db.exec("INSERT OR IGNORE INTO accounts(id, email, name, color, imap_host, imap_port, imap_secure, smtp_host, smtp_port, smtp_secure, username, password_enc) VALUES (78, 'me2@grp.test', 'me2', '#000', 'h', 993, 1, 'h', 465, 1, 'u', 'x')");
+    db.exec("INSERT OR IGNORE INTO folders(id, account_id, path, name, role) VALUES (780, 78, 'INBOX', 'INBOX', 'inbox')");
+    const put = (id: number, acc: number, folder: number, subject: string) => {
+      db.prepare("INSERT OR REPLACE INTO threads(id, account_id, subject, subject_norm, last_date, inbox_date, roles, msg_count, unread_count) VALUES (?, ?, ?, ?, '2026-11-05T17:15:40.000Z', '2026-11-05', ',inbox,', 1, 1)").run(id, acc, subject, subject);
+      db.prepare("INSERT OR REPLACE INTO messages(id, account_id, folder_id, thread_id, uid, message_id, subject, subject_norm, from_email, date, size) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'no-reply@accounts.google.test', '2026-11-05T17:15:40.000Z', 1)").run(id, acc, folder, id, id, `g${id}@x`, subject, subject);
+    };
+    put(7801, 77, 770, 'Security alert');
+    put(7802, 78, 780, 'Security alert for me@grp.test');
+    db.exec('DELETE FROM sender_groups');
+    addSenders('Google Alert', ['no-reply@accounts.google.test']);
+    refreshGroupThreads(true);
+    expect(importantGroupedThreadIds(null)).toHaveLength(1);
+    expect(listGroups()[0].lastUsed).toMatch(/^\d{4}-/);
+    db.exec('DELETE FROM sender_groups; DELETE FROM messages WHERE id IN (7801, 7802); DELETE FROM threads WHERE id IN (7801, 7802)');
+  });
+});

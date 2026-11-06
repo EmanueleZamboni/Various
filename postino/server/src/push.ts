@@ -24,6 +24,34 @@ export function notificationSettings(): NotificationSettings {
 
 export type PushResult = { sent: number; failed: { status: number | null; message: string }[]; removed: number };
 
+/** The last notification decisions, newest first: what was pushed, what was skipped and why. For diagnosis only. */
+type PushLogEntry = { at: string; kind: 'mail' | 'test'; title: string; outcome: string; sent?: number; failed?: { status: number | null; message: string }[] };
+export function pushLog(): PushLogEntry[] {
+  return getSetting<PushLogEntry[]>('push.log', []);
+}
+function logPush(e: Omit<PushLogEntry, 'at'>): void {
+  const list = pushLog();
+  list.unshift({ at: new Date().toISOString(), ...e, title: e.title.slice(0, 80) });
+  setSetting('push.log', list.slice(0, 40));
+}
+export function logTestPush(r: PushResult): void {
+  logPush({ kind: 'test', title: 'Test notification', outcome: r.sent ? 'sent' : r.failed.length ? 'failed' : 'no devices', sent: r.sent, failed: r.failed });
+}
+
+/** Devices that will get notifications, without their secret keys. */
+export function pushDevices(): { id: number; service: string; userAgent: string; since: string }[] {
+  const rows = db.prepare('SELECT id, endpoint, user_agent, created_at FROM push_subscriptions ORDER BY id').all() as { id: number; endpoint: string; user_agent: string | null; created_at: string }[];
+  return rows.map((r) => {
+    let service = '?';
+    try {
+      service = new URL(r.endpoint).host;
+    } catch {
+      /* keep ? */
+    }
+    return { id: r.id, service, userAgent: r.user_agent || '', since: r.created_at };
+  });
+}
+
 /** Who the push services can contact about this sender: a real address or URL, never localhost. */
 function vapidSubject(): string {
   if (config.baseUrl && /^https:\/\//.test(config.baseUrl)) return config.baseUrl;
@@ -63,16 +91,17 @@ export function startPushBridge(): void {
   bus.on('event', (ev) => {
     if (ev.type !== 'new.mail') return;
     const s = notificationSettings();
-    if (!s.enabled) return;
+    const who = ev.from?.name || ev.from?.email || '?';
+    const skip = (why: string) => logPush({ kind: 'mail', title: who, outcome: `skipped: ${why}` });
+    if (!s.enabled) return skip('notifications are off in Settings');
     const acct = db.prepare('SELECT email, name, notify FROM accounts WHERE id = ?').get(Number(ev.accountId)) as { email: string; name: string; notify: string } | undefined;
     // Per-account level: "default" follows the global categories, "all" everything, "people" only people, "none" silent.
     const level = acct?.notify || 'default';
-    if (level === 'none') return;
+    if (level === 'none') return skip('this mailbox is set to silent');
     // Senders you grouped still notify (that is the point of grouping instead of filtering).
     const grouped = Boolean(ev.from?.email) && groupedSenderNotifies(ev.from.email);
-    if (!grouped && level === 'people' && ev.category !== 'person') return;
-    if (!grouped && level === 'default' && !s.categories.includes(ev.category as never)) return;
-    const who = ev.from.name || ev.from.email;
+    if (!grouped && level === 'people' && ev.category !== 'person') return skip(`mailbox notifies people only, this is ${ev.category}`);
+    if (!grouped && level === 'default' && !s.categories.includes(ev.category as never)) return skip(`category ${ev.category} is not chosen in Settings`);
     void sendPush({
       title: who,
       body: ev.subject || '(no subject)',
@@ -80,6 +109,9 @@ export function startPushBridge(): void {
       accountId: ev.accountId,
       tag: `thread-${ev.threadId}`,
       ...(acct ? { account: acct.email } : {}),
-    } as never);
+    } as never).then(
+      (r) => logPush({ kind: 'mail', title: who, outcome: r.sent ? 'sent' : r.failed.length ? 'failed' : 'no devices', sent: r.sent, failed: r.failed }),
+      (err: Error) => logPush({ kind: 'mail', title: who, outcome: `error: ${err.message}` }),
+    );
   });
 }

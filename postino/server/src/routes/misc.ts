@@ -5,7 +5,7 @@ import { bus, type AppEvent } from '../events.js';
 import { searchThreads, rememberSearch } from '../search.js';
 import { threadView } from '../views.js';
 import type { ThreadRow } from '../mail/store.js';
-import { sendPush } from '../push.js';
+import { logTestPush, sendPush } from '../push.js';
 import { uiSettings, updateUiSettings } from '../settings.js';
 import type { Address } from '../mail/parse.js';
 import { manager } from '../mail/manager.js';
@@ -75,8 +75,12 @@ export function registerMiscRoutes(app: FastifyInstance): void {
     const endpoint = String(req.body?.endpoint || '');
     const registered = endpoint ? Boolean(db.prepare('SELECT 1 FROM push_subscriptions WHERE endpoint = ?').get(endpoint)) : false;
     const devices = (db.prepare('SELECT COUNT(*) AS n FROM push_subscriptions').get() as { n: number }).n;
-    if (endpoint && !registered) return { registered: false, devices, sent: 0, failed: [], removed: 0 };
+    if (endpoint && !registered) {
+      logTestPush({ sent: 0, failed: [{ status: null, message: 'this device is not registered on the server' }], removed: 0 });
+      return { registered: false, devices, sent: 0, failed: [], removed: 0 };
+    }
     const r = await sendPush({ title: 'Postino', body: 'Notifications are working on this device.', tag: 'test' }, endpoint || undefined);
+    logTestPush(r);
     return { registered, devices, ...r };
   });
 

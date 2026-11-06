@@ -163,8 +163,17 @@ export function groupSummaries(accountId: number | null) {
 
 /** Unread grouped conversations that look important, newest first. */
 export function importantGroupedThreadIds(accountId: number | null, limit = 5): number[] {
+  // The same alert often reaches two of your mailboxes (e.g. Google copies security alerts to the
+  // recovery address): show it once.
+  const seen = new Set<string>();
   return groupedInboxThreads(accountId)
     .filter((r) => r.unread_count > 0 && isImportant(r.subject, r.snippet))
+    .filter((r) => {
+      const key = `${r.g}|${r.last_date.slice(0, 16)}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
     .slice(0, limit)
     .map((r) => r.id);
 }
@@ -174,13 +183,14 @@ export function markGroupSeen(name: string): void {
 }
 
 /** All groups with their senders. */
-export function listGroups(): { name: string; senders: string[]; notify: boolean }[] {
-  const rows = db.prepare('SELECT email, group_name, notify FROM sender_groups ORDER BY group_name, email').all() as { email: string; group_name: string; notify: number }[];
-  const groups = new Map<string, { name: string; senders: string[]; notify: boolean }>();
+export function listGroups(): { name: string; senders: string[]; notify: boolean; lastUsed: string }[] {
+  const rows = db.prepare('SELECT email, group_name, notify, created_at FROM sender_groups ORDER BY group_name, email').all() as { email: string; group_name: string; notify: number; created_at: string }[];
+  const groups = new Map<string, { name: string; senders: string[]; notify: boolean; lastUsed: string }>();
   for (const r of rows) {
-    const g = groups.get(r.group_name) ?? { name: r.group_name, senders: [], notify: true };
+    const g = groups.get(r.group_name) ?? { name: r.group_name, senders: [], notify: true, lastUsed: '' };
     g.senders.push(r.email);
     g.notify = g.notify && Boolean(r.notify);
+    if (r.created_at > g.lastUsed) g.lastUsed = r.created_at; // when a sender was last put in it
     groups.set(r.group_name, g);
   }
   return [...groups.values()];
@@ -194,7 +204,7 @@ export function addSenders(group: string, senders: string[], move = false): { ad
   const name = String(group || '').trim().slice(0, 60);
   if (!name) throw Object.assign(new Error('Give the group a name.'), { statusCode: 400 });
   const own = new Set((db.prepare('SELECT lower(email) AS e FROM accounts').all() as { e: string }[]).map((r) => r.e));
-  const ins = db.prepare(move ? 'INSERT INTO sender_groups(email, group_name) VALUES (?, ?) ON CONFLICT(email) DO UPDATE SET group_name = excluded.group_name' : 'INSERT OR IGNORE INTO sender_groups(email, group_name) VALUES (?, ?)');
+  const ins = db.prepare(move ? `INSERT INTO sender_groups(email, group_name) VALUES (?, ?) ON CONFLICT(email) DO UPDATE SET group_name = excluded.group_name, created_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')` : 'INSERT OR IGNORE INTO sender_groups(email, group_name) VALUES (?, ?)');
   let added = 0;
   const skipped: string[] = [];
   db.transaction(() => {
@@ -265,7 +275,7 @@ export function registerGroupRoutes(app: FastifyInstance): void {
     if (!group) return reply.code(400).send({ error: 'bad_group', message: 'Give the group a name.' });
     const own = db.prepare('SELECT 1 FROM accounts WHERE lower(email) = ?').get(email);
     if (own) return reply.code(400).send({ error: 'own_address', message: 'Your own addresses cannot be grouped.' });
-    db.prepare('INSERT INTO sender_groups(email, group_name) VALUES (?, ?) ON CONFLICT(email) DO UPDATE SET group_name = excluded.group_name').run(email, group);
+    db.prepare(`INSERT INTO sender_groups(email, group_name) VALUES (?, ?) ON CONFLICT(email) DO UPDATE SET group_name = excluded.group_name, created_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')`).run(email, group);
     refreshGroupThreads(true);
     return { ok: true };
   });

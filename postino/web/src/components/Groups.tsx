@@ -1,10 +1,20 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
 import { useGroups } from '../api/hooks';
 import { Icon } from '../icons';
 import { useUI } from '../store';
+
+/** The part of an address that names the company: info@mail.amazon.it -> amazon.it, x@foo.co.uk -> foo.co.uk. */
+function baseDomain(email: string): string {
+  const labels = (email.split('@')[1] || '').toLowerCase().split('.').filter(Boolean);
+  if (labels.length <= 2) return labels.join('.');
+  const twoPart = /^(co|com|org|net|gov|ac|edu)$/.test(labels[labels.length - 2]) && labels[labels.length - 1].length === 2;
+  return labels.slice(twoPart ? -3 : -2).join('.');
+}
+
+type GroupInfo = { name: string; senders: string[]; notify: boolean; lastUsed?: string };
 
 /** "Group emails from …": pick a group (or make one) for exactly this sender address. */
 export function GroupDialog() {
@@ -13,20 +23,39 @@ export function GroupDialog() {
   const toast = useUI((s) => s.toast);
   const qc = useQueryClient();
   const { data } = useGroups();
-  const groups = data?.groups ?? [];
-  const [choice, setChoice] = useState<string>('__new');
+  const groups: GroupInfo[] = data?.groups ?? [];
+  const domain = baseDomain(target.email);
+  // Groups that already hold mail from the same company come first, then the ones used last.
+  const sameCompany = domain ? groups.filter((g) => g.senders.some((s) => baseDomain(s) === domain)) : [];
+  const recent = [...groups]
+    .filter((g) => !sameCompany.includes(g))
+    .sort((a, b) => ((a.lastUsed || '') < (b.lastUsed || '') ? 1 : -1))
+    .slice(0, 3);
+  const top = [...sameCompany.slice(0, 3), ...recent];
+  const [filter, setFilter] = useState('');
+  const others = groups
+    .filter((g) => !top.includes(g) && g.name.toLowerCase().includes(filter.trim().toLowerCase()))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const [choice, setChoice] = useState<string | null>(null);
+  const picked = choice ?? sameCompany[0]?.name ?? null;
   const [name, setName] = useState(target.name || target.email.split('@')[0]);
   const [busy, setBusy] = useState(false);
   const close = () => setTarget(null);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close();
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
   const save = async () => {
-    const group = choice === '__new' ? name.trim() : choice;
+    const group = picked === '__new' ? name.trim() : picked;
     if (!group) return;
     setBusy(true);
     try {
       await api.groups.add(target.email, group);
       qc.invalidateQueries({ queryKey: ['groups'] });
       qc.invalidateQueries({ queryKey: ['threads'] });
-      toast({ text: `Emails from ${target.email} now go in “${group}”` , kind: 'success' });
+      qc.invalidateQueries({ queryKey: ['groupSummary'] });
+      toast({ text: `Emails from ${target.email} now go in “${group}”`, kind: 'success' });
       close();
     } catch (e) {
       toast({ text: (e as Error).message, kind: 'error' });
@@ -34,30 +63,45 @@ export function GroupDialog() {
       setBusy(false);
     }
   };
+  const row = (g: GroupInfo, note?: string) => (
+    <label key={g.name} className={`group-choice${picked === g.name ? ' on' : ''}`}>
+      <input type="radio" name="group" checked={picked === g.name} onChange={() => setChoice(g.name)} />
+      <span>{g.name}</span>
+      <small>{note ?? `${g.senders.length} sender${g.senders.length === 1 ? '' : 's'}`}</small>
+    </label>
+  );
   return (
     <div className="scrim" onMouseDown={(e) => e.target === e.currentTarget && close()}>
       <form className="sheet small group-dialog" role="dialog" aria-modal="true" aria-labelledby="group-title" onSubmit={(e) => { e.preventDefault(); void save(); }}>
-        <h2 id="group-title">Group emails from this sender</h2>
+        <div className="group-head">
+          <h2 id="group-title">Group this sender</h2>
+          <button type="button" className="ib" aria-label="Close" title="Close" onClick={close}><Icon name="x" size={20} /></button>
+        </div>
         <p className="help">
-          Only emails from exactly <b>{target.email}</b> go in the group, shown as one line at the top of your inbox. Conversations where anyone else wrote, you included, stay in the inbox. You still get notifications.
+          Mail from <b>{target.email}</b> to any of your mailboxes will show as one line at the top of the inbox. You still get notifications.
         </p>
-        <div className="group-choices" role="radiogroup">
-          {groups.map((g) => (
-            <label key={g.name} className="group-choice">
-              <input type="radio" name="group" checked={choice === g.name} onChange={() => setChoice(g.name)} />
-              <span>{g.name}</span>
-              <small>{g.senders.length} sender{g.senders.length === 1 ? '' : 's'}</small>
-            </label>
-          ))}
-          <label className="group-choice">
-            <input type="radio" name="group" checked={choice === '__new'} onChange={() => setChoice('__new')} />
+        <div className="group-choices" role="radiogroup" aria-label="Group">
+          <label className={`group-choice${picked === '__new' ? ' on' : ''}`}>
+            <input type="radio" name="group" checked={picked === '__new'} onChange={() => setChoice('__new')} />
             <span>New group</span>
-            {choice === '__new' && <input className="input" value={name} onChange={(e) => setName(e.target.value)} aria-label="Group name" autoFocus maxLength={60} />}
+            {picked === '__new' && <input className="input" value={name} onChange={(e) => setName(e.target.value)} aria-label="Group name" autoFocus maxLength={60} />}
           </label>
+          {top.length > 0 && <div className="group-sec">{sameCompany.length ? 'Suggested and recent' : 'Recent'}</div>}
+          {top.map((g) => row(g, sameCompany.includes(g) ? `same company · ${g.senders.length}` : undefined))}
+          {groups.length > top.length && (
+            <>
+              <div className="group-sec">All groups</div>
+              {groups.length > 8 && (
+                <input className="input group-filter" type="search" placeholder="Find a group" value={filter} onChange={(e) => setFilter(e.target.value)} aria-label="Find a group" />
+              )}
+              {others.map((g) => row(g))}
+              {others.length === 0 && <p className="help">No group with that name.</p>}
+            </>
+          )}
         </div>
         <div className="sheet-actions">
           <button type="button" className="btn btn-quiet" onClick={close}>Cancel</button>
-          <button className="btn btn-primary" disabled={busy || (choice === '__new' && !name.trim())}>Group</button>
+          <button className="btn btn-primary" disabled={busy || !picked || (picked === '__new' && !name.trim())}>Group</button>
         </div>
       </form>
     </div>

@@ -338,6 +338,10 @@ on('POST', '/api/messages/:id/rsvp', () => json({ ok: true, response: 'accepted'
 on('GET', '/api/google/contacts/status', () => json({ at: new Date().toISOString(), count: 312 }));
 on('POST', '/api/google/contacts/sync', () => json({ count: 312 }));
 const mockGroups: Record<string, string> = { 'no-reply@accounts.google.com': 'Google alerts', 'no-reply@vinted.it': 'Vinted' };
+// Plenty of groups, like a real inbox after the suggestions were accepted.
+for (const n of ['Amazon', 'AliExpress', 'Canva', 'Cloudflare', 'Github', 'Instagram', 'Spotify', 'TikTok', 'Twitch', 'Waze', 'YouTube', 'Zoho', 'eBay', 'Patreon', 'Steam', 'Splitwise', 'Microsoft', 'Openai', 'Brevo', 'Envato'])
+  mockGroups[`no-reply@${n.toLowerCase()}.com`] = n;
+const mockGroupUsed: Record<string, string> = {};
 on('GET', '/api/calls/setup', () => json({ hookUrl: 'https://postino.example.com/hooks/calls/abc', count: 2, last: new Date().toISOString(), lastHook: null }));
 on('GET', '/api/calls', () => json({ total: 2, calls: [{ name: 'Marco Rossi', number: '+393331112222', type: 'outgoing', at: new Date().toISOString(), duration: '2:05' }, { name: '', number: '+390511234567', type: 'missed', at: new Date(Date.now() - 3600_000).toISOString(), duration: '0:00' }] }));
 on('GET', '/api/whatsapp/status', () => json({ state: 'off', qr: null, code: null, me: null, chats: 0, messages: 0 }));
@@ -348,9 +352,9 @@ on('DELETE', '/api/mcp/connections', () => json({ ok: true }));
 on('GET', '/api/groups', () => {
   const m = new Map<string, string[]>();
   for (const [e, g] of Object.entries(mockGroups)) m.set(g, [...(m.get(g) ?? []), e]);
-  return json({ groups: [...m].map(([name, senders]) => ({ name, senders, notify: true })) });
+  return json({ groups: [...m].map(([name, senders], i) => ({ name, senders, notify: true, lastUsed: mockGroupUsed[name] ?? new Date(Date.UTC(2026, 9, 1 + i)).toISOString() })) });
 });
-on('POST', '/api/groups', ({ body }) => { mockGroups[String(body.email).toLowerCase()] = String(body.group); return json({ ok: true }); });
+on('POST', '/api/groups', ({ body }) => { mockGroups[String(body.email).toLowerCase()] = String(body.group); mockGroupUsed[String(body.group)] = new Date().toISOString(); return json({ ok: true }); });
 on('DELETE', '/api/groups/sender/:email', ({ params }) => { delete mockGroups[decodeURIComponent(params.email)]; return json({ ok: true }); });
 on('PATCH', '/api/groups', () => json({ ok: true }));
 on('GET', '/api/groups/summary', () => {

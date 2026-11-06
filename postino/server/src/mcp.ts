@@ -18,6 +18,7 @@ import { blockSender } from './routes/blocked.js';
 import { waChats, waMessages, waSearch, waSend, waStatus, resolveChat } from './whatsapp.js';
 import { listCalls, callStats } from './calls.js';
 import { log } from './log.js';
+import { notificationSettings, pushDevices, pushLog } from './push.js';
 
 /**
  * The Claude connector: a remote MCP server at /mcp, so Claude (claude.ai, the Claude apps)
@@ -502,6 +503,19 @@ const TOOLS: Tool[] = [
     },
     annotations: { readOnlyHint: true, openWorldHint: false },
     run: (a) => callStats({ since: str(a.since, 40), until: str(a.until, 40), limit: clamp(a.limit, 1, 100, 20) }),
+  },
+  {
+    name: 'notification_diagnostics',
+    title: 'Notification diagnostics',
+    description: 'Why phone notifications do or do not arrive: the registered devices (push service and browser), the notification settings, each mailbox\'s notify level, and the last 40 decisions (sent, skipped and why, or the push service error).',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+    run: () => ({
+      settings: notificationSettings(),
+      mailboxes: db.prepare('SELECT id, email, notify FROM accounts ORDER BY id').all(),
+      devices: pushDevices(),
+      recent: pushLog(),
+    }),
   },
   {
     name: 'list_groups',

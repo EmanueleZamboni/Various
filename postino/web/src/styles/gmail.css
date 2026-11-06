@@ -2633,11 +2633,41 @@ a.btn {
 .group-dialog .help {
   margin: 4px 0 12px;
 }
+.group-dialog {
+  max-height: min(640px, calc(100% - 32px));
+}
+.group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: -6px -8px 0 0;
+}
 .group-choices {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  margin-bottom: 16px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  margin: 0 -8px;
+  padding: 0 8px;
+}
+.group-sec {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--mute);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 12px 10px 4px;
+}
+.group-filter {
+  margin: 2px 0 6px;
+}
+.group-choice.on {
+  background: var(--hover-ov);
 }
 .group-choice {
   display: flex;
