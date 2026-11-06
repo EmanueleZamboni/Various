@@ -135,6 +135,15 @@ export class AccountSync {
   private syncingAll = false;
   private connectPromise: Promise<void> | null = null;
   private lastFullReconcile = new Map<number, number>();
+  // A second connection that does nothing but sit in IDLE on the inbox, so new mail is seen the
+  // moment the server has it, even while the main connection is busy with bodies or other folders.
+  private watcher: ImapFlow | null = null;
+  private watcherTimer: NodeJS.Timeout | null = null;
+  private watcherBackoffMs = 5000;
+  private watchRunning = false;
+  private watchAgain = false;
+  // Messages whose body one of the two connections is downloading right now (never both).
+  private bodyInFlight = new Set<number>();
 
   constructor(account: AccountRow) {
     this.id = account.id;
@@ -163,6 +172,10 @@ export class AccountSync {
     if (this.pollTimer) clearInterval(this.pollTimer);
     if (this.inboxSyncTimer) clearTimeout(this.inboxSyncTimer);
     await this.connectPromise?.catch(() => undefined); // a connect in flight retires itself (see connect())
+    if (this.watcherTimer) clearTimeout(this.watcherTimer);
+    const w = this.watcher;
+    this.watcher = null;
+    if (w) await w.logout().catch(() => w.close());
     const c = this.client;
     this.client = null;
     if (c) {
@@ -186,22 +199,7 @@ export class AccountSync {
     this.connectPromise = (async () => {
       this.refreshAccount();
       if (!this.account.enabled) return;
-      const auth = this.account.auth_type === 'google'
-        ? { user: this.account.username, accessToken: await gmailAccessToken(this.account) }
-        : { user: this.account.username, pass: decrypt(this.account.password_enc) };
-      const client = new ImapFlow({
-        host: this.account.imap_host,
-        port: this.account.imap_port,
-        secure: Boolean(this.account.imap_secure),
-        auth,
-        logger: false,
-        clientInfo: { name: 'Postino', version: '0.1' },
-        socketTimeout: 5 * 60_000,
-        connectionTimeout: 30_000,
-        // On port 143 the password must still only travel inside TLS (no STARTTLS stripping).
-        doSTARTTLS: !this.account.imap_secure && process.env.POSTINO_TLS_INSECURE !== '1',
-        tls: { rejectUnauthorized: process.env.POSTINO_TLS_INSECURE !== '1' },
-      } as ConstructorParameters<typeof ImapFlow>[0]);
+      const client = new ImapFlow(await this.imapOptions());
       client.on('error', (err) => {
         log.warn({ account: this.email, err: err.message }, 'imap error');
       });
@@ -236,6 +234,7 @@ export class AccountSync {
         this.pollTimer = setInterval(() => void this.poll(), config.inboxPollMs);
         await this.ensureInboxSelected();
         this.kickBodyLoop();
+        void this.startWatcher();
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         log.warn({ account: this.email, err: msg }, 'imap connect failed');
@@ -252,6 +251,123 @@ export class AccountSync {
       this.connectPromise = null;
     });
     return this.connectPromise;
+  }
+
+  private async imapOptions(extra: Record<string, unknown> = {}): Promise<ConstructorParameters<typeof ImapFlow>[0]> {
+    const auth = this.account.auth_type === 'google'
+      ? { user: this.account.username, accessToken: await gmailAccessToken(this.account) }
+      : { user: this.account.username, pass: decrypt(this.account.password_enc) };
+    return {
+      host: this.account.imap_host,
+      port: this.account.imap_port,
+      secure: Boolean(this.account.imap_secure),
+      auth,
+      logger: false,
+      clientInfo: { name: 'Postino', version: '0.1' },
+      socketTimeout: 5 * 60_000,
+      connectionTimeout: 30_000,
+      // On port 143 the password must still only travel inside TLS (no STARTTLS stripping).
+      doSTARTTLS: !this.account.imap_secure && process.env.POSTINO_TLS_INSECURE !== '1',
+      tls: { rejectUnauthorized: process.env.POSTINO_TLS_INSECURE !== '1' },
+      ...extra,
+    } as ConstructorParameters<typeof ImapFlow>[0];
+  }
+
+  // ---- inbox watcher -----------------------------------------------------
+
+  /** Open the second connection on the inbox and leave it in IDLE. Reconnects on its own. */
+  private async startWatcher(): Promise<void> {
+    if (this.stopped || this.watcher || this.watcherTimer) return;
+    const inbox = folderByRole(this.id, 'inbox');
+    if (!inbox) return;
+    let client: ImapFlow;
+    try {
+      // IDLE is renewed every few minutes so firewalls and NAT never see a silent connection.
+      // It runs no other commands, so it can go back to IDLE half a second after each fetch.
+      client = new ImapFlow(await this.imapOptions({ maxIdleTime: 4 * 60_000, autoIdleDelay: 500 }));
+    } catch (err) {
+      log.warn({ account: this.email, err: (err as Error).message }, 'inbox watcher: no credentials');
+      return this.retryWatcher();
+    }
+    client.on('error', (err) => log.debug({ account: this.email, err: err.message }, 'inbox watcher error'));
+    client.on('close', () => {
+      if (this.watcher === client) this.watcher = null;
+      if (!this.stopped) this.retryWatcher();
+    });
+    client.on('exists', (ev) => {
+      if (ev.path === inbox.path) this.watchInbox();
+    });
+    try {
+      await client.connect();
+      await client.mailboxOpen(inbox.path);
+      if (this.stopped) {
+        await client.logout().catch(() => client.close());
+        return;
+      }
+      this.watcher = client;
+      this.watcherBackoffMs = 5000;
+      log.info({ account: this.email }, 'inbox watcher idling');
+      // Anything that arrived while it was connecting.
+      this.watchInbox();
+    } catch (err) {
+      log.warn({ account: this.email, err: (err as Error).message }, 'inbox watcher connect failed');
+      try {
+        client.close();
+      } catch {
+        // ignore
+      }
+      this.retryWatcher();
+    }
+  }
+
+  private retryWatcher(): void {
+    if (this.stopped || this.watcherTimer) return;
+    const wait = this.watcherBackoffMs;
+    this.watcherBackoffMs = Math.min(this.watcherBackoffMs * 2, 5 * 60_000);
+    this.watcherTimer = setTimeout(() => {
+      this.watcherTimer = null;
+      void this.startWatcher();
+    }, wait);
+  }
+
+  /** New mail on the watched inbox: read the new headers on the watcher itself, right away. */
+  private watchInbox(): void {
+    if (this.watchRunning) {
+      this.watchAgain = true;
+      return;
+    }
+    this.watchRunning = true;
+    void (async () => {
+      try {
+        do {
+          this.watchAgain = false;
+          const inbox = folderByRole(this.id, 'inbox');
+          const w = this.watcher;
+          if (!inbox || !w || this.stopped) break;
+          try {
+            await this.syncFolder(inbox.id, { reconcile: false, via: w });
+            // The text too, so the notification and the list show the first lines at once.
+            const fresh = (db
+              .prepare('SELECT id, uid, size, structure_json, thread_id FROM messages WHERE folder_id = ? AND body_fetched = 0 AND body_error IS NULL ORDER BY uid DESC LIMIT 5')
+              .all(inbox.id) as { id: number; uid: number; size: number; structure_json: string | null; thread_id: number }[]).filter((b) => !this.bodyInFlight.has(b.id));
+            if (fresh.length) {
+              for (const b of fresh) this.bodyInFlight.add(b.id);
+              try {
+                await this.fetchBodies(inbox, fresh, w);
+              } finally {
+                for (const b of fresh) this.bodyInFlight.delete(b.id);
+              }
+              for (const b of fresh) bus.publish({ type: 'message.updated', messageId: String(b.id), threadId: String(b.thread_id) });
+            }
+          } catch (err) {
+            log.warn({ account: this.email, err: (err as Error).message }, 'inbox watcher sync failed');
+            this.queueFolderSync(inbox.path); // the main connection will catch it
+          }
+        } while (this.watchAgain);
+      } finally {
+        this.watchRunning = false;
+      }
+    })();
   }
 
   private scheduleReconnect(): void {
@@ -285,6 +401,18 @@ export class AccountSync {
       lock.release();
       this.pendingOps--;
       if (this.pendingOps === 0) void this.ensureInboxSelected();
+    }
+  }
+
+  /** Like withMailbox, on a given connection (the inbox watcher). */
+  private async onConnection<T>(client: ImapFlow, path: string, fn: (client: ImapFlow, mailbox: MailboxObject) => Promise<T>): Promise<T> {
+    const lock = await client.getMailboxLock(path);
+    try {
+      const mailbox = client.mailbox;
+      if (!mailbox) throw new Error(`Mailbox ${path} did not open`);
+      return await fn(client, mailbox);
+    } finally {
+      lock.release();
     }
   }
 
@@ -489,13 +617,15 @@ export class AccountSync {
   }
 
   /** Pull new messages for a folder and reconcile flags and deletions with the server. */
-  async syncFolder(folderId: number, opts: { reconcile: boolean }): Promise<void> {
+  async syncFolder(folderId: number, opts: { reconcile: boolean; via?: ImapFlow }): Promise<void> {
     const folder = db.prepare('SELECT * FROM folders WHERE id = ?').get(folderId) as FolderRow | undefined;
     if (!folder || !folder.present) return;
     const changedThreads = new Set<number>();
     const newInbox: { id: number; threadId: number; from: Address; subject: string; category: string; uid: number; blocked: boolean }[] = [];
 
-    await this.withMailbox(folder.path, async (client, mailbox) => {
+    const open = <T,>(fn: (client: ImapFlow, mailbox: MailboxObject) => Promise<T>): Promise<T> =>
+      opts.via ? this.onConnection(opts.via, folder.path, fn) : this.withMailbox(folder.path, fn);
+    await open(async (client, mailbox) => {
       const uidValidity = Number(mailbox.uidValidity);
       let uidNextLocal = folder.uidnext;
       if (folder.uidvalidity !== null && folder.uidvalidity !== uidValidity) {
@@ -543,7 +673,8 @@ export class AccountSync {
         if (gone.length) deleteMessagesByIds(gone);
         this.lastFullReconcile.set(folder.id, Date.now());
       }
-      db.prepare('UPDATE folders SET uidvalidity = ?, uidnext = ?, highestmodseq = ? WHERE id = ?').run(
+      const reset = folder.uidvalidity !== null && folder.uidvalidity !== uidValidity;
+      db.prepare(`UPDATE folders SET uidvalidity = ?, uidnext = ${reset ? '?' : 'MAX(COALESCE(uidnext, 0), ?)'}, highestmodseq = ? WHERE id = ?`).run(
         uidValidity,
         uidNextLocal,
         mailbox.highestModseq ? Number(mailbox.highestModseq) : null,
@@ -634,15 +765,24 @@ export class AccountSync {
             )
             .all(this.id) as { id: number; uid: number; folder_id: number; size: number; thread_id: number; structure_json: string | null }[];
           if (!batch.length) break;
-          const folderId = batch[0].folder_id;
-          const group = batch.filter((b) => b.folder_id === folderId);
+          const free = batch.filter((b) => !this.bodyInFlight.has(b.id));
+          if (!free.length) {
+            // The inbox watcher has these; give it a moment.
+            await new Promise((r) => setTimeout(r, 300));
+            continue;
+          }
+          const folderId = free[0].folder_id;
+          const group = free.filter((b) => b.folder_id === folderId);
           const folder = db.prepare('SELECT * FROM folders WHERE id = ?').get(folderId) as FolderRow;
+          for (const b of group) this.bodyInFlight.add(b.id);
           try {
             await this.fetchBodies(folder, group);
           } catch (err) {
             log.warn({ account: this.email, folder: folder.path, err: (err as Error).message }, 'body fetch batch failed');
             // Mark the batch so a persistent failure does not loop forever; they are retried on resync.
             for (const b of group) markBodyError(b.id, (err as Error).message, folder.id, b.uid);
+          } finally {
+            for (const b of group) this.bodyInFlight.delete(b.id);
           }
           for (const b of group) bus.publish({ type: 'message.updated', messageId: String(b.id), threadId: String(b.thread_id) });
           this.publishProgress();
@@ -668,10 +808,11 @@ export class AccountSync {
     bus.publish({ type: 'sync.progress', accountId: String(this.id), fetched, total, done: false });
   }
 
-  private async fetchBodies(folder: FolderRow, group: { id: number; uid: number; size: number; structure_json: string | null }[]): Promise<void> {
+  private async fetchBodies(folder: FolderRow, group: { id: number; uid: number; size: number; structure_json: string | null }[], via?: ImapFlow): Promise<void> {
     const small = group.filter((g) => g.size <= config.maxSourceFetchBytes);
     const large = group.filter((g) => g.size > config.maxSourceFetchBytes);
-    await this.withMailbox(folder.path, async (client) => {
+    const open = (fn: (client: ImapFlow) => Promise<void>) => (via ? this.onConnection(via, folder.path, fn) : this.withMailbox(folder.path, fn));
+    await open(async (client) => {
       if (small.length) {
         const byUid = new Map(small.map((s) => [s.uid, s]));
         const found = new Set<number>();
