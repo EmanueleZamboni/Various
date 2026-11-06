@@ -397,7 +397,7 @@ function MessageCard({ message: m, thread, accountColor, myEmails, expanded, sin
             {!me && m.from.name && <span className="msg-email">&lt;{m.from.email}&gt;</span>}
           </span>
           <button className="to-line" onClick={(e) => { e.stopPropagation(); setDetails((d) => !d); }} aria-expanded={details} aria-label="Show details">
-            {`to ${toLine || 'me'}`}
+            <span className="to-text">{`to ${toLine || 'me'}`}</span>
             <Icon name="dropDown" size={18} />
           </button>
         </div>

@@ -100,17 +100,22 @@ export function groupSuggestions(): { name: string; senders: { email: string; co
  */
 const IMPORTANT = new RegExp(
   [
-    // Routine sign-in alerts ("Security alert", "new sign-in") stay inside their group: they come
-    // for every login, often to two mailboxes. Unusual activity still stands out.
-    'unusual', 'insolit', 'suspicious', 'sospett', 'password', 'codice', 'verification code', '\\bcode\\b', '\\botp\\b', 'verific',
-    'payment (failed|declined|unsuccessful)', 'pagamento (non riuscito|rifiutato|fallito|non andato)', 'declined', 'rifiutat', 'insolut', 'overdue', 'scadut', 'in scadenza', 'expir', 'scade',
-    'rimborso', 'refund', 'fattura', 'invoice', 'ricevuta di pagamento',
-    'hai venduto', 'venduto', 'you sold', 'etichetta di spedizione', 'shipping label', 'da spedire', 'ricorda di spedire', 'offerta', 'new offer', 'ti ha (scritto|inviato)', 'nuovo messaggio', 'new message',
-    'consegna (non riuscita|fallita|tentata)', 'delivery (failed|attempt|exception)', 'giacenza', 'da ritirare', 'ready for pickup', 'reso', 'return',
-    'sospes', 'suspend', 'bloccat', 'locked', 'azione richiesta', 'action required', 'urgent', 'importante', 'important', 'disputa', 'dispute', 'reclamo', 'problema', 'problem', 'annullat', 'cancel',
+    // Account security that needs a look (routine "new sign-in" alerts do not).
+    'unusual', 'insolit', 'suspicious', 'sospett', 'password (reset|changed|cambiata|reimpostata)', 'verification code', 'codice di verifica', 'codice (otp|di accesso|di sicurezza)', '\\botp\\b',
+    // Money that did not go through.
+    'payment (failed|declined|unsuccessful)', 'pagamento (non riuscito|rifiutato|fallito|non andato)', 'card (was )?declined', 'carta rifiutata', 'insolut', 'overdue', 'fattura scaduta', 'rimborso', 'refund',
+    // Something sold, to ship, or a buyer writing.
+    'hai venduto', 'you sold', 'etichetta di spedizione', 'shipping label', 'da spedire', 'ricorda di spedire', 'nuova offerta', "ti ha fatto un.offerta", 'new offer', 'ti ha (scritto|inviato un messaggio)', 'nuovo messaggio da',
+    // Deliveries in trouble.
+    'consegna (non riuscita|fallita|tentata)', 'delivery (failed|attempt|exception)', 'giacenza', 'da ritirare', 'ready for pickup',
+    // The account itself.
+    'account (sospeso|bloccato|suspended|locked|disabled)', 'azione richiesta', 'action required', 'disputa', 'dispute', 'reclamo',
   ].join('|'),
   'i',
 );
+// Only fresh mail counts: an unread alert from last month is not news any more.
+const IMPORTANT_DAYS = 7;
+const isRecent = (date: string) => date >= new Date(Date.now() - IMPORTANT_DAYS * 86_400_000).toISOString();
 export const isImportant = (subject: string, snippet = '') => IMPORTANT.test(subject) || IMPORTANT.test(snippet.slice(0, 200));
 
 type SummaryRow = { id: number; last_date: string; unread_count: number; last_from: string; subject: string; snippet: string; g: string };
@@ -144,6 +149,7 @@ export function groupedInboxThreads(accountId: number | null, group?: string): S
 export function groupSummaries(accountId: number | null) {
   const seen = new Map((db.prepare(`SELECT sg.group_name AS g, COALESCE(gs.seen_at, MIN(sg.created_at)) AS seen FROM sender_groups sg LEFT JOIN group_seen gs ON gs.group_name = sg.group_name GROUP BY sg.group_name`).all() as { g: string; seen: string }[]).map((r) => [r.g, r.seen]));
   const out = new Map<string, { name: string; latestDate: string; latestThreadId: string; latestFrom: { name: string; email: string }; latestSubject: string; total: number; fresh: number; important: number }>();
+  const countedImp = new Set<string>();
   for (const r of groupedInboxThreads(accountId)) {
     let g = out.get(r.g);
     if (!g) {
@@ -158,7 +164,13 @@ export function groupSummaries(accountId: number | null) {
     }
     g.total++;
     if (r.unread_count > 0 && r.last_date > (seen.get(r.g) ?? '')) g.fresh++;
-    if (r.unread_count > 0 && isImportant(r.subject, r.snippet)) g.important++;
+    if (r.unread_count > 0 && isRecent(r.last_date) && isImportant(r.subject, r.snippet)) {
+      const k = `${r.g}|${r.last_date.slice(0, 16)}`;
+      if (!countedImp.has(k)) {
+        countedImp.add(k);
+        g.important++;
+      }
+    }
   }
   return [...out.values()];
 }
@@ -169,7 +181,7 @@ export function importantGroupedThreadIds(accountId: number | null, limit = 5): 
   // recovery address): show it once.
   const seen = new Set<string>();
   return groupedInboxThreads(accountId)
-    .filter((r) => r.unread_count > 0 && isImportant(r.subject, r.snippet))
+    .filter((r) => r.unread_count > 0 && isRecent(r.last_date) && isImportant(r.subject, r.snippet))
     .filter((r) => {
       const key = `${r.g}|${r.last_date.slice(0, 16)}`;
       if (seen.has(key)) return false;

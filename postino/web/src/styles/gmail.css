@@ -3095,3 +3095,92 @@ a.btn {
   flex: 1 1 220px;
   min-width: 0;
 }
+
+/* ---------- Cleaner list, like the Gmail app (Material 3) ---------- */
+/* The "to me, Anna, Luca…" line stays on one line, with the arrow right after it. */
+.msg-who {
+  min-width: 0;
+}
+.msg-who .to-line {
+  max-width: 100%;
+  min-width: 0;
+  text-align: left;
+}
+.msg-who .to-line .to-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.msg-who .to-line svg {
+  flex: none;
+}
+/* One letter in the circle, a little larger, like Gmail. */
+.av {
+  font-size: 19px;
+  text-transform: none;
+}
+.av.sm {
+  font-size: 16px;
+}
+/* Important grouped mail: plain rows, no coloured bar. */
+.groups-important .row {
+  border-left: 0;
+}
+/* Unread: a small dot after the time. */
+.row.unread .when::after {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-left: 8px;
+  border-radius: 50%;
+  background: var(--ink);
+  vertical-align: 1px;
+}
+@container list (max-width: 759px) {
+  /* Rows as rounded cards on the canvas, with a small gap, as in the Gmail app. */
+  .list {
+    background: var(--canvas);
+    padding: 4px 8px 96px;
+  }
+  .list .row,
+  .list .groups-row {
+    margin-bottom: 3px;
+    border-radius: 16px;
+    background: var(--sheet);
+    border-bottom: 0;
+  }
+  .list .row:hover {
+    background: var(--hover);
+  }
+  .list .row.sel,
+  .list .row.checked {
+    background: var(--pine-soft);
+  }
+  .groups-important {
+    border-top: 0;
+  }
+  .row {
+    padding: 12px 14px;
+  }
+  .row .when {
+    font-size: 12px;
+  }
+}
+:root[data-theme='dark'] .list .row,
+:root[data-theme='dark'] .list .groups-row {
+  --sheet: #1e1f20;
+}
+@container list (max-width: 759px) {
+  /* Inside the Groups card the rows are part of it, not cards of their own. */
+  .list .groups-row .row {
+    margin: 0;
+    border-radius: 0;
+    background: transparent;
+    border-top: 1px solid var(--row-line);
+  }
+  .list .groups-row {
+    overflow: hidden;
+  }
+}

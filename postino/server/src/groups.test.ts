@@ -62,7 +62,7 @@ describe('important grouped mail', () => {
   it('spots sales, codes, failed payments and deliveries, not plain news', async () => {
     const { isImportant } = await import('./groups.js');
     for (const s of ['Hai venduto Lettore Dvd Sony', 'Your verification code', 'Pagamento non riuscito', 'Spedizione da ritirare', 'Etichetta di spedizione - da usare entro il 09/10']) expect(isImportant(s), s).toBe(true);
-    for (const s of ['4 new image styles to try', 'Il tuo riepilogo settimanale', 'Barcode scanner deals', 'Security alert for ezamboni96@gmail.com']) expect(isImportant(s), s).toBe(false);
+    for (const s of ['4 new image styles to try', 'Il tuo riepilogo settimanale', 'Barcode scanner deals', 'Security alert for ezamboni96@gmail.com', 'Offerta in scadenza: ottieni il primo mese gratis con Go', 'Introduzione della procedura di verifica di sicurezza sull’account', 'Promemoria sul tracciamento dell’apertura delle e-mail', '[Alert] D1 daily operation limit exceeded for account', 'Il tuo quesito ad Amazon.it']) expect(isImportant(s), s).toBe(false);
   });
 });
 
@@ -71,9 +71,10 @@ describe('important grouped mail', () => {
     const { importantGroupedThreadIds, refreshGroupThreads, listGroups, addSenders } = await import('./groups.js');
     db.exec("INSERT OR IGNORE INTO accounts(id, email, name, color, imap_host, imap_port, imap_secure, smtp_host, smtp_port, smtp_secure, username, password_enc) VALUES (78, 'me2@grp.test', 'me2', '#000', 'h', 993, 1, 'h', 465, 1, 'u', 'x')");
     db.exec("INSERT OR IGNORE INTO folders(id, account_id, path, name, role) VALUES (780, 78, 'INBOX', 'INBOX', 'inbox')");
+    const now = new Date(Math.floor(Date.now() / 60_000) * 60_000).toISOString();
     const put = (id: number, acc: number, folder: number, subject: string) => {
-      db.prepare("INSERT OR REPLACE INTO threads(id, account_id, subject, subject_norm, last_date, inbox_date, roles, msg_count, unread_count) VALUES (?, ?, ?, ?, '2026-11-05T17:15:40.000Z', '2026-11-05', ',inbox,', 1, 1)").run(id, acc, subject, subject);
-      db.prepare("INSERT OR REPLACE INTO messages(id, account_id, folder_id, thread_id, uid, message_id, subject, subject_norm, from_email, date, size) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'no-reply@accounts.google.test', '2026-11-05T17:15:40.000Z', 1)").run(id, acc, folder, id, id, `g${id}@x`, subject, subject);
+      db.prepare("INSERT OR REPLACE INTO threads(id, account_id, subject, subject_norm, last_date, inbox_date, roles, msg_count, unread_count) VALUES (?, ?, ?, ?, ?, '2026-11-05', ',inbox,', 1, 1)").run(id, acc, subject, subject, now);
+      db.prepare("INSERT OR REPLACE INTO messages(id, account_id, folder_id, thread_id, uid, message_id, subject, subject_norm, from_email, date, size) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'no-reply@accounts.google.test', ?, 1)").run(id, acc, folder, id, id, `g${id}@x`, subject, subject, now);
     };
     put(7801, 77, 770, 'Unusual sign-in activity');
     put(7802, 78, 780, 'Unusual sign-in activity for me@grp.test');

@@ -39,7 +39,7 @@ export type UiSettings = {
 
 export const defaults: UiSettings = {
   notifications: { enabled: true, categories: ['person'], sound: true },
-  inbox: { smart: false, groupNotifications: true, groupNewsletters: true, previewLines: 1, showAvatars: true, showAccountTag: true, pinnedOnTop: true },
+  inbox: { smart: false, groupNotifications: true, groupNewsletters: true, previewLines: 1, showAvatars: true, showAccountTag: false, pinnedOnTop: true },
   reading: { markRead: 'open', markReadDelay: 2, remoteImages: 'always', afterAction: 'next', confirmDelete: false, showQuoted: false },
   compose: { defaultAccount: 'lastUsed', replyFromRecipient: true, defaultReply: 'auto', includeQuote: true, undoSendSec: 10, sendAndArchive: false, bccMyself: false, confirmNoSubject: true },
   swipe: { left: 'archive', right: 'pin' },
@@ -100,6 +100,14 @@ export function uiSettings(): UiSettings {
       setSetting('ui2', stored);
     }
     setSetting('migr.imagesAlways', true);
+  }
+  // Gmail shows no mailbox label on each row: it became off by default once (it can be turned back on).
+  if (!getSetting<boolean>('migr.noAccountTag', false)) {
+    if (stored.inbox && stored.inbox.showAccountTag) {
+      stored.inbox.showAccountTag = false;
+      setSetting('ui2', stored);
+    }
+    setSetting('migr.noAccountTag', true);
   }
   const s = clampSettings(merge(defaults, stored));
   // Older single-key settings still win if the new ones were never saved.

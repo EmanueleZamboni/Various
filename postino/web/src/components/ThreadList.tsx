@@ -270,7 +270,7 @@ export function ThreadList({ view }: { view: string }) {
       compact={compact}
       previewLines={settings?.inbox.previewLines ?? 1}
       showAvatar={settings?.inbox.showAvatars ?? true}
-      showAccount={!nav.accountId && (settings?.inbox.showAccountTag ?? true)}
+      showAccount={!nav.accountId && (settings?.inbox.showAccountTag ?? false)}
       accountLabel={accountMap.get(t.accountId) ? accountLabel(accountMap.get(t.accountId)!.email, accounts ?? []) : ''}
       checked={checked.has(t.id)}
       onCheck={() => toggleCheck(t.id)}
