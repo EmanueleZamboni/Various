@@ -126,6 +126,15 @@ export const api = {
     invite: (id: string) => get<{ rsvp: RsvpResponse | null; calendarConnected: boolean; conflicts: { summary: string; start: string | null }[] | null }>(`/api/messages/${id}/invite`),
     rsvp: (id: string, response: RsvpResponse) => post<{ ok: true; response: RsvpResponse; calendar: boolean; organizerTold: boolean }>(`/api/messages/${id}/rsvp`, { response }),
   },
+  ai: {
+    status: () => get<AiStatus>('/api/ai/status'),
+    setKey: (key: string) => put<AiStatus>('/api/ai/key', { key }),
+    removeKey: () => del<AiStatus>('/api/ai/key'),
+    setCap: (capUsd: number) => put<AiStatus>('/api/ai/cap', { capUsd }),
+    verdict: (threadId: string) => get<{ verdict: SpamVerdict | null }>(`/api/ai/spam-check/${encodeURIComponent(threadId)}`),
+    spamCheck: (threadId: string, fresh = false) => post<SpamVerdict & { cached: boolean }>('/api/ai/spam-check', { threadId, fresh }),
+    search: (q: string, account?: string) => get<ThreadsResponse & { highlights: Record<string, string>; answer: string; queries: string[] }>(`/api/ai/search${qs({ q, account })}`),
+  },
   groups: {
     list: () => get<{ groups: { name: string; senders: string[]; notify: boolean; lastUsed?: string }[] }>('/api/groups'),
     add: (email: string, group: string) => post<{ ok: true }>('/api/groups', { email, group }),
@@ -237,3 +246,6 @@ export const api = {
 
 /** One sender group as a line in the inbox. */
 export type GroupSummary = { name: string; latestDate: string; latestThreadId: string; latestFrom: { name: string; email: string }; latestSubject: string; total: number; fresh: number; important?: number };
+
+export type AiStatus = { configured: boolean; model: string; month: string; spentUsd: number; calls: number; capUsd: number };
+export type SpamVerdict = { verdict: 'safe' | 'spam' | 'phishing' | 'scam' | 'suspicious'; confidence: 'low' | 'medium' | 'high'; summary: string; reasons: string[]; messageId: number };

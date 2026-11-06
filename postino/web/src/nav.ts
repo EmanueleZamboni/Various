@@ -29,20 +29,22 @@ export function useNav() {
   const threadId = params.threadId ?? null;
   const accountId = sp.get('account') || null;
   const q = sp.get('q') ?? '';
+  const ai = isSearch && sp.get('ai') === '1';
 
   const build = useCallback(
-    (v: string, tid: string | null, opts?: { account?: string | null; q?: string | null }) => {
+    (v: string, tid: string | null, opts?: { account?: string | null; q?: string | null; ai?: boolean }) => {
       const nsp = new URLSearchParams();
       const acc = opts?.account === undefined ? accountId : opts.account;
       const qq = opts?.q === undefined ? (v === 'search' ? q : '') : opts.q;
       if (acc) nsp.set('account', acc);
       if (qq && v === 'search') nsp.set('q', qq);
+      if (v === 'search' && (opts?.ai ?? ai)) nsp.set('ai', '1');
       const base = v === 'search' ? '/search' : `/${v}`;
       const path = tid ? `${base}/t/${encodeURIComponent(tid)}` : base;
       const s = nsp.toString();
       return s ? `${path}?${s}` : path;
     },
-    [accountId, q],
+    [accountId, q, ai],
   );
 
   const go = useCallback((v: string, opts?: { account?: string | null }) => navigate(build(v, null, opts)), [build, navigate]);
@@ -57,12 +59,12 @@ export function useNav() {
     [build, navigate, view],
   );
   const search = useCallback(
-    (query: string, acc?: string | null) => navigate(build('search', null, { q: query, account: acc === undefined ? accountId : acc })),
+    (query: string, acc?: string | null, withAi?: boolean) => navigate(build('search', null, { q: query, account: acc === undefined ? accountId : acc, ai: withAi })),
     [accountId, build, navigate],
   );
 
   return useMemo(
-    () => ({ view, threadId, accountId, q, isSearch, isSettings, go, openThread, closeThread, setAccount, search, build }),
-    [view, threadId, accountId, q, isSearch, isSettings, go, openThread, closeThread, setAccount, search, build],
+    () => ({ view, threadId, accountId, q, ai, isSearch, isSettings, go, openThread, closeThread, setAccount, search, build }),
+    [view, threadId, accountId, q, ai, isSearch, isSettings, go, openThread, closeThread, setAccount, search, build],
   );
 }

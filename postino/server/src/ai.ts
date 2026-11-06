@@ -153,7 +153,8 @@ function linksFromHtml(html: string): { text: string; href: string }[] {
   return out;
 }
 
-const cache = new Map<number, { at: number; v: SpamVerdict; messageId: number }>();
+// One verdict per message, so opening the same email again never costs a second call.
+db.exec(`CREATE TABLE IF NOT EXISTS ai_spam (message_row INTEGER PRIMARY KEY, verdict_json TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')))`);
 
 export async function spamCheck(threadId: number, fresh = false): Promise<SpamVerdict & { messageId: number; cached: boolean }> {
   const rows = db
@@ -161,10 +162,8 @@ export async function spamCheck(threadId: number, fresh = false): Promise<SpamVe
     .all(threadId) as MessageRow[];
   const m = rows[0];
   if (!m) throw httpError(404, 'no_message', 'There is no received message in this conversation to check.');
-  const stored = getSetting<Record<string, SpamVerdict> | null>(`ai.spam.${m.id}`, null) as unknown as SpamVerdict | null;
-  if (!fresh && stored) return { ...stored, messageId: m.id, cached: true };
-  const hit = cache.get(m.id);
-  if (!fresh && hit && Date.now() - hit.at < 600_000) return { ...hit.v, messageId: m.id, cached: true };
+  const stored = db.prepare('SELECT verdict_json FROM ai_spam WHERE message_row = ?').get(m.id) as { verdict_json: string } | undefined;
+  if (!fresh && stored) return { ...(JSON.parse(stored.verdict_json) as SpamVerdict), messageId: m.id, cached: true };
 
   const body = db.prepare('SELECT text, html FROM bodies WHERE message_row = ?').get(m.id) as { text: string | null; html: string | null } | undefined;
   const from = JSON.parse(m.from_json || '{}') as { name?: string; email?: string };
@@ -206,9 +205,17 @@ export async function spamCheck(threadId: number, fresh = false): Promise<SpamVe
 
   const v = await ask<SpamVerdict>({ system: SPAM_SYSTEM, user, schema: SPAM_SCHEMA as never, effort: 'medium', maxTokens: 8000 });
   v.reasons = (v.reasons || []).slice(0, 4);
-  cache.set(m.id, { at: Date.now(), v, messageId: m.id });
-  setSetting(`ai.spam.${m.id}`, v);
+  db.prepare('INSERT OR REPLACE INTO ai_spam(message_row, verdict_json) VALUES (?, ?)').run(m.id, JSON.stringify(v));
   return { ...v, messageId: m.id, cached: false };
+}
+
+/** The stored verdict of a conversation's latest received email, if Claude already looked at it. */
+export function storedVerdict(threadId: number): (SpamVerdict & { messageId: number }) | null {
+  const r = db
+    .prepare(`SELECT a.message_row, a.verdict_json FROM messages m JOIN folders f ON f.id = m.folder_id JOIN ai_spam a ON a.message_row = m.id
+              WHERE m.thread_id = ? AND m.mine = 0 AND f.role NOT IN ('sent', 'drafts') ORDER BY m.date DESC, m.id DESC LIMIT 1`)
+    .get(threadId) as { message_row: number; verdict_json: string } | undefined;
+  return r ? { ...(JSON.parse(r.verdict_json) as SpamVerdict), messageId: r.message_row } : null;
 }
 
 // ---- AI search --------------------------------------------------------------
@@ -354,6 +361,8 @@ export function registerAiRoutes(app: FastifyInstance): void {
       return fail(reply, err);
     }
   });
+
+  app.get<{ Params: { id: string } }>('/api/ai/spam-check/:id', async (req) => ({ verdict: storedVerdict(Number(req.params.id)) }));
 
   app.get<{ Querystring: { q?: string; account?: string } }>('/api/ai/search', { config: { rateLimit: { max: 15, timeWindow: '1 minute' } } }, async (req, reply) => {
     const q = String(req.query.q || '').trim().slice(0, 500);

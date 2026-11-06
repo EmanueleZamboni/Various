@@ -10,6 +10,7 @@ import { useUI } from '../store';
 import { displayName, firstName, formatBytes, formatFullDate, formatListDate } from '../util/format';
 import { Avatar } from './Avatar';
 import { ReplyBox, type ReplyMode } from './ReplyBox';
+import { AiVerdictPanel, useAiSpamCheck } from './AiCheck';
 
 export function Reader({ view }: { view: string }) {
   const nav = useNav();
@@ -31,6 +32,7 @@ export function Reader({ view }: { view: string }) {
   const myEmails = useMyEmails();
   const qc = useQueryClient();
   const { data, isLoading, isError, error, refetch } = useThread(nav.threadId);
+  const aiCheck = useAiSpamCheck(nav.threadId);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [replyMode, setReplyMode] = useState<ReplyMode | null>(null);
@@ -203,6 +205,12 @@ export function Reader({ view }: { view: string }) {
             <button className="ib" onClick={() => void addToTasks(thread.id)} title="Add to Tasks" aria-label="Add to Tasks"><Icon name="addTask" /></button>
             <button className={`ib star-btn${thread.pinned ? ' on' : ''}`} onClick={() => doAct(thread.pinned ? 'unpin' : 'pin')} title={thread.pinned ? 'Remove star (s)' : 'Add star (s)'} aria-label={thread.pinned ? 'Remove star' : 'Add star'}><Icon name={thread.pinned ? 'starFilled' : 'star'} /></button>
             {canBlock && (
+              <button className="ai-btn" onClick={() => aiCheck.run()} disabled={aiCheck.loading} title="Ask Claude: is this spam or phishing?" aria-label="Is this spam? Ask Claude">
+                <Icon name="shield" size={18} />
+                <span>Spam?</span>
+              </button>
+            )}
+            {canBlock && (
               <button className="ib wide-only" onClick={() => ui.setPendingBlock({ email: lastIncoming!.from.email, name: displayName(lastIncoming!.from), threadId: thread.id })} title={`Block ${lastIncoming!.from.email}`} aria-label="Block sender"><Icon name="block" /></button>
             )}
           </>
@@ -229,6 +237,35 @@ export function Reader({ view }: { view: string }) {
               <button className="ib wide-only" onClick={() => printMessage(lastIncoming, true)} aria-label="Print" title="Print"><Icon name="print" /></button>
             )}
           </div>
+          {canBlock && (
+            <AiVerdictPanel
+              check={aiCheck}
+              senderEmail={lastIncoming!.from.email}
+              inSpam={inJunk}
+              onFile={(block) => {
+                const email = lastIncoming!.from.email;
+                const kind = aiCheck.verdict?.verdict ?? 'spam';
+                aiCheck.dismiss();
+                void (async () => {
+                  try {
+                    if (block) {
+                      // Blocking already moves all of this sender's inbox mail to Blocked, this email included.
+                      await api.blocked.add(email, `Claude: ${kind}`);
+                      qc.invalidateQueries({ queryKey: ['blocked'] });
+                      qc.invalidateQueries({ queryKey: ['threads'] });
+                      afterAction(thread.id);
+                      ui.toast({ text: `${email} is blocked: this email and the next ones go to Blocked.`, kind: 'success' });
+                    } else {
+                      doAct('junk');
+                      ui.toast({ text: 'Moved to spam.', kind: 'success' });
+                    }
+                  } catch (e) {
+                    ui.toast({ text: (e as Error).message, kind: 'error' });
+                  }
+                })();
+              }}
+            />
+          )}
           {messages.map((m) => (
             <MessageCard
               key={m.id}

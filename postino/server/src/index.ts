@@ -27,6 +27,7 @@ import { registerOpsRoutes, startOps } from './ops.js';
 import { fixSentUnreadOnce } from './mail/store.js';
 import { registerWhatsAppRoutes, startWhatsApp } from './whatsapp.js';
 import { registerCallRoutes } from './calls.js';
+import { registerAiRoutes } from './ai.js';
 import { manager } from './mail/manager.js';
 import { startPushBridge, vapidKeys } from './push.js';
 import { startOutbox } from './mail/outbox.js';
@@ -138,6 +139,7 @@ export async function buildApp() {
   registerGoogleRoutes(app);
   registerMcpRoutes(app);
   registerOpsRoutes(app);
+  registerAiRoutes(app);
   registerWhatsAppRoutes(app);
   registerCallRoutes(app);
 

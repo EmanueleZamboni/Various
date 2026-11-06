@@ -27,6 +27,11 @@ function lastToken(s: string) {
 export function SearchBar() {
   const nav = useNav();
   const [value, setValue] = useState(nav.q);
+  // "AI": Claude reads the question and finds the emails that answer it (costs a little API credit).
+  const [aiOn, setAiOn] = useState(nav.ai);
+  useEffect(() => {
+    if (nav.view === 'search') setAiOn(nav.ai);
+  }, [nav.ai, nav.view]);
   const [open, setOpen] = useState(false);
   const [contacts, setContacts] = useState<Address[]>([]);
   const [recent, setRecent] = useState<string[]>([]);
@@ -77,7 +82,7 @@ export function SearchBar() {
     const trimmed = q.trim();
     setOpen(false);
     if (!trimmed) return clear();
-    nav.search(trimmed);
+    nav.search(trimmed, undefined, aiOn);
   };
   const clear = () => {
     setValue('');
@@ -135,7 +140,7 @@ export function SearchBar() {
           id="search-input"
           ref={inputRef}
           type="search"
-          placeholder={nav.accountId ? 'Search this mailbox' : 'Search all mail'}
+          placeholder={aiOn ? 'Ask Claude, e.g. when does my car insurance expire?' : nav.accountId ? 'Search this mailbox' : 'Search all mail'}
           autoComplete="off"
           spellCheck={false}
           value={value}
@@ -150,6 +155,22 @@ export function SearchBar() {
           aria-controls="search-pop"
           role="combobox"
         />
+        <button
+          type="button"
+          className={`search-ai${aiOn ? ' on' : ''}`}
+          aria-pressed={aiOn}
+          title={aiOn ? 'AI search on: Claude finds the emails that answer your question' : 'Search with Claude'}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => {
+            const next = !aiOn;
+            setAiOn(next);
+            if (nav.view === 'search' && value.trim()) nav.search(value.trim(), undefined, next);
+            else inputRef.current?.focus();
+          }}
+        >
+          <Icon name="sparkle" size={14} />
+          AI
+        </button>
         {value ? (
           <button className="ib" aria-label="Clear search" onMouseDown={(e) => e.preventDefault()} onClick={clear}>
             <Icon name="x" size={16} />

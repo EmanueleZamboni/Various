@@ -696,3 +696,33 @@ export function startLiveMail() {
     for (const a of accounts) emit('account.updated', a);
   }, 90_000);
 }
+
+// ----- Claude inside Postino (canned answers, nothing is called)
+const aiState = { configured: true, spentUsd: 0.37, calls: 14, capUsd: 20 };
+const aiStatus = () => ({ ...aiState, model: 'claude-opus-5-5', month: new Date().toISOString().slice(0, 7) });
+on('GET', '/api/ai/status', () => json(aiStatus()));
+on('PUT', '/api/ai/key', () => { aiState.configured = true; return json(aiStatus()); });
+on('DELETE', '/api/ai/key', () => { aiState.configured = false; return json(aiStatus()); });
+on('PUT', '/api/ai/cap', ({ body }) => { aiState.capUsd = Number(body.capUsd); return json(aiStatus()); });
+on('GET', '/api/ai/spam-check/:id', () => json({ verdict: null }));
+on('POST', '/api/ai/spam-check', async ({ body }) => {
+  await new Promise((r) => setTimeout(r, 900));
+  aiState.calls++;
+  const t = threads.find((x) => x.id === String(body.threadId));
+  const from = t ? sortedMessages(t).filter((m) => !m.mine).pop()?.from.email ?? '' : '';
+  return json({
+    verdict: 'phishing',
+    confidence: 'high',
+    summary: `This pretends to be a delivery notice, but it comes from ${from.split('@')[1] || 'an unknown domain'} and asks you to pay a fee on a look-alike site.`,
+    reasons: ['The sender domain has nothing to do with the courier it names.', 'The "Pay now" button leads to poste-italiane-pagamenti.top, not poste.it.', 'SPF and DKIM checks failed.', 'It pushes you to act within 24 hours.'],
+    messageId: '1',
+    cached: false,
+  });
+});
+on('GET', '/api/ai/search', async ({ query }) => {
+  await new Promise((r) => setTimeout(r, 1200));
+  const page = paginate(threads.slice(0, 3), new URLSearchParams());
+  const highlights: Record<string, string> = {};
+  page.threads.forEach((t: { id: string }, i: number) => { highlights[t.id] = ['✨ Renewal notice: the policy expires on 14 December', '✨ Your quote for the renewal, €412 a year', '✨ Payment receipt for last year'][i] ?? '✨ Related'; });
+  return json({ ...page, nextCursor: null, highlights, answer: `Your car insurance expires on 14 December 2026 (email from the insurer, 3 November).`, queries: [query.get('q') ?? ''] });
+});

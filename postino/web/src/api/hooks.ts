@@ -51,14 +51,28 @@ export function useThreadList(params: ListParams, enabled = true) {
   });
 }
 
-export function useSearch(q: string, account?: string) {
+export function useSearch(q: string, account?: string, enabled = true) {
   return useInfiniteQuery({
     queryKey: ['search', q, account ?? ''],
     queryFn: ({ pageParam }) => api.search.run({ q, account, before: pageParam ?? undefined, limit: 50 }),
     initialPageParam: null as string | null,
     getNextPageParam: (last) => last.nextCursor,
-    enabled: q.trim().length > 0,
+    enabled: enabled && q.trim().length > 0,
     staleTime: 15_000,
+  });
+}
+
+/** AI search: Claude turns the question into searches and picks the emails that answer it. One page, cached. */
+export function useAiSearch(q: string, account: string | undefined, enabled: boolean) {
+  return useInfiniteQuery({
+    queryKey: ['aiSearch', q, account ?? ''],
+    queryFn: () => api.ai.search(q, account),
+    initialPageParam: null as string | null,
+    getNextPageParam: () => null,
+    enabled: enabled && q.trim().length > 0,
+    staleTime: 15 * 60_000,
+    retry: false,
+    refetchOnWindowFocus: false,
   });
 }
 

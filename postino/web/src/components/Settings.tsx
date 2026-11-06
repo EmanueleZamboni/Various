@@ -1110,7 +1110,9 @@ function ClaudeSettings() {
   return (
     <>
       <h2>Claude</h2>
+      <AiSettings />
       <div className="settings-section">
+        <h3 className="sec-title">Claude app connector</h3>
         <p className="help">Let Claude (claude.ai and the Claude apps, with your own subscription) read, search, tidy and group your mail, and write drafts. Claude asks you before sending anything.</p>
         <div className="card claude-steps">
           <ol>
@@ -1142,6 +1144,76 @@ function ClaudeSettings() {
         </div>
       </div>
     </>
+  );
+}
+
+/** Claude inside Postino: the "Spam?" button and AI search, paid from the Max plan's monthly API credits. */
+function AiSettings() {
+  const qc = useQueryClient();
+  const toast = useUI((s) => s.toast);
+  const { data: st } = useQuery({ queryKey: ['aiStatus'], queryFn: api.ai.status, staleTime: 30_000 });
+  const [key, setKey] = useState('');
+  const [cap, setCap] = useState<string>('');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (st) setCap(String(st.capUsd));
+  }, [st]);
+  const run = async (p: Promise<unknown>, ok: string) => {
+    setBusy(true);
+    try {
+      const r = await p;
+      qc.setQueryData(['aiStatus'], r);
+      toast({ text: ok, kind: 'success' });
+      return true;
+    } catch (e) {
+      toast({ text: (e as Error).message, kind: 'error' });
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+  const saveKey = async (e: FormEvent) => {
+    e.preventDefault();
+    if (await run(api.ai.setKey(key.trim()), 'Claude is on.')) setKey('');
+  };
+  return (
+    <div className="settings-section">
+      <h3 className="sec-title">Claude inside Postino</h3>
+      <p className="help">
+        The <b>Spam?</b> button in an email and <b>AI</b> search. They run on your own Claude API key: with the Max plan
+        that uses the monthly API credits included in it, and nothing is charged to a card unless you add one in the Claude Console.
+      </p>
+      {st?.configured ? (
+        <div className="card">
+          <Row title="Claude is on" hint={`Model ${st.model}. This month: $${st.spentUsd.toFixed(2)} of your $${st.capUsd} limit, ${pluralize(st.calls, 'call')}.`} />
+          <form className="ai-cap" onSubmit={(e) => { e.preventDefault(); void run(api.ai.setCap(Number(cap)), 'Limit saved.'); }}>
+            <label>
+              Monthly limit in Postino ($)
+              <input className="input" type="number" min={0} max={100} step={1} value={cap} onChange={(e) => setCap(e.target.value)} />
+            </label>
+            <button className="btn btn-ghost btn-sm" disabled={busy}>Save</button>
+          </form>
+          <p className="help">When the limit is reached Postino stops asking Claude until next month. The Claude Console shows the exact figure.</p>
+          <div className="sheet-actions">
+            <button className="btn btn-quiet" disabled={busy} onClick={() => void run(api.ai.removeKey(), 'API key removed.')}>Remove API key</button>
+          </div>
+        </div>
+      ) : (
+        <div className="card claude-steps">
+          <ol>
+            <li>On <b>claude.ai</b> open <b>Settings, Billing, API credits</b> and link a Claude Console organization (once).</li>
+            <li>In the <b>Claude Console</b> (platform.claude.com) open <b>API keys, Create key</b> and copy it.</li>
+            <li>
+              Paste it here. It is checked, then stored encrypted on your server.
+              <form className="ai-key" onSubmit={(e) => void saveKey(e)}>
+                <input className="input" type="password" autoComplete="off" spellCheck={false} placeholder="sk-ant-..." value={key} onChange={(e) => setKey(e.target.value)} aria-label="Claude API key" />
+                <button className="btn btn-primary btn-sm" disabled={busy || !key.trim()}>{busy ? 'Checking' : 'Save'}</button>
+              </form>
+            </li>
+          </ol>
+        </div>
+      )}
+    </div>
   );
 }
 

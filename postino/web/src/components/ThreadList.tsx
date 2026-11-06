@@ -2,7 +2,7 @@ import { useAddToTasks } from './GoogleApps';
 import { GroupSuggestions } from './Groups';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { InfiniteData } from '@tanstack/react-query';
-import { useAccountMap, useAccounts, useBlocked, useDrafts, useGroups, useGroupSummary, useMyEmails, useOutbox, useSearch, useSettings, useThreadList, useThreadActions } from '../api/hooks';
+import { useAccountMap, useAccounts, useBlocked, useDrafts, useGroups, useGroupSummary, useMyEmails, useOutbox, useAiSearch, useSearch, useSettings, useThreadList, useThreadActions } from '../api/hooks';
 import { api, type GroupSummary } from '../api/client';
 import type { ThreadSummary, ThreadsResponse } from '../api/types';
 import { Icon, type IconName } from '../icons';
@@ -135,7 +135,8 @@ export function ThreadList({ view }: { view: string }) {
       qc.invalidateQueries({ queryKey: ['outbox'] });
     }
   };
-  const search = useSearch(nav.q, nav.accountId ?? undefined);
+  const search = useSearch(nav.q, nav.accountId ?? undefined, !nav.ai);
+  const aiSearch = useAiSearch(nav.q, nav.accountId ?? undefined, isSearch && nav.ai);
   // Gmail-style checkboxes: a set of picked conversations for bulk actions, cleared when the list changes.
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [selMenu, setSelMenu] = useState(false);
@@ -149,15 +150,16 @@ export function ThreadList({ view }: { view: string }) {
       return n;
     });
 
-  const main = isSearch ? search : people;
+  const main = isSearch ? (nav.ai ? aiSearch : search) : people;
+  const aiAnswer = isSearch && nav.ai ? aiSearch.data?.pages[0]?.answer ?? '' : '';
   const rows = flat(main.data);
   const notifRows = flat(notifs.data);
   const newsRows = flat(news.data);
   const highlights = useMemo(() => {
     const h: Record<string, string> = {};
-    for (const p of search.data?.pages ?? []) Object.assign(h, p.highlights ?? {});
+    for (const p of (nav.ai ? aiSearch.data?.pages : search.data?.pages) ?? []) Object.assign(h, p.highlights ?? {});
     return h;
-  }, [search.data]);
+  }, [search.data, aiSearch.data, nav.ai]);
 
   const pinnedOnTop = settings?.inbox.pinnedOnTop ?? true;
   const pinnedRows = smart && pinnedOnTop ? rows.filter((t) => t.pinned) : [];
@@ -308,12 +310,19 @@ export function ThreadList({ view }: { view: string }) {
 
   let body: ReactNode;
   if (view === 'blocked') body = <BlockedList />;
+  else if (main.isLoading && isSearch && nav.ai)
+    body = (
+      <div className="ai-verdict loading ai-answer" role="status">
+        <span className="ai-spin" aria-hidden="true" />
+        <span>Claude is looking through your mail…</span>
+      </div>
+    );
   else if (main.isLoading) body = <Skeletons />;
   else if (main.isError)
     body = (
       <div className="empty">
         <div className="big"><Icon name="alert" size={24} /></div>
-        <h2>Could not load mail</h2>
+        <h2>{isSearch && nav.ai ? 'Claude could not search' : 'Could not load mail'}</h2>
         <p>{(main.error as Error).message}</p>
         <button className="btn btn-ghost" onClick={() => void main.refetch()}>Try again</button>
       </div>
@@ -441,6 +450,13 @@ export function ThreadList({ view }: { view: string }) {
         <Icon name="refresh" size={20} />
       </div>
       <div className="list" role="list" ref={listRef}>
+        {aiAnswer && !main.isLoading && (
+          <div className="ai-answer" role="note">
+            <div className="ai-top"><Icon name="sparkle" size={18} /><b>Claude</b></div>
+            <p>{aiAnswer}</p>
+            <small>From the emails below. Check the email before relying on it.</small>
+          </div>
+        )}
         {body}
         {main.hasNextPage && <div ref={sentinel} style={{ height: 1 }} />}
         {main.isFetchingNextPage && <div className="load-more">Loading more</div>}
