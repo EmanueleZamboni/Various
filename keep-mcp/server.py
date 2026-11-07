@@ -420,6 +420,23 @@ def restore_note(note_id: str, backup: str) -> dict:
         return {**_summary(note), "backup_of_previous": current}
 
 
+@mcp.tool()
+def delete_backup(backup: str) -> dict:
+    """Remove one saved version (a backup file made by this server) for good, by its file name as list_backups
+    shows it. For when a backup holds something that must not stay on the server (a password, a token).
+    Only that one file is touched; the note itself is not changed."""
+    if not re.fullmatch(r"\d{8}T\d{12}Z\.json", backup):
+        raise ValueError("Invalid backup name")
+    removed = []
+    for path in BACKUP_DIR.glob(f"*/{backup}"):
+        if path.is_file():
+            path.unlink()
+            removed.append(path.parent.name)
+    if not removed:
+        raise ValueError("No backup with that name")
+    return {"deleted": backup, "notes": removed}
+
+
 if __name__ == "__main__":
     _load()
     uvicorn.run(
