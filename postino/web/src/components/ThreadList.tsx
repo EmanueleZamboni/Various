@@ -10,6 +10,7 @@ import { useNav, VIEW_LABEL } from '../nav';
 import { useNavigate } from 'react-router-dom';
 import { useUI } from '../store';
 import { accountLabel, formatListDate, pluralize } from '../util/format';
+import { UpcomingBlock } from './Smart';
 import { ThreadRow } from './ThreadRow';
 import { BlockedList } from './BlockedList';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -303,6 +304,7 @@ export function ThreadList({ view }: { view: string }) {
   const groupBlock = (
     <>
       {view === 'inbox' && !isSearch && !nav.accountId && <GroupSuggestions />}
+      {view === 'inbox' && !isSearch && <UpcomingBlock onOpen={(id) => nav.openThread(id)} />}
       {groupLines.length > 0 && <GroupsRow lines={groupLines} base={base} render={(t) => renderRow(t, true)} />}
     </>
   );

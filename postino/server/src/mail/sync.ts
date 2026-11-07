@@ -8,6 +8,7 @@ import { config } from '../config.js';
 import { decrypt } from '../crypto.js';
 import { bus } from '../events.js';
 import { log } from '../log.js';
+import { noteMessage } from '../smart.js';
 import type { AccountRow } from '../views.js';
 import { accountView, folderView, syncProgress } from '../views.js';
 import {
@@ -861,6 +862,7 @@ export class AccountSync {
     }
     const body = bodyFromParsed(mail, (cid) => ids.get(cid));
     storeBody(messageRow, body);
+    noteMessage(messageRow, typeof mail.html === 'string' ? mail.html : null);
   }
 
   private async storeFromParts(client: ImapFlow, messageRow: number, uid: number, structureJson: string | null): Promise<void> {
@@ -910,6 +912,7 @@ export class AccountSync {
       snippet: makeSnippet(split.visible),
       attachments: parts.filter((p) => isAttachmentPart(p)).map((p) => ({ filename: p.filename, contentType: p.type, size: p.size, contentId: p.contentId, inline: p.inline, content: Buffer.alloc(0) })),
     });
+    noteMessage(messageRow, html);
   }
 
   /** Download one attachment part from the server into the cache. */

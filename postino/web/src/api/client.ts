@@ -18,7 +18,7 @@ import type {
   ThreadDetail,
   ThreadsResponse,
   ThreadSummary,
- Signature, Passkey, DeepPartial, OutboxItem, Template } from './types';
+ Signature, Passkey, DeepPartial, OutboxItem, Template, UpcomingItem } from './types';
 
 export class ApiError extends Error {
   status: number;
@@ -134,6 +134,9 @@ export const api = {
     verdict: (threadId: string) => get<{ verdict: SpamVerdict | null }>(`/api/ai/spam-check/${encodeURIComponent(threadId)}`),
     spamCheck: (threadId: string, fresh = false) => post<SpamVerdict & { cached: boolean }>('/api/ai/spam-check', { threadId, fresh }),
     search: (q: string, account?: string) => get<ThreadsResponse & { highlights: Record<string, string>; answer: string; queries: string[] }>(`/api/ai/search${qs({ q, account })}`),
+  },
+  smart: {
+    upcoming: () => get<{ packages: UpcomingItem[]; trips: UpcomingItem[] }>('/api/smart/upcoming'),
   },
   groups: {
     list: () => get<{ groups: { name: string; senders: string[]; notify: boolean; lastUsed?: string }[] }>('/api/groups'),

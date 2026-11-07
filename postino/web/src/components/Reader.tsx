@@ -11,6 +11,7 @@ import { displayName, firstName, formatBytes, formatFullDate, formatListDate } f
 import { Avatar } from './Avatar';
 import { ReplyBox, type ReplyMode } from './ReplyBox';
 import { AiVerdictPanel, useAiSpamCheck } from './AiCheck';
+import { SmartCardView } from './Smart';
 
 export function Reader({ view }: { view: string }) {
   const nav = useNav();
@@ -461,7 +462,7 @@ function MessageCard({ message: m, thread, accountColor, myEmails, expanded, sin
         </div>
       )}
       <div className="msg-body">
-        {m.listUnsubscribe && !me && expanded && (
+        {m.listUnsubscribe && m.canUnsubscribe !== false && !me && expanded && (
           <div className={`unsub-bar${unsub === 'done' ? ' done' : ''}`}>
             {unsub === 'done' ? (
               <>
@@ -489,6 +490,7 @@ function MessageCard({ message: m, thread, accountColor, myEmails, expanded, sin
                 <button className="btn btn-ghost btn-sm" onClick={() => setShowImages(true)}>Load images</button>
               </div>
             )}
+            {m.smart && <SmartCardView card={m.smart} />}
             {m.calendar && <EventCard ev={m.calendar} attachments={m.attachments} messageId={m.id} mine={m.mine} />}
             {m.body.html ? <HtmlBody id={m.id} html={m.body.html} showImages={showImages} /> : <div className="msg-body text" style={{ padding: 0 }}>{m.body.text}</div>}
             {m.body.quoted && (

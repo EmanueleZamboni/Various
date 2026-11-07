@@ -1,4 +1,5 @@
 import { db } from './db.js';
+import { messageCard, threadCard } from './smart.js';
 import type { ThreadRow, MessageRow, FolderRow } from './mail/store.js';
 import type { Address } from './mail/parse.js';
 import { googleCalendarLink } from './mail/ics.js';
@@ -104,6 +105,7 @@ export function threadView(t: ThreadRow, extra?: { draft?: boolean }) {
     draft: extra?.draft ?? false,
     category: t.category,
     folderRoles: roles,
+    smart: threadCard(t.id),
   };
 }
 
@@ -118,6 +120,22 @@ export function attachmentView(a: AttachmentRow) {
     inline: Boolean(a.is_inline),
     url: `/api/attachments/${a.id}`,
   };
+}
+
+// Service mail carries List-Unsubscribe too (orders, tickets, receipts, codes, account notices),
+// but there is nothing to unsubscribe from: like Gmail, offer it only for newsletters and promos.
+const SERVICE_SUBJECT = /(ordin[ei]|\border(ed|s)?\b|ordered|spedit|spedizion|dispatched|shipped|out for delivery|delivered|consegn|tracking|traccia|ricevut|receipt|fattur|invoice|\bbill\b|bolletta|pagament|payment|rimbors|refund|biglietto|\btickets?\b|prenotazion|booking|reservation|check-?in|boarding|imbarco|conferma|confirm|password|codice|\bcodes?\b|\botp\b|verific|verify|sicurezza|security|accesso|sign-?in|log-?in|\baccount\b|invitation:|invito:|updated invitation|shared with you|condivis|statement|estratto conto|rinnov|renewal|quesito|assistenza|support request|richiesta di supporto|reso\b|return request)/i;
+const SERVICE_SENDER = /^(orders?|ordini|conferma|confirm|auto-?confirm|ship|shipment|shipping|tracking|delivery|consegne|receipts?|invoices?|fattur|billing|payments?|pagamenti|security|accounts?|verify|cs-reply|support|assistenza|customer|calendar-notification|drive-shares|noreply-accounts|bookings?|reservations?|tickets?|biglietti)/i;
+
+export function canUnsubscribe(m: { list_unsubscribe: string | null; mine: number; subject: string; from_email: string; thread_id: number }): boolean {
+  if (!m.list_unsubscribe || m.mine) return false;
+  if (SERVICE_SUBJECT.test(m.subject || '')) return false;
+  const local = (m.from_email || '').split('@')[0] || '';
+  if (SERVICE_SENDER.test(local) || (m.from_email || '').endsWith('@trenitalia.it')) return false;
+  // Someone you write to is a person or a service you use, not a mailing list.
+  if (m.from_email && db.prepare('SELECT 1 FROM messages WHERE mine = 1 AND (instr(lower(to_json), ?) > 0 OR instr(lower(cc_json), ?) > 0) LIMIT 1').get(m.from_email, m.from_email)) return false;
+  if (db.prepare('SELECT 1 FROM messages WHERE thread_id = ? AND mine = 1 LIMIT 1').get(m.thread_id)) return false;
+  return true;
 }
 
 export function messageView(m: MessageRow, folder: FolderRow | undefined, body?: { text: string | null; html: string | null; quoted: string | null; has_remote_images: number; calendar_json?: string | null } | null) {
@@ -146,6 +164,8 @@ export function messageView(m: MessageRow, folder: FolderRow | undefined, body?:
     snippet: m.snippet,
     attachments: atts.filter((a) => !a.is_inline || !a.content_id).map(attachmentView),
     listUnsubscribe: m.list_unsubscribe,
+    canUnsubscribe: canUnsubscribe(m),
+    smart: messageCard(m.id),
     knownSender: Boolean(db.prepare('SELECT 1 FROM contacts WHERE email = ? AND (count >= 3 OR in_google = 1)').get(m.from_email)),
     calendar: calendar ? { ...calendar, googleLink: googleCalendarLink(calendar) } : null,
     body: {

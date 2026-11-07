@@ -82,7 +82,16 @@ function summarize(t: MockThread): ThreadSummary {
     draft: drafts.some((d) => d.threadId === t.id) || sorted.some((m) => m.draft),
     category: incoming.category,
     folderRoles: Array.from(new Set(sorted.map((m) => m.folderRole))),
+    smart: mockSmart(sorted[0].subject),
   };
+}
+
+const inDays = (n: number) => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
+/** Package and trip cards on a couple of demo threads, as the server's rules would produce. */
+function mockSmart(subject: string): ThreadSummary['smart'] {
+  if (/DHL 4471/.test(subject)) return { kind: 'package', title: 'Parcel from Shenzhen', merchant: 'DHL Express', status: 'out_for_delivery', expected: inDays(0), carrier: 'DHL', trackingNumber: '44710021', trackingUrl: 'https://dhl.com/track/44710021', orderId: '', messageId: 'm' };
+  if (/Hai venduto/.test(subject)) return { kind: 'package', title: 'Lettore Dvd Sony', merchant: 'Vinted', status: 'ordered', expected: '', carrier: '', trackingNumber: '', trackingUrl: '', orderId: '', messageId: 'm' };
+  return null;
 }
 
 function threadsInView(view: string, accountId?: string | null, category?: string | null, unread?: boolean): MockThread[] {
@@ -726,3 +735,11 @@ on('GET', '/api/ai/search', async ({ query }) => {
   page.threads.forEach((t: { id: string }, i: number) => { highlights[t.id] = ['✨ Renewal notice: the policy expires on 14 December', '✨ Your quote for the renewal, €412 a year', '✨ Payment receipt for last year'][i] ?? '✨ Related'; });
   return json({ ...page, nextCursor: null, highlights, answer: `Your car insurance expires on 14 December 2026 (email from the insurer, 3 November).`, queries: [query.get('q') ?? ''] });
 });
+
+on('GET', '/api/smart/upcoming', () => json({
+  trips: [{ threadId: 't1', messageId: 'm', at: new Date().toISOString(), card: { kind: 'trip', mode: 'train', operator: 'Trenitalia', number: 'Regionale Veloce 1234', from: 'Bologna Centrale', to: 'Milano Centrale', depart: `${inDays(1)}T10:05`, arrive: `${inDays(1)}T11:20`, bookingRef: '1234567890 · CP 654321', seat: '' } }],
+  packages: [
+    { threadId: 't2', messageId: 'm', at: new Date().toISOString(), card: { kind: 'package', title: 'USB-C Cable 1 m', merchant: 'Amazon', status: 'shipped', expected: inDays(3), carrier: '', trackingNumber: '', trackingUrl: 'https://www.amazon.it/progress-tracker/package', orderId: '123-4567890-1234567' } },
+    { threadId: 't3', messageId: 'm', at: new Date().toISOString(), card: { kind: 'package', title: 'Smart LED bulb', merchant: 'Amazon', status: 'out_for_delivery', expected: inDays(0), carrier: '', trackingNumber: '', trackingUrl: 'https://www.amazon.it/progress-tracker/package', orderId: '' } },
+  ],
+}));

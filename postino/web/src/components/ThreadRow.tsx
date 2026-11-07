@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type PointerEvent, memo } from 'react';
 import type { Account, ThreadAction, ThreadSummary, SwipeAction } from '../api/types';
 import { Icon, type IconName } from '../icons';
 import { displayName, formatListDate, participantsLabel } from '../util/format';
+import { SmartChip } from './Smart';
 import { Avatar } from './Avatar';
 
 type Props = {
@@ -248,6 +249,7 @@ function ThreadRowInner({ thread: t, account, myEmails, selected, focused, highl
           ) : previewLines > 0 ? (
             <span className={`snip${previewLines === 2 ? ' lines-2' : ''}`}>{t.snippet}</span>
           ) : null}
+          {t.smart && <SmartChip card={t.smart} />}
           {showAccount && account && (
             <span className="row-tags">
               <span className="acct-tag" style={{ ['--c' as string]: account.color }}>{accountLabel}</span>

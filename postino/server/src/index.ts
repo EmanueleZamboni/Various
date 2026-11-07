@@ -28,6 +28,7 @@ import { fixSentUnreadOnce } from './mail/store.js';
 import { registerWhatsAppRoutes, startWhatsApp } from './whatsapp.js';
 import { registerCallRoutes } from './calls.js';
 import { registerAiRoutes } from './ai.js';
+import { backfill, registerSmartRoutes } from './smart.js';
 import { manager } from './mail/manager.js';
 import { startPushBridge, vapidKeys } from './push.js';
 import { startOutbox } from './mail/outbox.js';
@@ -140,6 +141,7 @@ export async function buildApp() {
   registerMcpRoutes(app);
   registerOpsRoutes(app);
   registerAiRoutes(app);
+  registerSmartRoutes(app);
   registerWhatsAppRoutes(app);
   registerCallRoutes(app);
 
@@ -206,6 +208,15 @@ async function main(): Promise<void> {
   startDriveBackups();
   startGoogleContacts();
   startOps();
+  // Package and trip cards for recent mail that arrived before they existed (cheap, rules only).
+  setTimeout(() => {
+    try {
+      const n = backfill();
+      if (n) log.info({ n }, 'smart cards backfilled');
+    } catch (err) {
+      log.warn({ err: (err as Error).message }, 'smart backfill failed');
+    }
+  }, 20_000).unref();
   setTimeout(() => fixSentUnreadOnce(), 20_000);
   startWhatsApp();
   await app.listen({ port: config.port, host: config.host });

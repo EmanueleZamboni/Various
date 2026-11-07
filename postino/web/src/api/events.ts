@@ -36,6 +36,7 @@ export function useServerEvents(enabled: boolean) {
         listsDirty = false;
         qc.invalidateQueries({ queryKey: ['threads'] });
         qc.invalidateQueries({ queryKey: ['groupSummary'] });
+        qc.invalidateQueries({ queryKey: ['smartUpcoming'] });
         qc.invalidateQueries({ queryKey: ['search'] });
       }
       for (const id of dirtyThreads) qc.invalidateQueries({ queryKey: ['thread', id] });

@@ -51,6 +51,7 @@ export type ThreadSummary = {
   draft: boolean;
   category: Category;
   folderRoles: FolderRole[];
+  smart?: (SmartCard & { messageId: string }) | null;
 };
 
 export type Attachment = {
@@ -93,9 +94,11 @@ export type Message = {
   snippet: string;
   attachments: Attachment[];
   listUnsubscribe: string | null;
+  canUnsubscribe?: boolean;
   knownSender?: boolean;
   calendar?: CalendarEvent | null;
   body: MessageBody;
+  smart?: SmartCard | null;
 };
 
 export type ThreadsResponse = {
@@ -246,3 +249,8 @@ export type BackupStatus = { driveConnected: boolean; lastDrive: string | null; 
 
 export type RsvpResponse = 'accepted' | 'tentative' | 'declined';
 export type GoogleTask = { id: string; title: string; notes: string; due: string | null };
+
+export type SmartCard =
+  | { kind: 'package'; title: string; merchant: string; status: 'ordered' | 'shipped' | 'out_for_delivery' | 'delivered' | 'problem' | ''; expected: string; carrier: string; trackingNumber: string; trackingUrl: string; orderId: string }
+  | { kind: 'trip'; mode: 'train' | 'flight' | 'bus'; operator: string; number: string; from: string; to: string; depart: string; arrive: string; bookingRef: string; seat: string };
+export type UpcomingItem = { threadId: string; messageId: string; card: SmartCard; at: string };
