@@ -133,6 +133,8 @@ export const api = {
     setKey: (key: string) => put<AiStatus>('/api/ai/key', { key }),
     removeKey: () => del<AiStatus>('/api/ai/key'),
     setCap: (capUsd: number) => put<AiStatus>('/api/ai/cap', { capUsd }),
+    triage: () => get<TriageSettings>('/api/ai/triage'),
+    setTriage: (patch: Partial<Pick<TriageSettings, 'enabled' | 'model'>>) => put<TriageSettings>('/api/ai/triage', patch),
     verdict: (threadId: string) => get<{ verdict: SpamVerdict | null }>(`/api/ai/spam-check/${encodeURIComponent(threadId)}`),
     spamCheck: (threadId: string, fresh = false) => post<SpamVerdict & { cached: boolean }>('/api/ai/spam-check', { threadId, fresh }),
     search: (q: string, account?: string) => get<ThreadsResponse & { highlights: Record<string, string>; answer: string; queries: string[] }>(`/api/ai/search${qs({ q, account })}`),
@@ -258,3 +260,4 @@ export type GroupSummary = { name: string; latestDate: string; latestThreadId: s
 
 export type AiStatus = { configured: boolean; model: string; month: string; spentUsd: number; calls: number; capUsd: number };
 export type SpamVerdict = { verdict: 'safe' | 'spam' | 'phishing' | 'scam' | 'suspicious'; confidence: 'low' | 'medium' | 'high'; summary: string; reasons: string[]; messageId: number };
+export type TriageSettings = { enabled: boolean; model: 'claude-haiku-5-5' | 'claude-sonnet-5-5' | 'claude-opus-5-5'; today?: number; dailyLimit?: number };

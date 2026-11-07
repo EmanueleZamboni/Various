@@ -52,6 +52,8 @@ export type ThreadSummary = {
   category: Category;
   folderRoles: FolderRole[];
   smart?: (SmartCard & { messageId: string }) | null;
+  important?: boolean;
+  importantReason?: string;
 };
 
 export type Attachment = {

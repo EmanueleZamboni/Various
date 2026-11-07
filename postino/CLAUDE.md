@@ -23,4 +23,7 @@ names or addresses in tests, mock data or commit messages: make the data up.
 
 ## Claude API inside Postino
 
-Only for the Spam? button and AI search (Ema's choice). Other features use rules, not Claude.
+Only for: the Spam? button and AI search (Opus 5.5), and marking new mail from people as
+important / recognising brand deals (`server/src/triage.ts`, Haiku 5.5 by default, behind free
+rule filters, 150 a day, switchable in Settings). Everything else uses rules, not Claude:
+tell Ema what any new Claude use would cost before adding it.

@@ -85,6 +85,12 @@ const parse = <T>(s: string, fallback: T): T => {
   }
 };
 
+/** Claude's verdict for a conversation, when it read one of its emails (see triage.ts). */
+function importance(threadId: number): { important: boolean; importantReason: string } {
+  const r = db.prepare('SELECT reason FROM ai_triage WHERE thread_id = ? AND important = 1 ORDER BY created_at DESC LIMIT 1').get(threadId) as { reason: string } | undefined;
+  return { important: !!r, importantReason: r ? r.reason : '' };
+}
+
 export function threadView(t: ThreadRow, extra?: { draft?: boolean }) {
   const roles = t.roles.split(',').filter(Boolean);
   return {
@@ -106,6 +112,7 @@ export function threadView(t: ThreadRow, extra?: { draft?: boolean }) {
     category: t.category,
     folderRoles: roles,
     smart: threadCard(t.id),
+    ...importance(t.id),
   };
 }
 

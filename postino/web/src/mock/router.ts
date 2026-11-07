@@ -83,6 +83,7 @@ function summarize(t: MockThread): ThreadSummary {
     category: incoming.category,
     folderRoles: Array.from(new Set(sorted.map((m) => m.folderRole))),
     smart: mockSmart(sorted[0].subject),
+    ...(/disponibilità riprese/i.test(sorted[0].subject) ? { important: true, importantReason: 'Client asks for shoot dates' } : {}),
   };
 }
 
@@ -745,3 +746,6 @@ on('GET', '/api/smart/upcoming', () => json({
 }));
 on('POST', '/api/groups/read', () => json({ affected: 12 }));
 on('POST', '/api/smart/hide', () => json({ ok: true }));
+const mockTriage = { enabled: true, model: 'claude-haiku-5-5', today: 12, dailyLimit: 150 };
+on('GET', '/api/ai/triage', () => json(mockTriage));
+on('PUT', '/api/ai/triage', ({ body }) => { Object.assign(mockTriage, body); return json(mockTriage); });

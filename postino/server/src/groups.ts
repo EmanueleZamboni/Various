@@ -38,6 +38,10 @@ export function refreshGroupThreads(force = false): void {
       WHERE m.thread_id IN (SELECT thread_id FROM messages WHERE from_email IN (SELECT email FROM sender_groups))
       GROUP BY m.thread_id
       HAVING SUM(CASE WHEN m.mine = 1 OR sg.email IS NULL THEN 1 ELSE 0 END) = 0 AND COUNT(DISTINCT sg.group_name) = 1`);
+    // Brand deals Claude recognised, whoever sent them, until you reply.
+    db.exec(`INSERT OR IGNORE INTO group_threads(thread_id, group_name)
+      SELECT DISTINCT t.thread_id, 'Brand deals' FROM ai_triage t
+      WHERE t.kind = 'brand_deal' AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.thread_id = t.thread_id AND m.mine = 1)`);
   })();
 }
 
@@ -146,8 +150,20 @@ export function groupedInboxThreads(accountId: number | null, group?: string): S
  * One line per group for the inbox: where it sits in time (its newest mail), what that mail is,
  * how many conversations it holds, and how many arrived unread since the group was last opened.
  */
+/** When each group was last opened (groups made of senders start at their creation). */
+function groupSeenTimes(): Map<string, string> {
+  const m = new Map((db.prepare(`SELECT sg.group_name AS g, COALESCE(gs.seen_at, MIN(sg.created_at)) AS seen FROM sender_groups sg LEFT JOIN group_seen gs ON gs.group_name = sg.group_name GROUP BY sg.group_name`).all() as { g: string; seen: string }[]).map((r) => [r.g, r.seen]));
+  for (const r of db.prepare('SELECT group_name AS g, seen_at AS seen FROM group_seen').all() as { g: string; seen: string }[]) if (!m.has(r.g)) m.set(r.g, r.seen);
+  return m;
+}
+
+/** Threads Claude marked important (see triage.ts). */
+function aiImportantThreads(): Set<number> {
+  return new Set((db.prepare('SELECT DISTINCT thread_id FROM ai_triage WHERE important = 1').all() as { thread_id: number }[]).map((r) => r.thread_id));
+}
+
 export function groupSummaries(accountId: number | null) {
-  const seen = new Map((db.prepare(`SELECT sg.group_name AS g, COALESCE(gs.seen_at, MIN(sg.created_at)) AS seen FROM sender_groups sg LEFT JOIN group_seen gs ON gs.group_name = sg.group_name GROUP BY sg.group_name`).all() as { g: string; seen: string }[]).map((r) => [r.g, r.seen]));
+  const seen = groupSeenTimes();
   const out = new Map<string, { name: string; latestDate: string; latestThreadId: string; latestFrom: { name: string; email: string }; latestSubject: string; total: number; fresh: number; important: number }>();
   const countedImp = new Set<string>();
   for (const r of groupedInboxThreads(accountId)) {
@@ -181,10 +197,11 @@ export function groupSummaries(accountId: number | null) {
  * alert reaching two mailboxes counts once. Returns the first `limit` and how many more there are.
  */
 export function groupPreview(accountId: number | null, limit = 3): { ids: number[]; more: number } {
-  const seenAt = new Map((db.prepare(`SELECT sg.group_name AS g, COALESCE(gs.seen_at, MIN(sg.created_at)) AS seen FROM sender_groups sg LEFT JOIN group_seen gs ON gs.group_name = sg.group_name GROUP BY sg.group_name`).all() as { g: string; seen: string }[]).map((r) => [r.g, r.seen]));
+  const seenAt = groupSeenTimes();
+  const aiImp = aiImportantThreads();
   const dup = new Set<string>();
   const picked = groupedInboxThreads(accountId)
-    .filter((r) => r.unread_count > 0 && (r.last_date > (seenAt.get(r.g) ?? '') || (isRecent(r.last_date) && isImportant(r.subject, r.snippet))))
+    .filter((r) => r.unread_count > 0 && (r.last_date > (seenAt.get(r.g) ?? '') || (isRecent(r.last_date) && (isImportant(r.subject, r.snippet) || aiImp.has(r.id)))))
     .filter((r) => {
       const key = `${r.g}|${r.last_date.slice(0, 16)}`;
       if (dup.has(key)) return false;

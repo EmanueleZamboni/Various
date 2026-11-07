@@ -245,6 +245,11 @@ function ThreadRowInner({ thread: t, account, myEmails, selected, focused, highl
             {showAccount && account && (
               <span className="acct-tag" style={{ ['--c' as string]: account.color }}>{accountLabel}</span>
             )}
+            {t.important && (
+              <span className="imp-mark" title={t.importantReason ? `Important: ${t.importantReason}` : 'Important'} aria-label="Important">
+                <Icon name="important" size={16} />
+              </span>
+            )}
             <span className="subj">{t.subject || '(no subject)'}</span>
             {previewLines > 0 && !highlight && <span className="snip-inline"> - {t.snippet}</span>}
           </span>

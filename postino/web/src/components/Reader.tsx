@@ -238,6 +238,9 @@ export function Reader({ view }: { view: string }) {
               <button className="ib wide-only" onClick={() => printMessage(lastIncoming, true)} aria-label="Print" title="Print"><Icon name="print" /></button>
             )}
           </div>
+          {thread.important && (
+            <div className="imp-note"><Icon name="important" size={16} />Important{thread.importantReason ? `: ${thread.importantReason}` : ''}</div>
+          )}
           {canBlock && (
             <AiVerdictPanel
               check={aiCheck}

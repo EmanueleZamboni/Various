@@ -20,10 +20,14 @@ import type { MessageRow, ThreadRow } from './mail/store.js';
  */
 
 export const AI_MODEL = 'claude-opus-5-5';
-// Claude Opus 5.5 list prices, USD per million tokens. Fallback runs are priced the same:
-// close enough for a safety cap (the Console's Cost page has the exact figure).
-const PRICE_IN = 4;
-const PRICE_OUT = 20;
+// List prices, USD per million tokens (input, output). Fallback runs are priced as the model
+// asked for: close enough for a safety cap (the Console's Cost page has the exact figure).
+const PRICES: Record<string, [number, number]> = {
+  'claude-opus-5-5': [4, 20],
+  'claude-sonnet-5-5': [2, 10],
+  'claude-haiku-5-5': [0.1, 0.5],
+};
+export const TRIAGE_MODELS = ['claude-haiku-5-5', 'claude-sonnet-5-5', 'claude-opus-5-5'] as const;
 const DEFAULT_CAP_USD = 20;
 
 type Usage = { month: string; usd: number; calls: number };
@@ -39,11 +43,16 @@ function capUsd(): number {
   return getSetting<number>('ai.capUsd', DEFAULT_CAP_USD);
 }
 
-function addUsage(u: { input_tokens: number; output_tokens: number; cache_read_input_tokens?: number | null; cache_creation_input_tokens?: number | null }): void {
+function addUsage(u: { input_tokens: number; output_tokens: number; cache_read_input_tokens?: number | null; cache_creation_input_tokens?: number | null }, model = AI_MODEL): void {
   const inTok = u.input_tokens + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0);
-  const usd = (inTok * PRICE_IN + u.output_tokens * PRICE_OUT) / 1_000_000;
+  const [pin, pout] = PRICES[model] ?? PRICES[AI_MODEL];
+  const usd = (inTok * pin + u.output_tokens * pout) / 1_000_000;
   const cur = usage();
   setSetting('ai.usage', { month: cur.month, usd: Math.round((cur.usd + usd) * 1e6) / 1e6, calls: cur.calls + 1 });
+}
+
+export function aiConfigured(): boolean {
+  return !!getSetting<string | null>('ai.key', null);
 }
 
 export function aiStatus() {
@@ -80,17 +89,19 @@ function friendly(err: unknown): Error {
 }
 
 /** One structured call: JSON schema in, parsed object out, usage counted, cap enforced. */
-async function ask<T>(opts: { system: string; user: string; schema: Record<string, unknown> & { type: 'object' }; effort: 'low' | 'medium' | 'high'; maxTokens: number }): Promise<T> {
+export async function ask<T>(opts: { system: string; user: string; schema: Record<string, unknown> & { type: 'object' }; effort: 'low' | 'medium' | 'high'; maxTokens: number; model?: string }): Promise<T> {
   const u = usage();
   if (u.usd >= capUsd()) throw httpError(402, 'ai_cap', `Postino's AI limit for this month ($${capUsd()}) is reached. Raise it in Settings › Claude.`);
   const c = getClient();
+  const model = opts.model ?? AI_MODEL;
+  // Server-side refusal fallback exists for Opus and Sonnet on the Claude API, not for Haiku.
+  const fallback = model === 'claude-haiku-5-5' ? {} : { betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' as const };
   let res;
   try {
     res = await c.beta.messages.parse({
-      model: AI_MODEL,
+      model,
       max_tokens: opts.maxTokens,
-      betas: ['server-side-fallback-2026-07-01'],
-      fallbacks: 'default',
+      ...fallback,
       system: opts.system,
       messages: [{ role: 'user', content: opts.user }],
       output_config: { effort: opts.effort, format: jsonSchemaOutputFormat(opts.schema as never) },
@@ -98,7 +109,7 @@ async function ask<T>(opts: { system: string; user: string; schema: Record<strin
   } catch (err) {
     throw friendly(err);
   }
-  addUsage(res.usage);
+  addUsage(res.usage, model);
   if (res.stop_reason === 'refusal') throw httpError(502, 'ai_refused', 'Claude declined to look at this one.');
   if (res.stop_reason === 'max_tokens') throw httpError(502, 'ai_cut', 'Claude\'s answer was cut off. Try again.');
   const out = res.parsed_output as T | null;

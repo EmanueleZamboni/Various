@@ -322,3 +322,15 @@ export function setSetting(key: string, value: unknown): void {
 }
 
 export const nowIso = (): string => new Date().toISOString();
+
+// Claude's verdict on new mail from people (see triage.ts); read by groups.ts and views.ts too.
+db.exec(`CREATE TABLE IF NOT EXISTS ai_triage (
+  message_row INTEGER PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE,
+  thread_id INTEGER NOT NULL,
+  kind TEXT NOT NULL,
+  important INTEGER NOT NULL DEFAULT 0,
+  reason TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+)`);
+db.exec('CREATE INDEX IF NOT EXISTS ai_triage_thread ON ai_triage(thread_id)');
+db.exec('CREATE INDEX IF NOT EXISTS ai_triage_kind ON ai_triage(kind)');

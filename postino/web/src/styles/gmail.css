@@ -3670,3 +3670,25 @@ a.btn {
   overflow-y: auto;
   overscroll-behavior: contain;
 }
+/* Gmail's importance marker: Claude thinks this one needs you. */
+.imp-mark {
+  display: inline-flex;
+  vertical-align: -3px;
+  margin-right: 4px;
+  color: #f9ab00;
+  flex: none;
+}
+.imp-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 0 10px;
+  padding: 4px 10px 4px 8px;
+  border-radius: 12px;
+  background: var(--amber-soft);
+  color: var(--ink);
+  font-size: 13px;
+}
+.imp-note svg {
+  color: #f9ab00;
+}

@@ -29,6 +29,7 @@ import { registerWhatsAppRoutes, startWhatsApp } from './whatsapp.js';
 import { registerCallRoutes } from './calls.js';
 import { registerAiRoutes } from './ai.js';
 import { backfill, registerSmartRoutes } from './smart.js';
+import { registerTriageRoutes, startTriage } from './triage.js';
 import { manager } from './mail/manager.js';
 import { startPushBridge, vapidKeys } from './push.js';
 import { startOutbox } from './mail/outbox.js';
@@ -142,6 +143,7 @@ export async function buildApp() {
   registerOpsRoutes(app);
   registerAiRoutes(app);
   registerSmartRoutes(app);
+  registerTriageRoutes(app);
   registerWhatsAppRoutes(app);
   registerCallRoutes(app);
 
@@ -208,6 +210,7 @@ async function main(): Promise<void> {
   startDriveBackups();
   startGoogleContacts();
   startOps();
+  startTriage();
   // Package and trip cards for recent mail that arrived before they existed (cheap, rules only).
   setTimeout(() => {
     try {

@@ -4,7 +4,7 @@ import { BackupSettings } from './Backup';
 import { type ReactNode, useEffect, useState, type FormEvent } from 'react';
 import { Link, Route, Routes, useLocation } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, ApiError } from '../api/client';
+import { api, ApiError, type TriageSettings } from '../api/client';
 import { useAccounts, useSettings, useUpdateSettings } from '../api/hooks';
 import type { Account, AccountInput, Category, Me, SwipeAction } from '../api/types';
 import { SignatureEditor } from './SignatureEditor';
@@ -1185,7 +1185,7 @@ function AiSettings() {
       </p>
       {st?.configured ? (
         <div className="card">
-          <Row title="Claude is on" hint={`Model ${st.model}. This month: $${st.spentUsd.toFixed(2)} of your $${st.capUsd} limit, ${pluralize(st.calls, 'call')}.`} />
+          <Row title="Claude is on" hint={`Spam? and AI search use ${st.model.replace('claude-', '').replace(/-(\d)-(\d)$/, ' $1.$2').replace(/^./, (c) => c.toUpperCase())}. This month: $${st.spentUsd.toFixed(2)} of your $${st.capUsd} limit, ${pluralize(st.calls, 'call')}.`} />
           <form className="ai-cap" onSubmit={(e) => { e.preventDefault(); void run(api.ai.setCap(Number(cap)), 'Limit saved.'); }}>
             <label>
               Monthly limit in Postino ($)
@@ -1194,6 +1194,7 @@ function AiSettings() {
             <button className="btn btn-ghost btn-sm" disabled={busy}>Save</button>
           </form>
           <p className="help">When the limit is reached Postino stops asking Claude until next month. The Claude Console shows the exact figure.</p>
+          <TriageSettingsRow />
           <div className="sheet-actions">
             <button className="btn btn-quiet" disabled={busy} onClick={() => void run(api.ai.removeKey(), 'API key removed.')}>Remove API key</button>
           </div>
@@ -1214,6 +1215,37 @@ function AiSettings() {
         </div>
       )}
     </div>
+  );
+}
+
+/** Claude reads new mail from people: marks what is important, groups brand deals. */
+function TriageSettingsRow() {
+  const qc = useQueryClient();
+  const toast = useUI((s) => s.toast);
+  const { data: t } = useQuery({ queryKey: ['aiTriage'], queryFn: api.ai.triage, staleTime: 30_000 });
+  if (!t) return null;
+  const save = async (patch: Partial<Pick<TriageSettings, 'enabled' | 'model'>>) => {
+    try {
+      qc.setQueryData(['aiTriage'], await api.ai.setTriage(patch));
+    } catch (e) {
+      toast({ text: (e as Error).message, kind: 'error' });
+    }
+  };
+  return (
+    <>
+      <Row title="Mark important mail" hint={`Claude reads new emails from people (not groups, newsletters or notifications), marks the ones that need you, and puts brand deals in their own group. ${t.today ?? 0} checked today, at most ${t.dailyLimit ?? 150}.`}>
+        <Switch on={t.enabled} label="Mark important mail" onChange={(v) => void save({ enabled: v })} />
+      </Row>
+      {t.enabled && (
+        <Row title="Model" hint="Haiku costs about $0.0003 an email, Sonnet $0.006, Opus $0.012.">
+          <select className="input" value={t.model} onChange={(e) => void save({ model: e.target.value as TriageSettings['model'] })} style={{ width: 'auto' }}>
+            <option value="claude-haiku-5-5">Haiku (cheapest)</option>
+            <option value="claude-sonnet-5-5">Sonnet</option>
+            <option value="claude-opus-5-5">Opus (best)</option>
+          </select>
+        </Row>
+      )}
+    </>
   );
 }
 
