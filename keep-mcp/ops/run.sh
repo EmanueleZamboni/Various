@@ -211,6 +211,14 @@ SEGRETARIO_PUBLIC_HOST=%s
     fi
     log "segretario: segreto derivato da Keep in .env"
   fi
+  # Il Segretario legge Keep (TASKS, SPESA) per il brief del mattino: gli serve l'URL interno di keep-mcp
+  # e l'host pubblico (keep-mcp accetta solo quello nell'header Host). Scritti una volta, mai stampati.
+  if ! grep -qE '^KEEP_MCP_URL=' "$ENVS"; then
+    printf 'KEEP_MCP_URL=http://172.17.0.1:8765/%s/mcp
+KEEP_MCP_HOST=%s
+' "$KEEP_SECRET" "$DOMAIN" >> "$ENVS"
+    log "segretario: URL di Keep in .env"
+  fi
 else
   log "segretario: segreto NON derivato (manca /etc/keep-mcp.env)"
 fi
