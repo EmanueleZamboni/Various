@@ -3559,3 +3559,13 @@ a.btn {
     font-size: 12px;
   }
 }
+/* Upcoming: a one-line row like Groups; the list only when opened. */
+.upcoming-list {
+  border-top: 1px solid var(--row-line);
+  padding: 4px 0 6px;
+}
+.upcoming-row .bundle-title small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
