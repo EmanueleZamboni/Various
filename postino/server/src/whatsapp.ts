@@ -5,6 +5,7 @@ import QRCode from 'qrcode';
 import makeWASocket, {
   Browsers,
   DisconnectReason,
+  downloadMediaMessage,
   isJidGroup,
   isJidStatusBroadcast,
   jidNormalizedUser,
@@ -13,7 +14,8 @@ import makeWASocket, {
   type WAMessage,
   type WASocket,
 } from '@whiskeysockets/baileys';
-import { db } from './db.js';
+import { db, getSetting, setSetting } from './db.js';
+import { decrypt, encrypt } from './crypto.js';
 import { config } from './config.js';
 import { log } from './log.js';
 
@@ -25,6 +27,8 @@ import { log } from './log.js';
  * the owner is told about the small risk of the number being restricted before linking.
  * Only text is kept (media become "[photo]" etc.), in Postino's own database, and nothing is
  * ever sent on its own: sending happens only through the send tool, which Claude must confirm.
+ * Voice notes: off by default. With a Groq key (Settings > WhatsApp) each new voice note is
+ * downloaded, sent to Groq's Whisper and stored as "[voice message] <text>"; the audio is dropped.
  */
 
 const DIR = path.join(config.dataDir, 'whatsapp');
@@ -108,7 +112,9 @@ export function messageText(msg: WAMessage['message']): string | null {
 
 const insMsg = db.prepare(
   `INSERT INTO wa_messages(chat_jid, id, from_me, sender, sender_name, ts, text) VALUES (?, ?, ?, ?, ?, ?, ?)
-   ON CONFLICT(chat_jid, id) DO UPDATE SET text = excluded.text`,
+   ON CONFLICT(chat_jid, id) DO UPDATE SET text = CASE
+     WHEN excluded.text = '[voice message]' AND wa_messages.text LIKE '[voice message] %' THEN wa_messages.text
+     ELSE excluded.text END`,
 );
 const upChat = db.prepare(
   `INSERT INTO wa_chats(jid, name, is_group, last_ts) VALUES (?, ?, ?, ?)
@@ -120,12 +126,14 @@ const upContact = db.prepare('INSERT INTO wa_contacts(jid, name) VALUES (?, ?) O
 /** Store messages (history or live). Returns how many were kept. */
 export function storeMessages(list: WAMessage[], live = false): number {
   let n = 0;
+  const voice: [WAMessage, string][] = [];
   db.transaction(() => {
     for (const m of list) {
       const jid = m.key?.remoteJid ? jidNormalizedUser(m.key.remoteJid) : '';
       if (!jid || isJidStatusBroadcast(jid) || !m.key.id) continue;
       const text = messageText(m.message);
       if (text === null) continue;
+      if (live && text === '[voice message]') voice.push([m, jid]);
       const ts = tsOf(m.messageTimestamp);
       const fromMe = m.key.fromMe ? 1 : 0;
       const sender = fromMe ? 'me' : jidNormalizedUser(m.key.participant || jid);
@@ -136,7 +144,90 @@ export function storeMessages(list: WAMessage[], live = false): number {
       n++;
     }
   })();
+  // Outside the transaction: the download and the Groq call are slow and must not hold the database.
+  if (voice.length && transcriptionKey()) for (const [m, jid] of voice) queueTranscription(m, jid);
   return n;
+}
+
+// ---------------------------------------------------------------- voice notes -> text (optional)
+// Off until a Groq key is saved in Settings > WhatsApp (or GROQ_API_KEY is in the environment).
+// Only new voice notes are transcribed, one at a time, never the history. The audio is downloaded
+// from WhatsApp, sent to Groq's Whisper, and dropped; the text goes after the "[voice message]" tag
+// (kept in front, so a transcript is always recognisable as one). Transcripts are other people's
+// words, like any message: data for Claude, never instructions.
+
+const TRANSCRIBE_URL = 'https://api.groq.com/openai/v1/audio/transcriptions';
+const TRANSCRIBE_MODEL = 'whisper-large-v3-turbo';
+const MAX_VOICE_SECONDS = 600; // 10 minutes; longer ones stay "[voice message]"
+const MAX_VOICE_BYTES = 25_000_000; // Groq's upload limit
+const KEY_SETTING = 'whatsapp.transcribeKey';
+const stats = { done: 0, failed: 0, lastError: null as string | null, lastAt: null as string | null };
+
+export function transcriptionKey(): { key: string; source: 'settings' | 'env' } | null {
+  const blob = getSetting<string>(KEY_SETTING, '');
+  if (blob) {
+    try {
+      const key = decrypt(blob);
+      if (key) return { key, source: 'settings' };
+    } catch {
+      /* secret changed: treat as not set */
+    }
+  }
+  const env = process.env.GROQ_API_KEY?.trim();
+  return env ? { key: env, source: 'env' } : null;
+}
+
+export function setTranscriptionKey(key: string): void {
+  setSetting(KEY_SETTING, key ? encrypt(key) : '');
+}
+
+export function transcriptionStatus() {
+  const k = transcriptionKey();
+  return { enabled: Boolean(k), source: k?.source ?? null, ...stats };
+}
+
+/** Audio in, text out, through Groq's Whisper. Pure: no database, no WhatsApp (tests pass a fake fetch). */
+export async function transcribeAudio(audio: Buffer, mime: string, key: string, fetchImpl: typeof fetch = fetch): Promise<string> {
+  const type = (mime.split(';')[0] || 'audio/ogg').trim();
+  const ext = /mp4|m4a|aac/.test(type) ? 'm4a' : /mpeg|mp3/.test(type) ? 'mp3' : /wav/.test(type) ? 'wav' : 'ogg';
+  const form = new FormData();
+  form.append('file', new Blob([new Uint8Array(audio)], { type }), `voice.${ext}`);
+  form.append('model', TRANSCRIBE_MODEL);
+  form.append('response_format', 'json');
+  form.append('temperature', '0');
+  const r = await fetchImpl(TRANSCRIBE_URL, { method: 'POST', headers: { Authorization: `Bearer ${key}` }, body: form, signal: AbortSignal.timeout(120_000) });
+  const j = (await r.json().catch(() => ({}))) as { text?: string; error?: { message?: string } };
+  if (!r.ok) throw new Error(j.error?.message || `Groq HTTP ${r.status}`);
+  return (j.text || '').trim();
+}
+
+/** Put the transcript into the stored message; the tag stays so it reads as a voice note. */
+export function applyTranscript(jid: string, id: string, text: string): void {
+  const t = text.replace(/\s+/g, ' ').trim().slice(0, 20_000);
+  db.prepare('UPDATE wa_messages SET text = ? WHERE chat_jid = ? AND id = ?').run(t ? `[voice message] ${t}` : '[voice message] (nothing understood)', jid, id);
+}
+
+let queue: Promise<void> = Promise.resolve();
+function queueTranscription(m: WAMessage, jid: string): void {
+  const audio = normalizeMessageContent(m.message)?.audioMessage;
+  if (!audio || !m.key.id || Number(audio.seconds || 0) > MAX_VOICE_SECONDS) return;
+  const id = m.key.id;
+  queue = queue.then(async () => {
+    const k = transcriptionKey();
+    const s = sock;
+    if (!k || !s) return;
+    try {
+      const buf = (await downloadMediaMessage(m, 'buffer', {}, { logger: quiet as never, reuploadRequest: s.updateMediaMessage })) as Buffer;
+      if (buf.length > MAX_VOICE_BYTES) throw new Error('voice note too large');
+      applyTranscript(jid, id, await transcribeAudio(buf, audio.mimetype || 'audio/ogg', k.key));
+      stats.done++;
+    } catch (e) {
+      stats.failed++;
+      stats.lastError = (e as Error).message.slice(0, 200);
+      log.warn({ err: (e as Error).message }, 'whatsapp voice note not transcribed');
+    }
+    stats.lastAt = new Date().toISOString();
+  });
 }
 
 function storeChats(list: { id?: string | null; name?: string | null; conversationTimestamp?: unknown; unreadCount?: number | null }[]): void {
@@ -353,6 +444,22 @@ export function registerWhatsAppRoutes(app: FastifyInstance): void {
     retry = 0;
     await connect(phone);
     return { ok: true };
+  });
+
+  app.get('/api/whatsapp/transcription', async () => transcriptionStatus());
+
+  // Save (or clear, with an empty key) the Groq key for voice notes. Checked against Groq before saving.
+  app.post<{ Body: { key?: string } }>('/api/whatsapp/transcription', { config: { rateLimit: { max: 10, timeWindow: '10 minutes' } } }, async (req, reply) => {
+    const key = String(req.body?.key ?? '').trim();
+    if (!key) {
+      setTranscriptionKey('');
+      return transcriptionStatus();
+    }
+    if (!/^gsk_[A-Za-z0-9]{20,}$/.test(key)) return reply.code(400).send({ error: 'bad_key', message: 'A Groq API key starts with gsk_ (console.groq.com > API Keys).' });
+    const r = await fetch('https://api.groq.com/openai/v1/models', { headers: { Authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(15_000) }).catch(() => null);
+    if (!r || !r.ok) return reply.code(400).send({ error: 'bad_key', message: r ? `Groq rejected that key (HTTP ${r.status}).` : 'Could not reach Groq to check the key.' });
+    setTranscriptionKey(key);
+    return transcriptionStatus();
   });
 
   app.post<{ Body: { forget?: boolean } }>('/api/whatsapp/unlink', async (req) => {
