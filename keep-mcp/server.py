@@ -108,13 +108,44 @@ def _content(note) -> dict:
     return out
 
 
+# Secrets never rest in a backup: tokens and keys that Ema pastes into a note by mistake are masked before the
+# snapshot is written, and every backup already on disk is masked once at startup (Ema's ask, 4/11: a GitHub
+# token survived in a backup after the note was trashed).
+SECRET_RE = re.compile(
+    r"(github_pat_[A-Za-z0-9_]{20,}|gh[pousr]_[A-Za-z0-9]{30,}|gsk_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9_-]{20,}"
+    r"|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,}|\d{8,10}:AA[A-Za-z0-9_-]{30,})"
+)
+
+
+def _scrub(text: str) -> str:
+    return SECRET_RE.sub(lambda m: m.group(0)[:6] + "[MASCHERATO]", text)
+
+
+def _scrub_backups() -> int:
+    """Mask secrets in every saved backup; returns how many files changed."""
+    n = 0
+    if not BACKUP_DIR.is_dir():
+        return 0
+    for path in BACKUP_DIR.glob("*/*.json"):
+        try:
+            raw = path.read_text()
+        except OSError:
+            continue
+        clean = _scrub(raw)
+        if clean != raw:
+            path.write_text(clean)
+            os.chmod(path, 0o600)
+            n += 1
+    return n
+
+
 def _backup(note) -> str:
-    """Snapshot a note before any change that overwrites or reorganizes it."""
+    """Snapshot a note before any change that overwrites or reorganizes it (secrets masked)."""
     folder = BACKUP_DIR / re.sub(r"[^A-Za-z0-9._-]", "_", note.id)
     folder.mkdir(parents=True, exist_ok=True, mode=0o700)
     name = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ") + ".json"
     path = folder / name
-    path.write_text(json.dumps(_content(note), ensure_ascii=False, indent=1))
+    path.write_text(_scrub(json.dumps(_content(note), ensure_ascii=False, indent=1)))
     os.chmod(path, 0o600)
     return name
 
@@ -438,6 +469,12 @@ def delete_backup(backup: str) -> dict:
 
 
 if __name__ == "__main__":
+    try:
+        _n = _scrub_backups()
+        if _n:
+            print(f"keep-mcp: secrets masked in {_n} backup file(s)", flush=True)
+    except Exception as _err:  # noqa: BLE001
+        print(f"keep-mcp: backup scrub failed: {_err}", flush=True)
     _load()
     uvicorn.run(
         mcp.streamable_http_app(),
