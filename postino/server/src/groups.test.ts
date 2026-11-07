@@ -96,3 +96,26 @@ describe('routine sign-in alerts', () => {
     expect(isImportant('Il tuo codice di verifica', '')).toBe(true);
   });
 });
+
+describe('new mail under the Groups line', () => {
+  it('shows unread mail that arrived since the group was opened, three at a time', async () => {
+    const { groupPreview, addSenders, refreshGroupThreads, markGroupSeen } = await import('./groups.js');
+    db.exec('DELETE FROM sender_groups; DELETE FROM group_seen');
+    const now = Date.now();
+    for (let i = 0; i < 5; i++) {
+      const id = 7950 + i;
+      const at = new Date(now - i * 60_000).toISOString();
+      db.prepare("INSERT OR REPLACE INTO threads(id, account_id, subject, subject_norm, last_date, inbox_date, roles, msg_count, unread_count) VALUES (?, 77, 'Weekly news', 'weekly news', ?, ?, ',inbox,', 1, 1)").run(id, at, at);
+      db.prepare("INSERT OR REPLACE INTO messages(id, account_id, folder_id, thread_id, uid, message_id, subject, subject_norm, from_email, date, size) VALUES (?, 77, 770, ?, ?, ?, 'Weekly news', 'weekly news', 'news@shop.test', ?, 1)").run(id, id, id, `p${id}@x`, at);
+    }
+    db.exec("INSERT INTO group_seen(group_name, seen_at) VALUES ('Shop', '2000-01-01T00:00:00Z')");
+    addSenders('Shop', ['news@shop.test']);
+    refreshGroupThreads(true);
+    const p = groupPreview(77);
+    expect(p.ids).toEqual([7950, 7951, 7952]);
+    expect(p.more).toBe(2);
+    markGroupSeen('Shop'); // opening the group: nothing is new any more
+    expect(groupPreview(77).ids).toEqual([]);
+    db.exec('DELETE FROM sender_groups; DELETE FROM group_seen; DELETE FROM messages WHERE id BETWEEN 7950 AND 7954; DELETE FROM threads WHERE id BETWEEN 7950 AND 7954');
+  });
+});

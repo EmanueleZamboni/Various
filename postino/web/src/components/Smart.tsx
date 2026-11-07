@@ -1,6 +1,7 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useRef, useState, type PointerEvent } from 'react';
 import { api } from '../api/client';
-import type { SmartCard } from '../api/types';
+import type { SmartCard, UpcomingItem } from '../api/types';
 import { Icon, type IconName } from '../icons';
 import { useUI } from '../store';
 
@@ -114,6 +115,28 @@ export function UpcomingBlock({ onOpen }: { onOpen: (threadId: string) => void }
   const open = useUI((s) => !!s.bundlesOpen.upcoming);
   const toggle = useUI((s) => s.toggleBundle);
   const items = [...(data?.trips ?? []), ...(data?.packages ?? [])].sort((a, b) => urgency(a.card) - urgency(b.card));
+  const qc = useQueryClient();
+  const toast = useUI((s) => s.toast);
+  /** Gone at once; Undo puts it back (on every device: the server keeps the list). */
+  const hide = async (it: UpcomingItem) => {
+    const key = ['smartUpcoming'];
+    const before = qc.getQueryData<{ packages: UpcomingItem[]; trips: UpcomingItem[] }>(key);
+    const drop = (l: UpcomingItem[]) => l.filter((x) => x.key !== it.key);
+    qc.setQueryData<{ packages: UpcomingItem[]; trips: UpcomingItem[] }>(key, (d) => (d ? { packages: drop(d.packages), trips: drop(d.trips) } : d));
+    try {
+      await api.smart.hide(it.key);
+      toast({
+        text: 'Removed from Upcoming',
+        undo: async () => {
+          await api.smart.hide(it.key, false);
+          qc.invalidateQueries({ queryKey: key });
+        },
+      });
+    } catch (e) {
+      qc.setQueryData(key, before);
+      toast({ text: (e as Error).message, kind: 'error' });
+    }
+  };
   if (!items.length) return null;
   const top = items[0].card;
   const today = items.filter((it) => isToday(it.card)).length;
@@ -130,23 +153,10 @@ export function UpcomingBlock({ onOpen }: { onOpen: (threadId: string) => void }
       </button>
       {open && (
         <div className="upcoming-list">
-          {items.map((it) => {
-            const c = it.card;
-            const title = c.kind === 'package' ? c.title : `${c.from} → ${c.to}`;
-            const line = c.kind === 'package' ? `${packageLine(c)}${c.merchant ? ` · ${c.merchant}` : ''}` : `${whenLabel(c.depart)}${c.number ? ` · ${c.number}` : ''}`;
-            return (
-              <div key={`${it.threadId}-${it.messageId}`} className="upcoming-item" role="button" tabIndex={0} onClick={() => onOpen(it.threadId)} onKeyDown={(e) => e.key === 'Enter' && onOpen(it.threadId)}>
-                <span className={`upcoming-icon${c.kind === 'package' && c.status === 'delivered' ? ' done' : ''}`}><Icon name={iconOf(c)} size={20} /></span>
-                <span className="upcoming-text">
-                  <b>{title}</b>
-                  <span>{line}</span>
-                </span>
-                {c.kind === 'package' && c.trackingUrl && c.status !== 'delivered' && (
-                  <button type="button" className="smart-btn" onClick={openLink(c.trackingUrl)}>Track</button>
-                )}
-              </div>
-            );
-          })}
+          {items.map((it) => (
+            <UpcomingRow key={`${it.threadId}-${it.messageId}`} item={it} onOpen={onOpen} onHide={() => void hide(it)} />
+          ))}
+          <div className="upcoming-tip">Swipe right to remove an item</div>
         </div>
       )}
     </section>
@@ -171,4 +181,74 @@ function shortLine(c: SmartCard): string {
   if (c.kind === 'package') return `${c.title} · ${packageLine(c).toLowerCase()}`;
   const mode = c.mode === 'flight' ? 'Flight' : c.mode === 'bus' ? 'Bus' : 'Train';
   return `${mode} to ${c.to} · ${whenLabel(c.depart).replace(/^./, (x) => x.toLowerCase())}`;
+}
+
+/** One parcel or trip in the open Upcoming list. Swipe right (or the × on a computer) removes it. */
+function UpcomingRow({ item, onOpen, onHide }: { item: UpcomingItem; onOpen: (threadId: string) => void; onHide: () => void }) {
+  const c = item.card;
+  const [dx, setDx] = useState(0);
+  const [leaving, setLeaving] = useState(false);
+  const drag = useRef<{ x: number; y: number; on: boolean; moved: boolean } | null>(null);
+  const title = c.kind === 'package' ? c.title : `${c.from} → ${c.to}`;
+  const line = c.kind === 'package' ? `${packageLine(c)}${c.merchant ? ` · ${c.merchant}` : ''}` : `${whenLabel(c.depart)}${c.number ? ` · ${c.number}` : ''}`;
+  const down = (e: PointerEvent) => {
+    if (e.pointerType === 'mouse') return;
+    drag.current = { x: e.clientX, y: e.clientY, on: false, moved: false };
+  };
+  const move = (e: PointerEvent) => {
+    const d = drag.current;
+    if (!d) return;
+    const mx = e.clientX - d.x;
+    const my = e.clientY - d.y;
+    if (!d.on) {
+      if (Math.abs(my) > 10) { drag.current = null; return; } // scrolling, not swiping
+      if (mx > 10) { d.on = true; (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); }
+      else return;
+    }
+    d.moved = true;
+    setDx(Math.max(0, mx));
+  };
+  const up = (e: PointerEvent) => {
+    const d = drag.current;
+    drag.current = null;
+    if (!d?.on) return;
+    const width = (e.currentTarget as HTMLElement).offsetWidth;
+    if (dx > Math.min(110, width * 0.3)) {
+      setLeaving(true);
+      setDx(width);
+      window.setTimeout(onHide, 180);
+    } else setDx(0);
+  };
+  return (
+    <div className={`upcoming-swipe${leaving ? ' leaving' : ''}`}>
+      <div className="upcoming-swipe-bg" style={{ opacity: Math.min(1, dx / 110) }}>
+        <Icon name="check" size={20} />
+        Remove
+      </div>
+      <div
+        className={`upcoming-item${dx ? ' dragging' : ''}`}
+        style={{ transform: dx ? `translateX(${dx}px)` : undefined }}
+        role="button"
+        tabIndex={0}
+        onPointerDown={down}
+        onPointerMove={move}
+        onPointerUp={up}
+        onPointerCancel={() => { drag.current = null; setDx(0); }}
+        onClick={() => { if (!dx) onOpen(item.threadId); }}
+        onKeyDown={(e) => e.key === 'Enter' && onOpen(item.threadId)}
+      >
+        <span className={`upcoming-icon${c.kind === 'package' && c.status === 'delivered' ? ' done' : ''}`}><Icon name={iconOf(c)} size={20} /></span>
+        <span className="upcoming-text">
+          <b>{title}</b>
+          <span>{line}</span>
+        </span>
+        {c.kind === 'package' && c.trackingUrl && c.status !== 'delivered' && (
+          <button type="button" className="smart-btn" onClick={openLink(c.trackingUrl)}>Track</button>
+        )}
+        <button type="button" className="ib upcoming-x" aria-label="Remove from Upcoming" title="Remove from Upcoming" onClick={(e) => { e.stopPropagation(); onHide(); }}>
+          <Icon name="x" size={18} />
+        </button>
+      </div>
+    </div>
+  );
 }

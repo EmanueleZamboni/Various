@@ -371,7 +371,7 @@ on('GET', '/api/groups/summary', () => {
   return json({ groups: names.map((name, i) => ({ name, latestDate: new Date(Date.now() - (3 + i * 20) * 3600_000).toISOString(), latestThreadId: 't1', latestFrom: { name: name, email: 'no-reply@example.com' }, latestSubject: i ? 'Your weekly summary' : 'Security alert for your account', total: 4 + i, fresh: i ? 0 : 2, important: i ? 1 : 0 })) });
 });
 on('POST', '/api/groups/seen', () => json({ ok: true }));
-on('GET', '/api/groups/important', () => json({ threads: [{ id: 'imp1', accountId: 'a1', subject: 'Hai venduto Lettore Dvd Sony', snippet: 'Prepara il pacco e spediscilo entro 5 giorni', participants: [{ name: 'Vinted', email: 'no-reply@vinted.it' }], lastFrom: { name: 'Vinted', email: 'no-reply@vinted.it' }, lastDate: new Date(Date.now() - 2 * 3600_000).toISOString(), firstDate: new Date().toISOString(), count: 1, unread: true, unreadCount: 1, pinned: false, answered: false, hasAttachments: true, draft: false, category: 'notification', folderRoles: ['inbox'] }] }));
+on('GET', '/api/groups/important', () => json({ threads: [{ id: 'imp1', accountId: 'a1', subject: 'Hai venduto Lettore Dvd Sony', snippet: 'Prepara il pacco e spediscilo entro 5 giorni', participants: [{ name: 'Vinted', email: 'no-reply@vinted.it' }], lastFrom: { name: 'Vinted', email: 'no-reply@vinted.it' }, lastDate: new Date(Date.now() - 2 * 3600_000).toISOString(), firstDate: new Date().toISOString(), count: 1, unread: true, unreadCount: 1, pinned: false, answered: false, hasAttachments: true, draft: false, category: 'notification', folderRoles: ['inbox'] }], more: 4 }));
 on('POST', '/api/groups/done', () => json({ affected: 4 }));
 on('GET', '/api/groups/suggestions', () => json({ suggestions: [
   { name: 'Affiliates', senders: [{ email: 'associates@amazon.com', count: 12 }, { email: 'affiliate@notice.aliexpress.com', count: 6 }] },
@@ -737,9 +737,11 @@ on('GET', '/api/ai/search', async ({ query }) => {
 });
 
 on('GET', '/api/smart/upcoming', () => json({
-  trips: [{ threadId: 't1', messageId: 'm', at: new Date().toISOString(), card: { kind: 'trip', mode: 'train', operator: 'Trenitalia', number: 'Regionale Veloce 1234', from: 'Bologna Centrale', to: 'Milano Centrale', depart: `${inDays(1)}T10:05`, arrive: `${inDays(1)}T11:20`, bookingRef: '1234567890 · CP 654321', seat: '' } }],
+  trips: [{ threadId: 't1', messageId: 'm', key: 'trip|1', at: new Date().toISOString(), card: { kind: 'trip', mode: 'train', operator: 'Trenitalia', number: 'Regionale Veloce 1234', from: 'Bologna Centrale', to: 'Milano Centrale', depart: `${inDays(1)}T10:05`, arrive: `${inDays(1)}T11:20`, bookingRef: '1234567890 · CP 654321', seat: '' } }],
   packages: [
-    { threadId: 't2', messageId: 'm', at: new Date().toISOString(), card: { kind: 'package', title: 'USB-C Cable 1 m', merchant: 'Amazon', status: 'shipped', expected: inDays(3), carrier: '', trackingNumber: '', trackingUrl: 'https://www.amazon.it/progress-tracker/package', orderId: '123-4567890-1234567' } },
-    { threadId: 't3', messageId: 'm', at: new Date().toISOString(), card: { kind: 'package', title: 'Smart LED bulb', merchant: 'Amazon', status: 'out_for_delivery', expected: inDays(0), carrier: '', trackingNumber: '', trackingUrl: 'https://www.amazon.it/progress-tracker/package', orderId: '' } },
+    { threadId: 't2', messageId: 'm', key: 'pkg|2', at: new Date().toISOString(), card: { kind: 'package', title: 'USB-C Cable 1 m', merchant: 'Amazon', status: 'shipped', expected: inDays(3), carrier: '', trackingNumber: '', trackingUrl: 'https://www.amazon.it/progress-tracker/package', orderId: '123-4567890-1234567' } },
+    { threadId: 't3', messageId: 'm', key: 'pkg|3', at: new Date().toISOString(), card: { kind: 'package', title: 'Smart LED bulb', merchant: 'Amazon', status: 'out_for_delivery', expected: inDays(0), carrier: '', trackingNumber: '', trackingUrl: 'https://www.amazon.it/progress-tracker/package', orderId: '' } },
   ],
 }));
+on('POST', '/api/groups/read', () => json({ affected: 12 }));
+on('POST', '/api/smart/hide', () => json({ ok: true }));

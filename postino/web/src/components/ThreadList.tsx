@@ -11,7 +11,8 @@ import { useNavigate } from 'react-router-dom';
 import { useUI } from '../store';
 import { accountLabel, formatListDate, pluralize } from '../util/format';
 import { UpcomingBlock } from './Smart';
-import { ThreadRow } from './ThreadRow';
+import { RowMenu, ThreadRow } from './ThreadRow';
+import { useLongPress } from '../util/longPress';
 import { BlockedList } from './BlockedList';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -305,7 +306,7 @@ export function ThreadList({ view }: { view: string }) {
     <>
       {view === 'inbox' && !isSearch && !nav.accountId && <GroupSuggestions />}
       {view === 'inbox' && !isSearch && <UpcomingBlock onOpen={(id) => nav.openThread(id)} />}
-      {groupLines.length > 0 && <GroupsRow lines={groupLines} base={base} render={(t) => renderRow(t, true)} />}
+      {groupLines.length > 0 && <GroupsRow lines={groupLines} base={base} render={(t) => renderRow(t, true)} renderFull={(t) => renderRow(t)} />}
     </>
   );
   const weave = (list: ThreadSummary[]): ReactNode[] => list.map((t) => renderRow(t));
@@ -498,25 +499,55 @@ function Bundle({ k, label, icon, rows, query, render }: { k: string; label: str
   );
 }
 
-function GroupsRow({ lines, base, render }: { lines: GroupSummary[]; base: { view: string; account?: string }; render: (t: ThreadSummary) => ReactNode }) {
+/** Mark a whole group (or all groups) as read, from the long-press menu. */
+function useMarkGroupRead(base: { account?: string }) {
+  const qc = useQueryClient();
+  const toast = useUI((s) => s.toast);
+  return async (name?: string) => {
+    try {
+      const r = await api.groups.read(name, base.account);
+      toast({ text: r.affected ? `Marked ${pluralize(r.affected, 'conversation')} as read` : 'Nothing unread there', kind: 'success' });
+    } catch (e) {
+      toast({ text: (e as Error).message, kind: 'error' });
+    } finally {
+      qc.invalidateQueries({ queryKey: ['threads'] });
+      qc.invalidateQueries({ queryKey: ['groupSummary'] });
+    }
+  };
+}
+
+function GroupsRow({ lines, base, render, renderFull }: { lines: GroupSummary[]; base: { view: string; account?: string }; render: (t: ThreadSummary) => ReactNode; renderFull: (t: ThreadSummary) => ReactNode }) {
   const open = useUI((s) => !!s.bundlesOpen.groups);
   const toggle = useUI((s) => s.toggleBundle);
+  const navigate = useNavigate();
+  const markRead = useMarkGroupRead(base);
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const press = useLongPress((x, y) => setMenu({ x, y }));
   const fresh = lines.filter((g) => g.fresh > 0);
   const newCount = fresh.reduce((n, g) => n + g.fresh, 0);
   const importantCount = lines.reduce((n, g) => n + (g.important ?? 0), 0);
   const names = (fresh.length ? fresh : lines).map((g) => g.name);
   const summary = names.slice(0, 4).join(', ') + (names.length > 4 ? ` +${names.length - 4}` : '');
-  // Important grouped mail (sales, codes, failed payments…) shows right here while unread.
-  const important = useQuery({
+  // What is new in the groups shows right under this line as ordinary emails, until read.
+  const preview = useQuery({
     queryKey: ['groupSummary', 'important', base.account ?? 'all'],
     queryFn: () => api.groups.important(base.account),
-    enabled: importantCount > 0,
     staleTime: 30_000,
   });
-  const imp = importantCount > 0 ? important.data?.threads ?? [] : [];
+  const shown = preview.data?.threads ?? [];
+  const more = preview.data?.more ?? 0;
   return (
     <section className={`bundle groups-row${open ? ' open' : ''}${newCount ? ' fresh' : ''}`} aria-label="Groups">
-      <button className="bundle-head" onClick={() => toggle('groups')} aria-expanded={open}>
+      <button
+        className="bundle-head"
+        onClick={() => !press.justFired() && toggle('groups')}
+        aria-expanded={open}
+        onPointerDown={press.onPointerDown}
+        onPointerMove={press.onPointerMove}
+        onPointerUp={press.onPointerUp}
+        onPointerCancel={press.onPointerCancel}
+        onContextMenu={press.onContextMenu}
+      >
         <span className="bundle-ico"><Icon name="labelFilled" size={18} /></span>
         <span className="bundle-title">
           <span>Groups <small className="group-count">{lines.length}</small></span>
@@ -526,7 +557,29 @@ function GroupsRow({ lines, base, render }: { lines: GroupSummary[]; base: { vie
         {newCount > 0 && <span className="pill">{newCount} new</span>}
         <Icon name="chevronDown" size={18} className="bundle-chev" />
       </button>
-      {!open && imp.length > 0 && <div className="groups-important" aria-label="Important in groups">{imp.map(render)}</div>}
+      {menu && (
+        <RowMenu
+          x={menu.x}
+          y={menu.y}
+          onClose={() => setMenu(null)}
+          items={[
+            { label: 'Mark all as read', icon: 'mailOpen', run: () => void markRead() },
+            { label: open ? 'Close groups' : 'Open groups', icon: 'labelFilled', run: () => toggle('groups') },
+            'sep',
+            { label: 'Manage groups', icon: 'settings', run: () => navigate('/settings/inbox') },
+          ]}
+        />
+      )}
+      {!open && shown.length > 0 && (
+        <div className="groups-preview" aria-label="New in groups">
+          {shown.map(renderFull)}
+          {more > 0 && (
+            <button className="groups-more" onClick={() => toggle('groups')}>
+              View {more} more in Groups
+            </button>
+          )}
+        </div>
+      )}
       {open && <div className="groups-list">{lines.map((g) => <GroupBundle key={g.name} summary={g} base={base} render={render} />)}</div>}
     </section>
   );
@@ -564,10 +617,35 @@ function GroupBundle({ summary: g, base, render }: { summary: GroupSummary; base
     }
   };
   const who = g.latestFrom.name || g.latestFrom.email;
+  const markRead = useMarkGroupRead(base);
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const press = useLongPress((x, y) => setMenu({ x, y }));
   return (
     <section className={`bundle group-line${open ? ' open' : ''}${g.fresh ? ' fresh' : ''}`} aria-label={g.name}>
+      {menu && (
+        <RowMenu
+          x={menu.x}
+          y={menu.y}
+          onClose={() => setMenu(null)}
+          items={[
+            { label: 'Mark as read', icon: 'mailOpen', run: () => void markRead(g.name) },
+            { label: open ? 'Close' : 'Open', icon: 'labelFilled', run: flip },
+            'sep',
+            { label: 'Done: archive the group', icon: 'check', run: () => void done() },
+          ]}
+        />
+      )}
       <div className="bundle-head-row">
-        <button className="bundle-head" onClick={flip} aria-expanded={open}>
+        <button
+          className="bundle-head"
+          onClick={() => !press.justFired() && flip()}
+          aria-expanded={open}
+          onPointerDown={press.onPointerDown}
+          onPointerMove={press.onPointerMove}
+          onPointerUp={press.onPointerUp}
+          onPointerCancel={press.onPointerCancel}
+          onContextMenu={press.onContextMenu}
+        >
           <span className="bundle-ico"><Icon name="labelFilled" size={16} /></span>
           <span className="bundle-title">
             <span>{g.name} <small className="group-count">{g.total}</small></span>

@@ -175,10 +175,27 @@ export function groupSummaries(accountId: number | null) {
   return [...out.values()];
 }
 
-/** Unread grouped conversations that look important, newest first. */
+/**
+ * What is new in the groups, shown as ordinary emails under the Groups line: unread conversations
+ * that arrived since that group was last opened, or that look important. Newest first; the same
+ * alert reaching two mailboxes counts once. Returns the first `limit` and how many more there are.
+ */
+export function groupPreview(accountId: number | null, limit = 3): { ids: number[]; more: number } {
+  const seenAt = new Map((db.prepare(`SELECT sg.group_name AS g, COALESCE(gs.seen_at, MIN(sg.created_at)) AS seen FROM sender_groups sg LEFT JOIN group_seen gs ON gs.group_name = sg.group_name GROUP BY sg.group_name`).all() as { g: string; seen: string }[]).map((r) => [r.g, r.seen]));
+  const dup = new Set<string>();
+  const picked = groupedInboxThreads(accountId)
+    .filter((r) => r.unread_count > 0 && (r.last_date > (seenAt.get(r.g) ?? '') || (isRecent(r.last_date) && isImportant(r.subject, r.snippet))))
+    .filter((r) => {
+      const key = `${r.g}|${r.last_date.slice(0, 16)}`;
+      if (dup.has(key)) return false;
+      dup.add(key);
+      return true;
+    });
+  return { ids: picked.slice(0, limit).map((r) => r.id), more: Math.max(0, picked.length - limit) };
+}
+
+/** Kept for older callers: the important ones only. */
 export function importantGroupedThreadIds(accountId: number | null, limit = 5): number[] {
-  // The same alert often reaches two of your mailboxes (e.g. Google copies security alerts to the
-  // recovery address): show it once.
   const seen = new Set<string>();
   return groupedInboxThreads(accountId)
     .filter((r) => r.unread_count > 0 && isRecent(r.last_date) && isImportant(r.subject, r.snippet))
@@ -259,9 +276,9 @@ export function registerGroupRoutes(app: FastifyInstance): void {
   app.get<{ Querystring: { account?: string } }>('/api/groups/summary', async (req) => ({ groups: groupSummaries(req.query.account ? Number(req.query.account) : null) }));
 
   app.get<{ Querystring: { account?: string } }>('/api/groups/important', async (req) => {
-    const ids = importantGroupedThreadIds(req.query.account ? Number(req.query.account) : null);
+    const { ids, more } = groupPreview(req.query.account ? Number(req.query.account) : null);
     const stmt = db.prepare('SELECT * FROM threads WHERE id = ?');
-    return { threads: ids.map((id) => stmt.get(id)).filter(Boolean).map((t) => threadView(t as never)) };
+    return { threads: ids.map((id) => stmt.get(id)).filter(Boolean).map((t) => threadView(t as never)), more };
   });
 
   app.post<{ Body: { name?: string } }>('/api/groups/seen', async (req) => {

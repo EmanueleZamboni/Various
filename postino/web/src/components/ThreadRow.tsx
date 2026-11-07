@@ -32,12 +32,16 @@ type Props = {
   onGroup?: () => void;
 };
 
-type MenuItem = { label: string; icon: IconName; run: () => void; danger?: boolean } | 'sep';
+export type MenuItem = { label: string; icon: IconName; run: () => void; danger?: boolean } | 'sep';
 
 /** Right-click (or long-press) menu for one conversation. */
-function RowMenu({ x, y, items, onClose }: { x: number; y: number; items: MenuItem[]; onClose: () => void }) {
+export function RowMenu({ x, y, items, onClose }: { x: number; y: number; items: MenuItem[]; onClose: () => void }) {
   useEffect(() => {
-    const off = () => onClose();
+    // Lifting the finger after a long press sends a synthetic mousedown: that is not "a tap outside".
+    const openedAt = Date.now();
+    const off = () => {
+      if (Date.now() - openedAt > 600) onClose();
+    };
     const key = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     window.addEventListener('mousedown', off);
     window.addEventListener('scroll', off, true);

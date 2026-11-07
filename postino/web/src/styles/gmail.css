@@ -3569,3 +3569,88 @@ a.btn {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Upcoming: swipe right to remove, like archiving a row. */
+.upcoming-swipe {
+  position: relative;
+  overflow: hidden;
+}
+.upcoming-swipe.leaving {
+  animation: upc-collapse 0.2s ease-out 0.12s forwards;
+}
+@keyframes upc-collapse {
+  to {
+    height: 0;
+    opacity: 0;
+  }
+}
+.upcoming-swipe-bg {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 20px;
+  background: var(--ok);
+  color: #fff;
+  font: 500 14px var(--font);
+}
+.upcoming-swipe .upcoming-item {
+  position: relative;
+  background: var(--sheet);
+  touch-action: pan-y;
+  transition: transform 0.18s cubic-bezier(0.2, 0, 0, 1);
+}
+.upcoming-swipe .upcoming-item.dragging {
+  transition: none;
+}
+:root .list .upcoming-swipe .upcoming-item {
+  background: var(--g-card);
+}
+.upcoming-x {
+  display: none;
+  width: 32px;
+  height: 32px;
+  flex: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  .upcoming-item:hover .upcoming-x {
+    display: grid;
+  }
+  .upcoming-tip {
+    display: none;
+  }
+}
+.upcoming-tip {
+  padding: 2px 16px 6px 66px;
+  font-size: 12px;
+  color: var(--faint);
+}
+/* New mail in the groups: ordinary rows under the Groups line, then "View N more". */
+.groups-preview {
+  border-top: 1px solid var(--row-line);
+}
+.groups-more {
+  display: block;
+  width: 100%;
+  padding: 10px 16px 12px 73px;
+  border: 0;
+  border-top: 1px solid var(--row-line);
+  background: transparent;
+  color: var(--pine);
+  font: 500 13px var(--font);
+  text-align: left;
+  cursor: pointer;
+}
+.groups-more:hover {
+  background: var(--hover-ov);
+}
+.upcoming-swipe-bg {
+  background: #188038;
+}
+@container list (max-width: 759px) {
+  /* New mail under Groups looks exactly like any other email. */
+  :root .list .groups-preview .row {
+    min-height: 89px;
+    padding: 14px 16px 12px;
+  }
+}

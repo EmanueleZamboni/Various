@@ -253,4 +253,4 @@ export type GoogleTask = { id: string; title: string; notes: string; due: string
 export type SmartCard =
   | { kind: 'package'; title: string; merchant: string; status: 'ordered' | 'shipped' | 'out_for_delivery' | 'delivered' | 'problem' | ''; expected: string; carrier: string; trackingNumber: string; trackingUrl: string; orderId: string }
   | { kind: 'trip'; mode: 'train' | 'flight' | 'bus'; operator: string; number: string; from: string; to: string; depart: string; arrive: string; bookingRef: string; seat: string };
-export type UpcomingItem = { threadId: string; messageId: string; card: SmartCard; at: string };
+export type UpcomingItem = { threadId: string; messageId: string; key: string; card: SmartCard; at: string };

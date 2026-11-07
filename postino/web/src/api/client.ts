@@ -139,6 +139,7 @@ export const api = {
   },
   smart: {
     upcoming: () => get<{ packages: UpcomingItem[]; trips: UpcomingItem[] }>('/api/smart/upcoming'),
+    hide: (key: string, hidden = true) => post<{ ok: true }>('/api/smart/hide', { key, hidden }),
   },
   groups: {
     list: () => get<{ groups: { name: string; senders: string[]; notify: boolean; lastUsed?: string }[] }>('/api/groups'),
@@ -149,7 +150,8 @@ export const api = {
     bulk: (groups: { name: string; senders: string[] }[]) => post<{ added: number }>('/api/groups/bulk', { groups }),
     summary: (account?: string) => get<{ groups: GroupSummary[] }>(`/api/groups/summary${qs({ account })}`),
     seen: (name: string) => post<{ ok: true }>('/api/groups/seen', { name }),
-    important: (account?: string) => get<{ threads: ThreadSummary[] }>(`/api/groups/important${qs({ account })}`),
+    important: (account?: string) => get<{ threads: ThreadSummary[]; more: number }>(`/api/groups/important${qs({ account })}`),
+    read: (name?: string, account?: string) => post<{ affected: number }>('/api/groups/read', { name, account }),
     done: (name: string, account?: string) => post<{ affected: number }>('/api/groups/done', { name, account }),
   },
   calls: {

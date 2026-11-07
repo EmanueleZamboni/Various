@@ -259,6 +259,18 @@ export function registerThreadRoutes(app: FastifyInstance): void {
     return { affected: ids.length, queued: true };
   });
 
+  // Long-press on Groups (or one group): mark everything in it as read, without opening it.
+  app.post<{ Body: { name?: string; account?: string } }>('/api/groups/read', async (req) => {
+    const name = req.body?.name ? String(req.body.name) : undefined;
+    const ids = groupedInboxThreads(req.body?.account ? Number(req.body.account) : null, name)
+      .filter((r) => r.unread_count > 0)
+      .map((r) => String(r.id));
+    if (name) markGroupSeen(name);
+    if (!ids.length) return { affected: 0 };
+    const r = await runAction({ threadIds: ids, action: 'read', view: 'inbox' });
+    return { affected: r.affected };
+  });
+
   app.get<{ Params: { id: string } }>('/api/threads/:id', async (req, reply) => {
     const d = threadDetail(Number(req.params.id));
     if (!d) return reply.code(404).send({ error: 'not_found', message: 'This conversation is gone.' });

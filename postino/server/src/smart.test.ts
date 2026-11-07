@@ -112,3 +112,24 @@ describe('upcoming and unsubscribe', () => {
     db.exec('DELETE FROM smart_items WHERE thread_id BETWEEN 9301 AND 9303; DELETE FROM bodies WHERE message_row BETWEEN 9301 AND 9303; DELETE FROM messages WHERE id BETWEEN 9301 AND 9303; DELETE FROM threads WHERE id BETWEEN 9301 AND 9303');
   });
 });
+
+describe('hiding from Upcoming', () => {
+  it('a swiped-away parcel stays hidden, Undo brings it back', async () => {
+    const { hideItem } = await import('./smart.js');
+    db.exec("INSERT OR IGNORE INTO accounts(id, email, name, color, imap_host, imap_port, imap_secure, smtp_host, smtp_port, smtp_secure, username, password_enc) VALUES (94, 'me@hide.test', 'me', '#000', 'h', 993, 1, 'h', 465, 1, 'u', 'x')");
+    db.exec("INSERT OR IGNORE INTO folders(id, account_id, path, name, role) VALUES (940, 94, 'INBOX', 'INBOX', 'inbox')");
+    const now = new Date();
+    db.prepare("INSERT OR REPLACE INTO threads(id, account_id, subject, subject_norm, last_date, roles, msg_count) VALUES (9401, 94, 's', 's', ?, ',inbox,', 1)").run(now.toISOString());
+    db.prepare("INSERT OR REPLACE INTO messages(id, account_id, folder_id, thread_id, uid, message_id, subject, subject_norm, from_json, from_email, date, size, body_fetched) VALUES (9401, 94, 940, 9401, 1, 'h1@x', ?, 's', '{}', 'shipment-tracking@amazon.it', ?, 1, 1)").run('Out for delivery: ‘Desk lamp...’', now.toISOString());
+    db.prepare('INSERT OR REPLACE INTO bodies(message_row, text, html) VALUES (9401, ?, ?)').run('Order #\n111-2222222-3333333', '');
+    noteMessage(9401);
+    const has = () => upcoming(now).packages.some((p) => (p as { threadId: string }).threadId === '9401');
+    expect(has()).toBe(true);
+    const key = (upcoming(now).packages.find((p) => (p as { threadId: string }).threadId === '9401') as { key: string }).key;
+    hideItem(key);
+    expect(has()).toBe(false);
+    hideItem(key, false);
+    expect(has()).toBe(true);
+    db.exec('DELETE FROM smart_items WHERE message_row = 9401; DELETE FROM bodies WHERE message_row = 9401; DELETE FROM messages WHERE id = 9401; DELETE FROM threads WHERE id = 9401');
+  });
+});

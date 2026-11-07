@@ -27,6 +27,8 @@ db.exec(`CREATE TABLE IF NOT EXISTS smart_items (
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 )`);
 db.exec('CREATE INDEX IF NOT EXISTS smart_items_thread ON smart_items(thread_id)');
+// Parcels and trips swiped away from Upcoming (by item key, so later updates of it stay hidden).
+db.exec(`CREATE TABLE IF NOT EXISTS smart_hidden (item_key TEXT PRIMARY KEY, hidden_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')))`);
 db.exec('CREATE INDEX IF NOT EXISTS smart_items_kind ON smart_items(kind, event_at)');
 
 export type PackageStatus = 'ordered' | 'shipped' | 'out_for_delivery' | 'delivered' | 'problem' | '';
@@ -404,11 +406,12 @@ export function upcoming(now = new Date()) {
   const seen = new Set<string>();
   const packages: unknown[] = [];
   const trips: unknown[] = [];
+  const hidden = new Set((db.prepare('SELECT item_key FROM smart_hidden').all() as { item_key: string }[]).map((h) => h.item_key));
   for (const r of rows) {
-    if (seen.has(r.item_key)) continue; // newest update of each parcel / trip wins
+    if (seen.has(r.item_key) || hidden.has(r.item_key)) continue; // newest update of each parcel / trip wins
     seen.add(r.item_key);
     const card = JSON.parse(r.data_json) as SmartCard;
-    const item = { threadId: String(r.thread_id), messageId: String(r.message_row), card, at: r.date };
+    const item = { threadId: String(r.thread_id), messageId: String(r.message_row), key: r.item_key, card, at: r.date };
     if (card.kind === 'package') {
       if (card.status === 'delivered') {
         if (localDay(new Date(r.date)) === today) packages.push(item); // delivered today: shown until tonight
@@ -444,6 +447,19 @@ export function backfill(days = 45): number {
   return rows.length;
 }
 
+export function hideItem(key: string, hide = true): void {
+  if (hide) db.prepare('INSERT OR IGNORE INTO smart_hidden(item_key) VALUES (?)').run(key);
+  else db.prepare('DELETE FROM smart_hidden WHERE item_key = ?').run(key);
+  // Keys of long-gone parcels are not worth keeping.
+  db.prepare("DELETE FROM smart_hidden WHERE hidden_at < strftime('%Y-%m-%dT%H:%M:%fZ','now','-90 days')").run();
+}
+
 export function registerSmartRoutes(app: FastifyInstance): void {
   app.get('/api/smart/upcoming', async () => upcoming());
+  app.post<{ Body: { key?: string; hidden?: boolean } }>('/api/smart/hide', async (req, reply) => {
+    const key = String(req.body?.key || '').slice(0, 300);
+    if (!key) return reply.code(400).send({ error: 'bad_key', message: 'Which item?' });
+    hideItem(key, req.body?.hidden !== false);
+    return { ok: true };
+  });
 }
