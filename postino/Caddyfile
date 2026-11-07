@@ -17,6 +17,14 @@
 		}
 	}
 
+	# WhatsApp del Segretario (servizio separato da Postino, stesso repo del Segretario): segreto nel percorso.
+	# Finché il container non esiste risponde 502, come Keep.
+	handle_path /whatsapp/* {
+		reverse_proxy whatsapp:8787 {
+			flush_interval -1
+		}
+	}
+
 	# Segretario (memoria condivisa per Claude): repo EmanueleZamboni/segretario, container sulla rete di Caddy.
 	# Il segreto è nel percorso: niente access log.
 	handle_path /segretario/* {
