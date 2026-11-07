@@ -418,7 +418,7 @@ const TOOLS: Tool[] = [
   {
     name: 'whatsapp_read_chat',
     title: 'Read a WhatsApp chat',
-    description: `Messages of one WhatsApp chat, oldest to newest. chat is a chat_id from whatsapp_list_chats, a contact or group name, or a phone number. Use before (ISO date) to page back. ${UNTRUSTED}`,
+    description: `Messages of one WhatsApp chat, oldest to newest. chat is a chat_id from whatsapp_list_chats, a contact or group name, or a phone number. Use before (ISO date) to page back. Voice notes read "[voice message]" followed by their transcript when transcription is on in Postino > Settings > WhatsApp. ${UNTRUSTED}`,
     inputSchema: {
       type: 'object',
       properties: { chat: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 200, default: 50 }, before: { type: 'string' } },
@@ -436,7 +436,7 @@ const TOOLS: Tool[] = [
   {
     name: 'whatsapp_search',
     title: 'Search WhatsApp',
-    description: `Find WhatsApp messages containing some words, across all chats, newest first. ${UNTRUSTED}`,
+    description: `Find WhatsApp messages containing some words, across all chats, newest first. Transcribed voice notes are searched too. ${UNTRUSTED}`,
     inputSchema: {
       type: 'object',
       properties: { query: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 100, default: 30 } },

@@ -20,6 +20,8 @@ import type {
   ThreadSummary,
  Signature, Passkey, DeepPartial, OutboxItem, Template, UpcomingItem } from './types';
 
+export type WaTranscription = { enabled: boolean; source: 'settings' | 'env' | null; done: number; failed: number; lastError: string | null; lastAt: string | null };
+
 export class ApiError extends Error {
   status: number;
   code: string;
@@ -165,6 +167,8 @@ export const api = {
     status: () => get<{ state: 'off' | 'connecting' | 'qr' | 'open' | 'logged_out'; qr: string | null; code: string | null; me: string | null; chats: number; messages: number }>('/api/whatsapp/status'),
     link: (phone?: string) => post<{ ok: true }>('/api/whatsapp/link', phone ? { phone } : {}),
     unlink: (forget: boolean) => post<{ ok: true }>('/api/whatsapp/unlink', { forget }),
+    transcription: () => get<WaTranscription>('/api/whatsapp/transcription'),
+    setTranscriptionKey: (key: string) => post<WaTranscription>('/api/whatsapp/transcription', { key }),
   },
   ops: {
     keep: () => get<{ installed: boolean; stage: string | null; detail: string; email: string; urlReady: boolean }>('/api/ops/keep'),
