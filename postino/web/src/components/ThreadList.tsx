@@ -1,5 +1,4 @@
 import { useAddToTasks } from './GoogleApps';
-import { GroupSuggestions } from './Groups';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { InfiniteData } from '@tanstack/react-query';
 import { useAccountMap, useAccounts, useBlocked, useDrafts, useGroups, useGroupSummary, useMyEmails, useOutbox, useAiSearch, useSearch, useSettings, useThreadList, useThreadActions } from '../api/hooks';
@@ -304,7 +303,6 @@ export function ThreadList({ view }: { view: string }) {
   // All sender groups fold into ONE row at the top (like Gmail's Promotions row); open it to see each group.
   const groupBlock = (
     <>
-      {view === 'inbox' && !isSearch && !nav.accountId && <GroupSuggestions />}
       {view === 'inbox' && !isSearch && <UpcomingBlock onOpen={(id) => nav.openThread(id)} />}
       {groupLines.length > 0 && <GroupsRow lines={groupLines} base={base} render={(t) => renderRow(t, true)} renderFull={(t) => renderRow(t)} />}
     </>

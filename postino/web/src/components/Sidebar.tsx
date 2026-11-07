@@ -4,6 +4,7 @@ import { useAccounts, useBlocked, useFolders } from '../api/hooks';
 import { Icon, type IconName } from '../icons';
 import { useNav, VIEW_LABEL } from '../nav';
 import { useUI } from '../store';
+import { GroupSuggestions } from './Groups';
 
 // Gmail's order: the everyday folders first, the rest behind "More".
 const MAIN_NAV: { view: string; icon: IconName }[] = [
@@ -106,6 +107,8 @@ export function Sidebar() {
             })}
           </>
         )}
+        {/* "Tidy your inbox": a quiet entry here instead of a banner over the mail. */}
+        <GroupSuggestions asNavItem />
       </nav>
       <nav className="nav labels" aria-label="Accounts">
         <div className="nav-title">

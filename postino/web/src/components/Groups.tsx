@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
@@ -158,9 +159,10 @@ export function GroupsSettings() {
 const DISMISS_KEY = 'postino.groupSuggest.dismissed';
 
 /** Inbox banner: "Postino found automatic emails, group them?", with a review dialog. */
-export function GroupSuggestions({ force = false, onDone }: { force?: boolean; onDone?: () => void }) {
+export function GroupSuggestions({ force = false, onDone, asNavItem = false }: { force?: boolean; onDone?: () => void; asNavItem?: boolean }) {
   const qc = useQueryClient();
   const toast = useUI((s) => s.toast);
+  const setDrawer = useUI((s) => s.setDrawer);
   const { data } = useQuery({ queryKey: ['group-suggestions'], queryFn: api.groups.suggestions, staleTime: 10 * 60_000 });
   const list = data?.suggestions ?? [];
   const [dismissed, setDismissed] = useState(() => {
@@ -174,7 +176,7 @@ export function GroupSuggestions({ force = false, onDone }: { force?: boolean; o
   const [off, setOff] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   if (!list.length) return force ? <p className="help">No suggestions right now: no sender writes to you often enough.</p> : null;
-  if (dismissed && !force && !open) return null;
+  if (dismissed && !force && !open && !asNavItem) return null;
   const total = list.reduce((n, g) => n + g.senders.length, 0);
   const toggle = (email: string) =>
     setOff((o) => {
@@ -211,7 +213,14 @@ export function GroupSuggestions({ force = false, onDone }: { force?: boolean; o
   };
   return (
     <>
-      {!force && (
+      {asNavItem && (
+        <button className="nav-item" onClick={() => { setDrawer(false); setOpen(true); }} title="Group automatic senders">
+          <Icon name="labelFilled" size={20} />
+          <span className="nav-label">Suggested groups</span>
+          <span className="n">{total}</span>
+        </button>
+      )}
+      {!force && !asNavItem && (
         <div className="suggest-bar">
           <Icon name="labelFilled" size={18} />
           <span>
@@ -224,7 +233,7 @@ export function GroupSuggestions({ force = false, onDone }: { force?: boolean; o
       {force && !open && (
         <button className="btn btn-ghost" onClick={() => setOpen(true)}>Suggest groups ({total} senders)</button>
       )}
-      {open && (
+      {open && createPortal(
         <div className="scrim" onMouseDown={(e) => e.target === e.currentTarget && setOpen(false)}>
           <div className="sheet group-dialog suggest-sheet" role="dialog" aria-modal="true" aria-labelledby="suggest-title">
             <h2 id="suggest-title">Group automatic emails</h2>
@@ -248,7 +257,8 @@ export function GroupSuggestions({ force = false, onDone }: { force?: boolean; o
               <button className="btn btn-primary" onClick={() => void create()} disabled={busy}>{busy ? 'Grouping…' : 'Create groups'}</button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   );
