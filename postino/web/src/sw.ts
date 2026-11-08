@@ -1,7 +1,8 @@
 /// <reference lib="webworker" />
 import { cleanupOutdatedCaches, createHandlerBoundToURL, precacheAndRoute } from 'workbox-precaching';
 import { NavigationRoute, registerRoute } from 'workbox-routing';
-import { NetworkFirst, NetworkOnly } from 'workbox-strategies';
+import { CacheFirst, NetworkFirst, NetworkOnly, StaleWhileRevalidate } from 'workbox-strategies';
+import { CacheableResponsePlugin } from 'workbox-cacheable-response';
 import { ExpirationPlugin } from 'workbox-expiration';
 import { clientsClaim } from 'workbox-core';
 
@@ -28,6 +29,13 @@ self.addEventListener('message', (event) => {
   if ((event.data as { type?: string } | undefined)?.type === 'postino:purge') event.waitUntil(caches.delete('postino-api'));
 });
 registerRoute(({ url }) => url.pathname.startsWith('/api/'), new NetworkOnly());
+
+// Google Sans: the stylesheet is refreshed in the background, the font files are kept a year.
+registerRoute(({ url }) => url.origin === 'https://fonts.googleapis.com', new StaleWhileRevalidate({ cacheName: 'google-fonts-css' }));
+registerRoute(
+  ({ url }) => url.origin === 'https://fonts.gstatic.com',
+  new CacheFirst({ cacheName: 'google-fonts', plugins: [new CacheableResponsePlugin({ statuses: [0, 200] }), new ExpirationPlugin({ maxEntries: 30, maxAgeSeconds: 365 * 86400 })] }),
+);
 
 type PushPayload = { title?: string; body?: string; threadId?: string; accountId?: string; tag?: string; from?: string; account?: string; at?: number };
 

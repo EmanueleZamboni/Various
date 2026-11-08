@@ -1,11 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, lazy, Suspense } from 'react';
+import { clearCache } from './cache';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from './api/client';
 import { useMe } from './api/hooks';
 import { useServerEvents } from './api/events';
 import { Login, Setup } from './components/Auth';
-import { Welcome, markWizardOpen, wizardWanted } from './components/Welcome';
+import { markWizardOpen, wizardWanted } from './wizard';
+const Welcome = lazy(() => import('./components/Welcome').then((m) => ({ default: m.Welcome })));
 import { useAccounts } from './api/hooks';
 import { Shell } from './components/Shell';
 import { Toasts } from './components/Toasts';
@@ -23,6 +25,7 @@ function wasSignedIn(): boolean {
 /** Forget everything this browser cached for the session (query cache + service worker cache). */
 function purgeClientState(qc: { clear: () => void }): void {
   qc.clear();
+  clearCache();
   try {
     navigator.serviceWorker?.controller?.postMessage({ type: 'postino:purge' });
     void caches?.delete('postino-api');
@@ -40,7 +43,9 @@ function rememberSignedIn(v: boolean): void {
 }
 
 export default function App() {
-  const [auth, setAuth] = useState<AuthState>('loading');
+  // Signed in on this device before: draw the app at once from what is kept here, and check
+  // with the server in the background (a 401 still sends you to the login screen).
+  const [auth, setAuth] = useState<AuthState>(() => (wasSignedIn() ? 'in' : 'loading'));
   const me = useMe(auth === 'in');
   // Notifications repair themselves on every start (a replaced offline copy loses them).
   useEffect(() => {
@@ -120,7 +125,7 @@ export default function App() {
         {auth === 'in' && (
           <>
             <Route path="/" element={<Navigate to="/inbox" replace />} />
-            <Route path="/welcome" element={<Welcome onFinish={() => navigate('/inbox', { replace: true })} />} />
+            <Route path="/welcome" element={<Suspense fallback={<div className="auth" aria-busy="true" />}><Welcome onFinish={() => navigate('/inbox', { replace: true })} /></Suspense>} />
             <Route path="/t/:threadId" element={<Shell forcedView="inbox" me={me.data} onLogout={() => { rememberSignedIn(false); purgeClientState(qc); setAuth('login'); }} />} />
             <Route path="/search" element={<Shell me={me.data} onLogout={() => { rememberSignedIn(false); purgeClientState(qc); setAuth('login'); }} />} />
             <Route path="/search/t/:threadId" element={<Shell me={me.data} onLogout={() => { rememberSignedIn(false); purgeClientState(qc); setAuth('login'); }} />} />

@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { db } from './db.js';
 import { threadView } from './views.js';
+import { bus } from './events.js';
 
 /**
  * Sender groups: mail from a few exact addresses (e.g. Amazon Associates, Google security
@@ -28,9 +29,48 @@ const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 db.exec(`CREATE TABLE IF NOT EXISTS group_threads (thread_id INTEGER PRIMARY KEY, group_name TEXT NOT NULL)`);
 let groupThreadsAt = 0;
 
+// Results that are expensive on a big mailbox (thousands of grouped conversations) are kept until
+// mail or groups change, so opening the app does not recompute them several times over.
+let dataVersion = 0;
+export function groupsChanged(): void {
+  dataVersion++;
+}
+const memo = new Map<string, { v: number; at: number; val: unknown }>();
+function cached<T>(key: string, f: () => T, maxAgeMs = 5 * 60_000, versioned = true): T {
+  const m = memo.get(key);
+  if (m && (!versioned || m.v === dataVersion) && Date.now() - m.at < maxAgeMs) return m.val as T;
+  const val = f();
+  memo.set(key, { v: dataVersion, at: Date.now(), val });
+  return val;
+}
+
+/** Keep group_threads fresh in the background: shortly after new mail, and once a minute if anything changed. */
+let dirty = false;
+let soon: NodeJS.Timeout | null = null;
+export function startGroupRefresher(): void {
+  bus.on('event', (ev) => {
+    if (ev.type === 'thread.updated' || ev.type === 'new.mail' || ev.type === 'folder.updated') {
+      dirty = true;
+      groupsChanged();
+    }
+    if (ev.type === 'new.mail' && !soon) {
+      soon = setTimeout(() => {
+        soon = null;
+        refreshGroupThreads(true);
+      }, 2000);
+    }
+  });
+  setInterval(() => {
+    if (dirty) refreshGroupThreads(true);
+  }, 60_000).unref();
+}
+
 export function refreshGroupThreads(force = false): void {
-  if (!force && Date.now() - groupThreadsAt < 60_000) return;
+  if (!force && groupThreadsAt) return;
   groupThreadsAt = Date.now();
+  dirty = false;
+  groupsChanged();
+  if (force) memo.delete('suggestions');
   db.transaction(() => {
     db.exec('DELETE FROM group_threads');
     db.exec(`INSERT INTO group_threads(thread_id, group_name)
@@ -73,6 +113,9 @@ const KEEP = /(fattur|invoice|billing|pagament|payment|paypal|bank|banca|ticket|
 
 /** Who sends you regular automatic mail and is not grouped yet: offered as ready-made groups. */
 export function groupSuggestions(): { name: string; senders: { email: string; count: number }[] }[] {
+  return cached('suggestions', groupSuggestionsNow, 10 * 60_000, false);
+}
+function groupSuggestionsNow(): { name: string; senders: { email: string; count: number }[] }[] {
   const rows = db
     .prepare(
       `SELECT m.from_email AS email, COUNT(*) AS n, MAX(m.category) AS cat
@@ -127,6 +170,9 @@ type SummaryRow = { id: number; last_date: string; unread_count: number; last_fr
 /** Inbox threads that belong to a group, newest first, with the group name. */
 export function groupedInboxThreads(accountId: number | null, group?: string): SummaryRow[] {
   refreshGroupThreads();
+  return cached(`inbox|${accountId ?? ''}|${group ?? ''}`, () => groupedInboxThreadsNow(accountId, group));
+}
+function groupedInboxThreadsNow(accountId: number | null, group?: string): SummaryRow[] {
   const params: unknown[] = [];
   let where = "t.roles LIKE '%,inbox,%'";
   if (accountId) {
@@ -227,6 +273,7 @@ export function importantGroupedThreadIds(accountId: number | null, limit = 5): 
 }
 
 export function markGroupSeen(name: string): void {
+  groupsChanged();
   db.prepare("INSERT INTO group_seen(group_name, seen_at) VALUES (?, strftime('%Y-%m-%dT%H:%M:%fZ','now')) ON CONFLICT(group_name) DO UPDATE SET seen_at = excluded.seen_at").run(name);
 }
 

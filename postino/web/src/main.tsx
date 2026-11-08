@@ -1,6 +1,9 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient } from '@tanstack/react-query';
+import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
+import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persister';
+import { CACHE_KEY, CACHE_MAX_AGE, CACHE_VERSION, PERSISTED, safeStorage } from './cache';
 import { BrowserRouter, HashRouter } from 'react-router-dom';
 
 // Demo builds (hosted as a static page) use hash routes so deep links survive without a server.
@@ -97,14 +100,26 @@ async function boot() {
       queries: { retry: 1, refetchOnWindowFocus: true, staleTime: 10_000 },
     },
   });
+  // What the inbox needs to draw itself is kept on this device and shown the moment the app
+  // opens (like the Gmail app), then refreshed from the server. Email bodies are not kept here.
+  for (const key of PERSISTED) qc.setQueryDefaults([key], { gcTime: CACHE_MAX_AGE });
+  const persister = createSyncStoragePersister({ storage: safeStorage(), key: CACHE_KEY, throttleTime: 1500 });
   ReactDOM.createRoot(document.getElementById('root')!).render(
     <React.StrictMode>
       <Crash>
-      <QueryClientProvider client={qc}>
+      <PersistQueryClientProvider
+        client={qc}
+        persistOptions={{
+          persister,
+          maxAge: CACHE_MAX_AGE,
+          buster: CACHE_VERSION,
+          dehydrateOptions: { shouldDehydrateQuery: (q) => q.state.status === 'success' && PERSISTED.includes(String(q.queryKey[0])) },
+        }}
+      >
         <Router>
           <App />
         </Router>
-      </QueryClientProvider>
+      </PersistQueryClientProvider>
       </Crash>
     </React.StrictMode>,
   );

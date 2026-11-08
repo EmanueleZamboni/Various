@@ -18,7 +18,7 @@ import { registerTemplateRoutes } from './routes/templates.js';
 import { registerBackupRoutes, startDriveBackups } from './backup.js';
 import { registerGoogleAppRoutes, startGoogleContacts } from './googleApps.js';
 import { registerLegalRoutes } from './legal.js';
-import { registerGroupRoutes } from './groups.js';
+import { registerGroupRoutes, startGroupRefresher } from './groups.js';
 import { registerImageProxy } from './imageProxy.js';
 import { registerPasskeyRoutes } from './passkeys.js';
 import { registerGoogleRoutes } from './google.js';
@@ -211,6 +211,7 @@ async function main(): Promise<void> {
   startGoogleContacts();
   startOps();
   startTriage();
+  startGroupRefresher();
   // Package and trip cards for recent mail that arrived before they existed (cheap, rules only).
   setTimeout(() => {
     try {

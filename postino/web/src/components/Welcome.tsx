@@ -1,4 +1,6 @@
 import { Link } from 'react-router-dom';
+import { WIZARD_KEY } from '../wizard';
+export { markWizardOpen, wizardWanted } from '../wizard';
 import { GoogleSignInButton, useGoogleReady, useGoogleResult } from './GoogleSignIn';
 import { PendingMailboxes, RestoreButton } from './Backup';
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
@@ -28,21 +30,6 @@ const STEPS: { id: Step; label: string; icon: IconName }[] = [
 ];
 type Step = 'mail' | 'phone' | 'notify' | 'passkey' | 'done';
 
-const WIZARD_KEY = 'postino.wizard';
-export const markWizardOpen = () => {
-  try {
-    localStorage.setItem(WIZARD_KEY, '1');
-  } catch {
-    /* ignore */
-  }
-};
-export const wizardWanted = () => {
-  try {
-    return localStorage.getItem(WIZARD_KEY) === '1';
-  } catch {
-    return false;
-  }
-};
 const markWizardDone = () => {
   try {
     localStorage.removeItem(WIZARD_KEY);

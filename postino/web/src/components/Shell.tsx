@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { Me } from '../api/types';
@@ -16,7 +17,7 @@ import { Reader } from './Reader';
 import { Compose } from './Compose';
 import { BlockConfirm, MovePicker, ShortcutsSheet } from './Sheets';
 import { AttachmentViewer } from './AttachmentViewer';
-import { SettingsPage } from './Settings';
+const SettingsPage = lazy(() => import('./Settings').then((m) => ({ default: m.SettingsPage })));
 
 export function Shell({ me, forcedView, onLogout }: { me?: Me; forcedView?: string; onLogout: () => void }) {
   const nav = useNav();
@@ -191,7 +192,9 @@ export function Shell({ me, forcedView, onLogout }: { me?: Me; forcedView?: stri
       <div className="drawer-scrim" onClick={() => ui.setDrawer(false)} />
       <main className="main-card">
         {nav.isSettings ? (
-          <SettingsPage me={me} onLogout={onLogout} />
+          <Suspense fallback={<div className="empty" aria-busy="true" />}>
+            <SettingsPage me={me} onLogout={onLogout} />
+          </Suspense>
         ) : (
           <>
             <ThreadList view={view} />
