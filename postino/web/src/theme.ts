@@ -10,7 +10,12 @@ let pref: ThemePref = 'system';
 function apply(): void {
   const dark = pref === 'dark' || (pref === 'system' && !!media?.matches);
   document.documentElement.dataset.theme = dark ? 'dark' : 'light';
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', dark ? '#111214' : '#f6f8fc');
+  // Same grey as the phone list (Gmail's dark page), so the status bar blends in.
+  // The choice in Settings wins over the device's: drop the media queries once the app runs.
+  document.querySelectorAll('meta[name="theme-color"]').forEach((m) => {
+    m.removeAttribute('media');
+    m.setAttribute('content', dark ? '#1f1f1f' : '#f6f8fc');
+  });
 }
 
 export function initTheme(): void {
