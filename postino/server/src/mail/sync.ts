@@ -358,19 +358,7 @@ export class AccountSync {
             if (fresh.length) {
               for (const b of fresh) this.bodyInFlight.add(b.id);
               try {
-                // Never longer than a minute: a stuck download would hide these from the main
-                // connection for good. On a timeout the watcher reconnects on its own.
-                await withTimeout(this.fetchBodies(inbox, fresh, w), 60_000, 'inbox watcher body download');
-              } catch (err) {
-                if (this.watcher === w) {
-                  this.watcher = null;
-                  try {
-                    w.close();
-                  } catch {
-                    // already closed
-                  }
-                }
-                throw err;
+                await this.fetchBodies(inbox, fresh, w);
               } finally {
                 for (const b of fresh) this.bodyInFlight.delete(b.id);
                 this.kickBodyLoop(); // whatever the watcher did not get, the main connection does
@@ -630,7 +618,7 @@ export class AccountSync {
           db.prepare('UPDATE messages SET body_error = NULL WHERE id = ?').run(g.id);
         }
         try {
-          await withTimeout(this.fetchBodies(folder, mine), 90_000, 'body download');
+          await this.fetchBodies(folder, mine);
         } catch (err) {
           log.warn({ account: this.email, folder: folder.path, err: (err as Error).message }, 'body download on open failed');
           for (const g of mine) markBodyError(g.id, (err as Error).message, folder.id, g.uid);
@@ -641,6 +629,19 @@ export class AccountSync {
       }
       this.kickBodyLoop();
     })();
+  }
+
+  /**
+   * A download that never finishes means the connection is stuck (the server stopped answering
+   * without closing it): close it, so it reconnects and everything waiting on it moves again.
+   */
+  private dropStuck(client: ImapFlow): void {
+    log.warn({ account: this.email, watcher: client === this.watcher }, 'imap connection stuck on a download; reconnecting');
+    try {
+      client.close();
+    } catch {
+      // already closed
+    }
   }
 
   private onExists(path: string): void {
@@ -890,7 +891,26 @@ export class AccountSync {
     const small = group.filter((g) => g.size <= config.maxSourceFetchBytes);
     const large = group.filter((g) => g.size > config.maxSourceFetchBytes);
     const open = (fn: (client: ImapFlow) => Promise<void>) => (via ? this.onConnection(via, folder.path, fn) : this.withMailbox(folder.path, fn));
+    // Timed from when the mailbox is ours (waiting for the lock is not a stuck server). A server
+    // that stops answering mid-download would otherwise hold these messages, and the connection,
+    // for good: close it, it reconnects and the messages are tried again.
     await open(async (client) => {
+      try {
+        await withTimeout(this.downloadBodies(client, folder, small, large), via ? 60_000 : 120_000 + 15_000 * large.length, 'body download');
+      } catch (err) {
+        if (err instanceof TimeoutError) this.dropStuck(client);
+        throw err;
+      }
+    });
+  }
+
+  private async downloadBodies(
+    client: ImapFlow,
+    folder: FolderRow,
+    small: { id: number; uid: number; size: number; structure_json: string | null }[],
+    large: { id: number; uid: number; size: number; structure_json: string | null }[],
+  ): Promise<void> {
+    {
       if (small.length) {
         const byUid = new Map(small.map((s) => [s.uid, s]));
         const found = new Set<number>();
@@ -917,7 +937,7 @@ export class AccountSync {
           markBodyError(l.id, (err as Error).message, folder.id, l.uid);
         }
       }
-    });
+    }
   }
 
   private async storeFromSource(messageRow: number, source: Buffer): Promise<void> {
@@ -1161,13 +1181,15 @@ export function friendlyError(msg: string): string {
 export { nowIso };
 export type { MessageRow };
 
+class TimeoutError extends Error {}
+
 /** Reject after `ms` (the operation itself keeps going; callers close its connection if needed). */
 function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
   let timer: NodeJS.Timeout;
   return Promise.race([
     p,
     new Promise<never>((_, reject) => {
-      timer = setTimeout(() => reject(new Error(`${what} took longer than ${Math.round(ms / 1000)} s`)), ms);
+      timer = setTimeout(() => reject(new TimeoutError(`${what} took longer than ${Math.round(ms / 1000)} s`)), ms);
     }),
   ]).finally(() => clearTimeout(timer));
 }
