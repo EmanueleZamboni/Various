@@ -264,7 +264,7 @@ const TOOLS: Tool[] = [
       let budget = 60_000;
       const messages = d.messages.map((m) => {
         let text = m.body.text || (m.body.html ? htmlToText(m.body.html) : '');
-        if (!m.body.fetched) text = '(still downloading this message; try again in a few seconds)';
+        if (!m.body.fetched) text = m.body.error ? `(could not download this message: ${m.body.error}; trying again now)` : '(still downloading this message; try again in a few seconds)';
         const cut = Math.max(0, Math.min(text.length, 15_000, budget));
         budget -= cut;
         return {

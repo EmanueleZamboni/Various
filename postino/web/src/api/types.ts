@@ -71,6 +71,7 @@ export type MessageBody = {
   hasRemoteImages: boolean;
   quoted: string | null;
   fetched: boolean;
+  error?: string | null;
 };
 
 export type Message = {

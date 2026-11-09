@@ -122,7 +122,7 @@ export function threadDetail(threadId: number) {
   const messages = out.map((m) => messageView(m, folderStmt.get(m.folder_id) as FolderRow | undefined, bodyStmt.get(m.id) as never));
   // Kick body fetching for anything still missing.
   const missing = out.filter((m) => !m.body_fetched);
-  if (missing.length) manager.get(t.account_id)?.kickBodyLoop();
+  if (missing.length) manager.get(t.account_id)?.fetchNow(missing.map((m) => m.id));
   return { thread: threadView(t, { draft: drafts.has(t.id) }), messages };
 }
 
@@ -282,7 +282,7 @@ export function registerThreadRoutes(app: FastifyInstance): void {
     if (!m) return reply.code(404).send({ error: 'not_found' });
     const body = db.prepare('SELECT text, html, quoted, has_remote_images, calendar_json FROM bodies WHERE message_row = ?').get(m.id) as never;
     const folder = db.prepare('SELECT * FROM folders WHERE id = ?').get(m.folder_id) as FolderRow | undefined;
-    if (!m.body_fetched) manager.get(m.account_id)?.kickBodyLoop();
+    if (!m.body_fetched) manager.get(m.account_id)?.fetchNow([m.id]);
     return messageView(m, folder, body);
   });
 

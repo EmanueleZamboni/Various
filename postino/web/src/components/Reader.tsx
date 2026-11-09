@@ -483,7 +483,7 @@ function MessageCard({ message: m, thread, accountColor, myEmails, expanded, sin
           </div>
         )}
         {!m.body.fetched ? (
-          <div className="help">Downloading this message</div>
+          <div className="help">{m.body.error ? 'Couldn\'t download this message yet. Trying again…' : 'Downloading this message'}</div>
         ) : (
           <>
             {m.body.hasRemoteImages && !showImages && (

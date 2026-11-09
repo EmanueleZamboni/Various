@@ -145,6 +145,10 @@ export class AccountSync {
   private watchAgain = false;
   // Messages whose body one of the two connections is downloading right now (never both).
   private bodyInFlight = new Set<number>();
+  // Failed bodies get a few more tries (one a minute) before waiting for the next reconnect.
+  private bodyRetries = new Map<number, number>();
+  // Bodies asked for by someone opening the message: not more than once every 20 seconds each.
+  private askedAt = new Map<number, number>();
 
   constructor(account: AccountRow) {
     this.id = account.id;
@@ -354,9 +358,22 @@ export class AccountSync {
             if (fresh.length) {
               for (const b of fresh) this.bodyInFlight.add(b.id);
               try {
-                await this.fetchBodies(inbox, fresh, w);
+                // Never longer than a minute: a stuck download would hide these from the main
+                // connection for good. On a timeout the watcher reconnects on its own.
+                await withTimeout(this.fetchBodies(inbox, fresh, w), 60_000, 'inbox watcher body download');
+              } catch (err) {
+                if (this.watcher === w) {
+                  this.watcher = null;
+                  try {
+                    w.close();
+                  } catch {
+                    // already closed
+                  }
+                }
+                throw err;
               } finally {
                 for (const b of fresh) this.bodyInFlight.delete(b.id);
+                this.kickBodyLoop(); // whatever the watcher did not get, the main connection does
               }
               for (const b of fresh) bus.publish({ type: 'message.updated', messageId: String(b.id), threadId: String(b.thread_id) });
             }
@@ -567,7 +584,63 @@ export class AccountSync {
         }
       }
     }
+    this.retryFailedBodies();
     this.kickBodyLoop();
+  }
+
+  /** Bodies that failed in the last week get up to three more tries, one per poll. */
+  private retryFailedBodies(): void {
+    const failed = db
+      .prepare("SELECT id FROM messages WHERE account_id = ? AND body_fetched = 0 AND body_error IS NOT NULL AND date > ? LIMIT 50")
+      .all(this.id, new Date(Date.now() - 7 * 86_400_000).toISOString()) as { id: number }[];
+    for (const f of failed) {
+      const n = this.bodyRetries.get(f.id) || 0;
+      if (n >= 3) continue;
+      this.bodyRetries.set(f.id, n + 1);
+      db.prepare('UPDATE messages SET body_error = NULL WHERE id = ? AND body_fetched = 0').run(f.id);
+    }
+  }
+
+  /**
+   * Someone is looking at these messages and their text is missing: download them now on the
+   * main connection, ahead of the background queue (and give failed ones another go).
+   */
+  fetchNow(messageIds: number[]): void {
+    const now = Date.now();
+    const ids = messageIds.filter((id) => !this.bodyInFlight.has(id) && now - (this.askedAt.get(id) || 0) > 20_000);
+    if (!ids.length) {
+      this.kickBodyLoop();
+      return;
+    }
+    for (const id of ids) this.askedAt.set(id, now);
+    if (this.askedAt.size > 500) for (const [k, t] of this.askedAt) if (now - t > 60_000) this.askedAt.delete(k);
+    void (async () => {
+      const rows = db
+        .prepare(`SELECT m.id, m.uid, m.folder_id, m.size, m.thread_id, m.structure_json FROM messages m WHERE m.account_id = ? AND m.body_fetched = 0 AND m.id IN (${ids.map(() => '?').join(',')})`)
+        .all(this.id, ...ids) as { id: number; uid: number; folder_id: number; size: number; thread_id: number; structure_json: string | null }[];
+      const byFolder = new Map<number, typeof rows>();
+      for (const r of rows) byFolder.set(r.folder_id, [...(byFolder.get(r.folder_id) || []), r]);
+      for (const [folderId, group] of byFolder) {
+        const folder = db.prepare('SELECT * FROM folders WHERE id = ?').get(folderId) as FolderRow | undefined;
+        if (!folder || this.stopped || !this.client) continue;
+        const mine = group.filter((g) => !this.bodyInFlight.has(g.id));
+        if (!mine.length) continue;
+        for (const g of mine) {
+          this.bodyInFlight.add(g.id);
+          db.prepare('UPDATE messages SET body_error = NULL WHERE id = ?').run(g.id);
+        }
+        try {
+          await withTimeout(this.fetchBodies(folder, mine), 90_000, 'body download');
+        } catch (err) {
+          log.warn({ account: this.email, folder: folder.path, err: (err as Error).message }, 'body download on open failed');
+          for (const g of mine) markBodyError(g.id, (err as Error).message, folder.id, g.uid);
+        } finally {
+          for (const g of mine) this.bodyInFlight.delete(g.id);
+        }
+        for (const g of mine) bus.publish({ type: 'message.updated', messageId: String(g.id), threadId: String(g.thread_id) });
+      }
+      this.kickBodyLoop();
+    })();
   }
 
   private onExists(path: string): void {
@@ -755,6 +828,7 @@ export class AccountSync {
       while (this.bodyLoopWanted && !this.stopped && this.client) {
         this.bodyLoopWanted = false;
         // Each pass takes one batch from the highest-priority folder; loop until nothing is left.
+        let waits = 0;
         for (;;) {
           if (this.stopped || !this.client) break;
           const batch = db
@@ -768,10 +842,13 @@ export class AccountSync {
           if (!batch.length) break;
           const free = batch.filter((b) => !this.bodyInFlight.has(b.id));
           if (!free.length) {
-            // The inbox watcher has these; give it a moment.
+            // The inbox watcher has these; give it a moment, then leave them to it (it kicks
+            // this loop again when it is done).
+            if (++waits > 200) break;
             await new Promise((r) => setTimeout(r, 300));
             continue;
           }
+          waits = 0;
           const folderId = free[0].folder_id;
           const group = free.filter((b) => b.folder_id === folderId);
           const folder = db.prepare('SELECT * FROM folders WHERE id = ?').get(folderId) as FolderRow;
@@ -1083,3 +1160,14 @@ export function friendlyError(msg: string): string {
 
 export { nowIso };
 export type { MessageRow };
+
+/** Reject after `ms` (the operation itself keeps going; callers close its connection if needed). */
+function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
+  let timer: NodeJS.Timeout;
+  return Promise.race([
+    p,
+    new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`${what} took longer than ${Math.round(ms / 1000)} s`)), ms);
+    }),
+  ]).finally(() => clearTimeout(timer));
+}
