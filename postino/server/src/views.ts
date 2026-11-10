@@ -1,4 +1,5 @@
 import { db } from './db.js';
+import { cleanSnippet } from './mail/parse.js';
 import { messageCard, threadCard } from './smart.js';
 import type { ThreadRow, MessageRow, FolderRow } from './mail/store.js';
 import type { Address } from './mail/parse.js';
@@ -97,7 +98,7 @@ export function threadView(t: ThreadRow, extra?: { draft?: boolean }) {
     id: String(t.id),
     accountId: String(t.account_id),
     subject: t.subject,
-    snippet: t.snippet,
+    snippet: cleanSnippet(t.snippet || ''),
     participants: parse<Address[]>(t.participants, []),
     lastFrom: parse<Address>(t.last_from, { name: '', email: '' }),
     lastDate: t.last_date,
@@ -168,7 +169,7 @@ export function messageView(m: MessageRow, folder: FolderRow | undefined, body?:
     draft: Boolean(m.draft),
     mine: Boolean(m.mine),
     category: m.category,
-    snippet: m.snippet,
+    snippet: cleanSnippet(m.snippet || ''),
     attachments: atts.filter((a) => !a.is_inline || !a.content_id).map(attachmentView),
     listUnsubscribe: m.list_unsubscribe,
     canUnsubscribe: canUnsubscribe(m),

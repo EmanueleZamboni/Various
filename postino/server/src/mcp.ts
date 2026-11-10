@@ -9,6 +9,7 @@ import { searchThreads } from './search.js';
 import { threadView } from './views.js';
 import type { ThreadRow } from './mail/store.js';
 import { buildSendJob } from './routes/compose.js';
+import { stageAttachments, attachmentsSchema } from './mcpAttachments.js';
 import { enqueue, executeSend } from './mail/outbox.js';
 import { uiSettings } from './settings.js';
 import { htmlToText } from './mail/sanitize.js';
@@ -255,7 +256,7 @@ const TOOLS: Tool[] = [
   {
     name: 'read_thread',
     title: 'Read a conversation',
-    description: `All messages of a conversation as plain text, with sender, recipients, date and attachment names. Message ids are what reply_to_message_id expects. ${UNTRUSTED}`,
+    description: `All messages of a conversation as plain text, with sender, recipients, date and attachments. Message ids are what reply_to_message_id expects; attachment ids can be attached to a new email (send_email / create_draft). ${UNTRUSTED}`,
     inputSchema: { type: 'object', properties: { thread_id: { type: 'string' } }, required: ['thread_id'], additionalProperties: false },
     annotations: { readOnlyHint: true, openWorldHint: true },
     run: (a) => {
@@ -275,7 +276,7 @@ const TOOLS: Tool[] = [
           date: m.date,
           subject: m.subject,
           mine: m.mine,
-          attachments: m.attachments.map((x) => `${x.filename} (${Math.round(x.size / 1024)} KB)`),
+          attachments: m.attachments.map((x) => ({ attachment_id: String(x.id), name: `${x.filename} (${Math.round(x.size / 1024)} KB)` })),
           calendar_invite: m.calendar ? { title: m.calendar.summary, start: m.calendar.start, end: m.calendar.end, location: m.calendar.location } : undefined,
           text: text.slice(0, cut) + (cut < text.length ? '\n[…truncated]' : ''),
         };
@@ -308,7 +309,7 @@ const TOOLS: Tool[] = [
   {
     name: 'create_draft',
     title: 'Create a draft',
-    description: 'Save a draft in Postino (nothing is sent). The user can review it in Drafts. To reply, pass reply_to_message_id from read_thread.',
+    description: 'Save a draft in Postino (nothing is sent). The user can review it in Drafts. To reply, pass reply_to_message_id from read_thread. Files can be attached (attachments).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -319,27 +320,34 @@ const TOOLS: Tool[] = [
         subject: { type: 'string' },
         body: { type: 'string', description: 'Plain text.' },
         reply_to_message_id: { type: 'string' },
+        attachments: attachmentsSchema,
       },
       required: ['account_id', 'body'],
       additionalProperties: false,
     },
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
-    run: (a) => {
+    run: async (a) => {
       const acc = accountId(a.account_id);
       const replyRow = a.reply_to_message_id ? (db.prepare('SELECT id, thread_id, subject FROM messages WHERE id = ?').get(Number(a.reply_to_message_id)) as { id: number; thread_id: number; subject: string } | undefined) : undefined;
       if (a.reply_to_message_id && !replyRow) throw fail('No message with that reply_to_message_id.');
       const subject = str(a.subject, 500) || (replyRow ? (/^re:/i.test(replyRow.subject) ? replyRow.subject : `Re: ${replyRow.subject}`) : '');
+      let files;
+      try {
+        files = await stageAttachments(a.attachments);
+      } catch (e) {
+        throw fail((e as Error).message);
+      }
       const info = db
         .prepare('INSERT INTO drafts(account_id, thread_id, in_reply_to, forward_of, to_text, cc_text, bcc_text, subject, text, attachments_json, from_address) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
-        .run(acc, replyRow?.thread_id ?? null, replyRow?.id ?? null, null, str(a.to, 4000), str(a.cc, 4000), str(a.bcc, 4000), subject, str(a.body, 200_000), '[]', '');
+        .run(acc, replyRow?.thread_id ?? null, replyRow?.id ?? null, null, str(a.to, 4000), str(a.cc, 4000), str(a.bcc, 4000), subject, str(a.body, 200_000), JSON.stringify(files), '');
       if (replyRow) bus.publish({ type: 'thread.updated', threadId: String(replyRow.thread_id), accountId: String(acc) });
-      return { ok: true, draft_id: String(info.lastInsertRowid), note: 'Saved in Postino → Drafts.' };
+      return { ok: true, draft_id: String(info.lastInsertRowid), attached: files.map((f) => `${f.filename} (${Math.round(f.size / 1024)} KB)`), note: 'Saved in Postino → Drafts.' };
     },
   },
   {
     name: 'send_email',
     title: 'Send an email',
-    description: 'Send an email from one of the mailboxes, with the default signature. To reply in a conversation pass reply_to_message_id (the original is quoted below). Always show the user the final text and recipients and get their OK before calling this.',
+    description: 'Send an email from one of the mailboxes, with the default signature. To reply in a conversation pass reply_to_message_id (the original is quoted below). Files can be attached (attachments). Always show the user the final text, recipients and attachments and get their OK before calling this.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -350,6 +358,7 @@ const TOOLS: Tool[] = [
         subject: { type: 'string' },
         body: { type: 'string', description: 'Plain text.' },
         reply_to_message_id: { type: 'string' },
+        attachments: attachmentsSchema,
       },
       required: ['account_id', 'to', 'body'],
       additionalProperties: false,
@@ -360,18 +369,23 @@ const TOOLS: Tool[] = [
       if (a.reply_to_message_id && !reply) throw fail('No message with that reply_to_message_id.');
       const subject = str(a.subject, 500) || (reply ? (/^re:/i.test(reply.subject) ? reply.subject : `Re: ${reply.subject}`) : '');
       let job;
+      let files: Awaited<ReturnType<typeof stageAttachments>> = [];
       try {
-        job = buildSendJob({ accountId: String(accountId(a.account_id)), to: str(a.to, 4000), cc: str(a.cc, 4000), bcc: str(a.bcc, 4000), subject, text: str(a.body, 200_000), inReplyTo: reply ? String(a.reply_to_message_id) : undefined, quote: reply ? '1' : undefined });
+        const fields = { accountId: String(accountId(a.account_id)), to: str(a.to, 4000), cc: str(a.cc, 4000), bcc: str(a.bcc, 4000), subject, text: str(a.body, 200_000), inReplyTo: reply ? String(a.reply_to_message_id) : undefined, quote: reply ? '1' : undefined };
+        buildSendJob(fields); // check the recipients before downloading anything
+        files = await stageAttachments(a.attachments);
+        job = buildSendJob({ ...fields, uploadIds: files.map((f) => f.id) });
       } catch (e) {
         throw fail((e as Error).message);
       }
+      const attached = files.map((f) => `${f.filename} (${Math.round(f.size / 1024)} KB)`);
       const undo = uiSettings().compose.undoSendSec;
       if (undo > 0) {
         const row = enqueue(job, new Date(Date.now() + undo * 1000));
-        return { ok: true, queued: true, outbox_id: String(row.id), note: `Sending in ${undo} seconds; it can still be undone in Postino.` };
+        return { ok: true, queued: true, outbox_id: String(row.id), attached, note: `Sending in ${undo} seconds; it can still be undone in Postino.` };
       }
       const r = await executeSend(job);
-      return { ok: true, sent: true, thread_id: r.threadId ? String(r.threadId) : null };
+      return { ok: true, sent: true, attached, thread_id: r.threadId ? String(r.threadId) : null };
     },
   },
   {

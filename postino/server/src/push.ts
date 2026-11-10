@@ -1,4 +1,5 @@
 import { groupedSenderNotifies } from './groups.js';
+import { cleanSnippet } from './mail/parse.js';
 import { getAvatar } from './avatars.js';
 import webpush from 'web-push';
 import { db, getSetting, setSetting } from './db.js';
@@ -118,7 +119,7 @@ export function startPushBridge(): void {
       const many = (db.prepare('SELECT COUNT(*) AS n FROM accounts').get() as { n: number }).n > 1;
       const r = await sendPush({
         title: who,
-        body: [ev.subject || '(no subject)', snippet.replace(/\[image:[^\]]*\]/gi, '').replace(/\s+/g, ' ').trim().slice(0, 160)].filter(Boolean).join('\n'),
+        body: [ev.subject || '(no subject)', cleanSnippet(snippet).slice(0, 160)].filter(Boolean).join('\n'),
         threadId: ev.threadId,
         accountId: ev.accountId,
         tag: `thread-${ev.threadId}`,

@@ -147,8 +147,25 @@ export function pickUnsubscribe(raw: string): string | null {
   return https || mailto || null;
 }
 
+/**
+ * Preview text the way Gmail shows it: words only. Link addresses ("Orders ( https://… )",
+ * "<https://…>", bare URLs), [image: …] labels and the invisible padding newsletters put after
+ * their preheader are left out.
+ */
+export function cleanSnippet(text: string): string {
+  return text
+    .replace(/[\u034f\u00ad\u200b-\u200f\u2060-\u2064\ufeff\u2007\u2800]/g, ' ')
+    .replace(/\[(?:image|cid):[^\]]*\]/gi, ' ')
+    .replace(/\s*[(<\[]\s*(?:https?:\/\/|mailto:|tel:|www\.)[^\s)>\]]*\s*[)>\]]/gi, ' ')
+    .replace(/\b(?:https?:\/\/|www\.)[^\s<>()\[\]]+/gi, ' ')
+    .replace(/(?:\s[|·•]\s*){2,}/g, ' ')
+    .replace(/\(\s*\)|<\s*>|\[\s*\]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 export function makeSnippet(text: string, max = 200): string {
-  const s = text.replace(/\s+/g, ' ').trim();
+  const s = cleanSnippet(text);
   return s.length > max ? s.slice(0, max - 1) + '…' : s;
 }
 

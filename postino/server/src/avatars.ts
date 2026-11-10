@@ -90,14 +90,14 @@ async function assertPublicHost(hostname: string): Promise<{ address: string; fa
 }
 
 /** fetch() that only talks to public https hosts, checking every redirect hop. */
-type SafeResponse = { ok: boolean; status: number; url: string; headers: { get: (k: string) => string | null }; arrayBuffer: () => Promise<ArrayBuffer>; text: (max?: number) => Promise<string> };
+export type SafeResponse = { ok: boolean; status: number; url: string; headers: { get: (k: string) => string | null }; arrayBuffer: () => Promise<ArrayBuffer>; text: (max?: number) => Promise<string> };
 
 /**
  * HTTPS GET that only ever connects to an address we vetted as public (no DNS
  * rebinding between the check and the connection), follows at most 3 redirects
  * through the same check, and caps the body.
  */
-async function safeFetch(url: string, init: { signal: AbortSignal; headers?: Record<string, string> }, hops = 0): Promise<SafeResponse> {
+export async function safeFetch(url: string, init: { signal: AbortSignal; headers?: Record<string, string> }, hops = 0): Promise<SafeResponse> {
   const u = new URL(url);
   if (u.protocol !== 'https:') throw new Error('https only');
   const vetted = await assertPublicHost(u.hostname);
