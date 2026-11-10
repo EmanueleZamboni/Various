@@ -238,6 +238,18 @@ export function Reader({ view }: { view: string }) {
               <button className="ib wide-only" onClick={() => printMessage(lastIncoming, true)} aria-label="Print" title="Print"><Icon name="print" /></button>
             )}
           </div>
+          {inJunk && !isDraft && (
+            <div className="images-bar spam-bar">
+              <Icon name="spam" size={18} />
+              <span>{thread.folderRoles.includes('blocked') ? 'This email is in Blocked.' : 'This email is in Spam.'}</span>
+              <button
+                className="btn"
+                onClick={() => doAct('notjunk')}
+              >
+                Not spam
+              </button>
+            </div>
+          )}
           {thread.important && (
             <div className="imp-note"><Icon name="important" size={16} />Important{thread.importantReason ? `: ${thread.importantReason}` : ''}</div>
           )}

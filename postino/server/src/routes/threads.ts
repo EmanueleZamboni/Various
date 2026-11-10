@@ -5,7 +5,7 @@ import { bus } from '../events.js';
 import { manager } from '../mail/manager.js';
 import { log } from '../log.js';
 import { threadView, messageView } from '../views.js';
-import { recomputeThread, refreshFolderCounts, type ThreadRow, type MessageRow, type FolderRow, type FolderRole } from '../mail/store.js';
+import { recomputeThread, refreshFolderCounts, setSafeSenders, type ThreadRow, type MessageRow, type FolderRow, type FolderRole } from '../mail/store.js';
 
 type ListQuery = { view?: string; account?: string; category?: string; unread?: string; before?: string; limit?: string; group?: string };
 
@@ -133,6 +133,7 @@ function rolesForView(view: string | undefined, action: string): FolderRole[] | 
   if (view && (concreteRoles as string[]).includes(view)) return [view as FolderRole];
   if (view && view.startsWith('folder:')) return 'all';
   if (action === 'archive' || action === 'junk') return ['inbox'];
+  if (action === 'notjunk') return ['junk', 'blocked']; // never pull the sent replies of the thread into the inbox
   return 'all';
 }
 
@@ -193,6 +194,16 @@ export async function runAction(body: ActionBody): Promise<{ affected: number }>
     for (const th of threads) bus.publish({ type: 'thread.updated', threadId: String(th), accountId: String(targets[0].account_id) });
     return { affected: targets.length };
   }
+
+  // "Not spam" also means "never again": the sender's next emails that land in Spam are moved
+  // back to the inbox. "Report spam" takes that back.
+  if (action === 'notjunk') {
+    const senders = targets.filter((t) => (t.role === 'junk' || t.role === 'blocked') && !t.mine).map((t) => t.from_email.toLowerCase());
+    setSafeSenders(senders, true);
+    const unblock = db.prepare('DELETE FROM blocked_senders WHERE pattern = ?');
+    for (const e of new Set(senders)) unblock.run(e); // the exact address only; a blocked domain stays blocked
+  }
+  if (action === 'junk') setSafeSenders(targets.filter((t) => !t.mine).map((t) => t.from_email), false);
 
   let destRole: FolderRole | null = null;
   let destFolderId: number | null = null;

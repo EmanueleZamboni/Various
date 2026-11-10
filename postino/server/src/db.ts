@@ -164,6 +164,12 @@ CREATE TABLE IF NOT EXISTS attachments (
 );
 CREATE INDEX IF NOT EXISTS attachments_message ON attachments(message_row);
 
+-- Senders marked "Not spam": their mail that lands in Spam is moved back to the inbox.
+CREATE TABLE IF NOT EXISTS safe_senders (
+  email TEXT PRIMARY KEY,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+
 CREATE TABLE IF NOT EXISTS blocked_senders (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   pattern TEXT NOT NULL UNIQUE,

@@ -13,7 +13,7 @@ import type { AccountRow } from '../views.js';
 import { accountView, folderView, syncProgress } from '../views.js';
 import {
   upsertHeader, updateFlags, storeBody, markBodyError, recomputeThread, storeAttachment, registerAttachmentMeta, attachmentPath,
-  deleteMessagesByIds, deleteFolderMessages, refreshFolderCounts, isBlocked, folderByRole, type FolderRow, type FolderRole, type MessageRow,
+  deleteMessagesByIds, deleteFolderMessages, refreshFolderCounts, isBlocked, isSafeSender, folderByRole, type FolderRow, type FolderRole, type MessageRow,
 } from './store.js';
 import { bodyFromParsed, normalizeMsgId, parseReferences, pickUnsubscribe, splitQuoted, makeSnippet, parserOptions, defaultFilename, type ParsedHeaders, type Address } from './parse.js';
 import { sanitizeEmailHtml, htmlToText, textToHtml } from './sanitize.js';
@@ -697,6 +697,7 @@ export class AccountSync {
     if (!folder || !folder.present) return;
     const changedThreads = new Set<number>();
     const newInbox: { id: number; threadId: number; from: Address; subject: string; category: string; uid: number; blocked: boolean }[] = [];
+    const rescued: typeof newInbox = [];
 
     const open = <T,>(fn: (client: ImapFlow, mailbox: MailboxObject) => Promise<T>): Promise<T> =>
       opts.via ? this.onConnection(opts.via, folder.path, fn) : this.withMailbox(folder.path, fn);
@@ -723,6 +724,7 @@ export class AccountSync {
           if (r) {
             changedThreads.add(r.threadId);
             if (r.isNew && folder.role === 'inbox') newInbox.push({ ...r, uid: msg.uid });
+            if (r.isNew && folder.role === 'junk' && isSafeSender(r.from.email)) rescued.push({ ...r, uid: msg.uid });
           }
         }
         uidNextLocal = Math.max(uidNextLocal, maxUid + 1);
@@ -768,6 +770,20 @@ export class AccountSync {
           log.warn({ account: this.email, err: (err as Error).message }, 'blocked move failed');
         }
       }
+      // 4. Senders marked "Not spam" that landed in Spam go back to the inbox.
+      const inbox = rescued.length ? folderByRole(this.id, 'inbox') : undefined;
+      if (inbox) {
+        try {
+          const res = await client.messageMove(rescued.map((m) => m.uid), inbox.path, { uid: true });
+          this.applyMoveResult(folder, inbox, rescued.map((m) => m.uid), res && res.uidMap ? res.uidMap : null);
+          refreshFolderCounts(inbox.id);
+          this.emitFolder(inbox.id);
+          log.info({ account: this.email, n: rescued.length }, 'moved safe senders out of spam');
+        } catch (err) {
+          log.warn({ account: this.email, err: (err as Error).message }, 'safe sender move failed');
+          rescued.length = 0;
+        }
+      }
     });
 
     refreshFolderCounts(folder.id);
@@ -778,6 +794,7 @@ export class AccountSync {
         if (m.blocked) continue;
         bus.publish({ type: 'new.mail', threadId: String(m.threadId), accountId: String(this.id), from: m.from, subject: m.subject, category: m.category });
       }
+      for (const m of rescued) bus.publish({ type: 'new.mail', threadId: String(m.threadId), accountId: String(this.id), from: m.from, subject: m.subject, category: m.category });
     }
     if (newInbox.length) this.kickBodyLoop();
   }

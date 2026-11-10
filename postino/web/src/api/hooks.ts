@@ -104,7 +104,7 @@ const LABEL: Record<ThreadAction, string> = {
   archive: 'Archived',
   trash: 'Moved to Trash',
   junk: 'Marked as spam',
-  notjunk: 'Moved to Inbox',
+  notjunk: 'Not spam: sender trusted',
   inbox: 'Moved to Inbox',
   delete: 'Deleted forever',
   move: 'Moved',

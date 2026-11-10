@@ -542,6 +542,16 @@ function touchContacts(h: ParsedHeaders, mine: boolean): void {
 }
 
 /** Does this sender match a blocked pattern (exact address or @domain)? */
+/** Senders marked "Not spam" (exact addresses). */
+export function isSafeSender(email: string): boolean {
+  const e = (email || '').trim().toLowerCase();
+  return Boolean(e && db.prepare('SELECT 1 FROM safe_senders WHERE email = ?').get(e));
+}
+export function setSafeSenders(emails: string[], safe: boolean): void {
+  const stmt = safe ? db.prepare('INSERT OR IGNORE INTO safe_senders(email) VALUES (?)') : db.prepare('DELETE FROM safe_senders WHERE email = ?');
+  for (const e of new Set(emails.map((x) => (x || '').trim().toLowerCase()).filter((x) => x.includes('@')))) stmt.run(e);
+}
+
 export function isBlocked(email: string): boolean {
   const e = (email || '').toLowerCase();
   if (!e) return false;
