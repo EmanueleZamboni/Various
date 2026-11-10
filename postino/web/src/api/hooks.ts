@@ -82,6 +82,7 @@ export function useThread(id: string | null) {
     queryFn: () => api.threads.get(id!),
     enabled: !!id,
     staleTime: 10_000,
+    gcTime: 30 * 60_000, // reopening a conversation within half an hour is instant
   });
 }
 

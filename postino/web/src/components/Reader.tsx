@@ -1,4 +1,5 @@
 import { InviteActions, useAddToTasks } from './GoogleApps';
+import { parseMailto } from '../util/mailto';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
@@ -609,6 +610,7 @@ const FRAME_CSS = `
 export function HtmlBody({ id, html, showImages }: { id: string; html: string; showImages: boolean }) {
   const ref = useRef<HTMLIFrameElement>(null);
   const [height, setHeight] = useState(80);
+  const openCompose = useUI((s) => s.openCompose);
   const doc = useMemo(() => {
     let body = html;
     if (showImages) body = proxifyImages(body);
@@ -650,6 +652,7 @@ export function HtmlBody({ id, html, showImages }: { id: string; html: string; s
       const d = frame.contentDocument;
       if (!d?.body) return;
       fit();
+      d.addEventListener('click', onClick);
       ro?.disconnect();
       ro = new ResizeObserver(measure);
       ro.observe(d.body);
@@ -657,11 +660,20 @@ export function HtmlBody({ id, html, showImages }: { id: string; html: string; s
       for (const img of Array.from(d.images)) if (!img.complete) img.addEventListener('load', fit, { once: true });
       timers = [150, 600, 1500].map((t) => window.setTimeout(fit, t));
     };
+    // Email addresses in the message write a new email here, instead of opening another mail app.
+    const onClick = (e: MouseEvent) => {
+      const a = (e.target as Element | null)?.closest?.('a[href]') as HTMLAnchorElement | null;
+      const m = a ? parseMailto(a.getAttribute('href') || '') : null;
+      if (!m) return;
+      e.preventDefault();
+      openCompose({ mode: 'new', ...m });
+    };
     window.addEventListener('resize', fit);
     frame.addEventListener('load', attach);
     if (frame.contentDocument?.readyState === 'complete') attach();
     return () => {
       frame.removeEventListener('load', attach);
+      frame.contentDocument?.removeEventListener('click', onClick);
       window.removeEventListener('resize', fit);
       ro?.disconnect();
       timers.forEach((t) => window.clearTimeout(t));

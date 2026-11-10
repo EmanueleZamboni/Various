@@ -154,6 +154,7 @@ export function ThreadList({ view }: { view: string }) {
   const main = isSearch ? (nav.ai ? aiSearch : search) : people;
   const aiAnswer = isSearch && nav.ai ? aiSearch.data?.pages[0]?.answer ?? '' : '';
   const rows = flat(main.data);
+  usePrefetchThreads(rows);
   const notifRows = flat(notifs.data);
   const newsRows = flat(news.data);
   const highlights = useMemo(() => {
@@ -283,7 +284,7 @@ export function ThreadList({ view }: { view: string }) {
       onAddTask={() => void addToTasks(t.id)}
       onGroup={t.lastFrom?.email && !myEmails.has(t.lastFrom.email.toLowerCase()) ? () => ui.setGroupTarget({ email: t.lastFrom.email, name: t.lastFrom.name || '' }) : undefined}
       onBlock={t.lastFrom?.email && !myEmails.has(t.lastFrom.email.toLowerCase()) ? () => ui.setPendingBlock({ email: t.lastFrom.email, name: t.lastFrom.name || t.lastFrom.email, threadId: t.id }) : undefined}
-      onPrefetch={() => void qc.prefetchQuery({ queryKey: ['thread', t.id], queryFn: () => api.threads.get(t.id), staleTime: 10_000 })}
+      onPrefetch={() => prefetchThread(qc, t.id, 10_000)}
     />
   );
 
@@ -726,4 +727,38 @@ function Empty({ view, q }: { view: string; q: string }) {
       )}
     </div>
   );
+}
+
+/** Load a conversation into the cache before it is opened. */
+export function prefetchThread(qc: ReturnType<typeof useQueryClient>, id: string, staleTime = 60_000): void {
+  void qc.prefetchQuery({ queryKey: ['thread', id], queryFn: () => api.threads.get(id), staleTime });
+}
+
+/**
+ * Like the Gmail app: the first conversations of the list are downloaded in the background once
+ * the list is on screen, so opening one shows it at once instead of waiting on the network.
+ * Each is fetched once (and again only when it changes); bodies are small, a few KB each.
+ */
+function usePrefetchThreads(rows: ThreadSummary[]): void {
+  const qc = useQueryClient();
+  const done = useRef(new Map<string, string>());
+  const key = rows.slice(0, 15).map((t) => `${t.id}:${t.lastDate}:${t.count}`).join(',');
+  useEffect(() => {
+    if (!key) return;
+    const todo = rows.slice(0, 15).filter((t) => done.current.get(t.id) !== `${t.lastDate}:${t.count}`);
+    if (!todo.length) return;
+    const idle = (cb: () => void) => (typeof window.requestIdleCallback === 'function' ? window.requestIdleCallback(cb, { timeout: 1500 }) : setTimeout(cb, 300));
+    let cancelled = false;
+    idle(() => {
+      if (cancelled) return;
+      for (const t of todo) {
+        done.current.set(t.id, `${t.lastDate}:${t.count}`);
+        prefetchThread(qc, t.id);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
 }

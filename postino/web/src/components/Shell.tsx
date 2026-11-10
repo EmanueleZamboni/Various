@@ -7,6 +7,7 @@ import { Icon } from '../icons';
 import { useNav } from '../nav';
 import { useUI } from '../store';
 import { useSettings } from '../api/hooks';
+import { parseMailto } from '../util/mailto';
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
 import { setTheme } from '../theme';
@@ -24,6 +25,18 @@ export function Shell({ me, forcedView, onLogout }: { me?: Me; forcedView?: stri
   const navigate = useNavigate();
   const ui = useUI();
   const { data: settings } = useSettings();
+  // Opened for an email link (mailto:, from the system or another app): start a new email.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const link = params.get('mailto');
+    if (!link) return;
+    const m = parseMailto(link);
+    params.delete('mailto');
+    const qs = params.toString();
+    window.history.replaceState(window.history.state, '', window.location.pathname + (qs ? `?${qs}` : '') + window.location.hash);
+    if (m) ui.openCompose({ mode: 'new', ...m });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // The Smart/All choice is stored on the server so every device agrees.
   useEffect(() => {
     if (settings && settings.inbox.smart !== ui.smart) ui.setSmart(settings.inbox.smart);

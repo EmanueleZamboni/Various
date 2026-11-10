@@ -27,7 +27,9 @@ export default defineConfig({
           { src: '/icon-512.png', sizes: '512x512', type: 'image/png' },
           { src: '/icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
-      },
+        // Email links (mailto:) open Postino's composer, where the browser lets an installed app take them.
+        protocol_handlers: [{ protocol: 'mailto', url: '/inbox?mailto=%s' }],
+      } as Record<string, unknown>,
       injectManifest: {
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
