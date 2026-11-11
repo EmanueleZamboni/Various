@@ -19,6 +19,7 @@ public measurements that exist, and every coefficient can be changed in
 - **A status line** under the prompt, updated after every model response:
   energy so far, and either the turn in progress or the last turn with its
   average power while it ran.
+- **A panel** beside the chat with the energy, the damage and a Reset button. It opens on its own where there is room, and with `/power`.
 - **`/power`**: energy so far with its plausible range, average watts while
   Claude works and over the whole session, the last turn, CO₂ at a grid
   intensity you set, everyday comparisons (phone charges, LED-bulb hours,
@@ -188,6 +189,6 @@ claude plugin test ./claude-power-meter
 ```
 
 Layout: `.claude-plugin/plugin.json` (manifest and settings),
-`hooks/power-meter.ts` (the hooks module), `hooks/estimate.ts` (the energy
+`hooks/power-meter.tsx` (the hooks module and its panel), `hooks/estimate.ts` (the energy
 model and its formatting, pure functions), `types/index.d.ts` (the `$.state`
 contract), `tests/` (run by `claude plugin test`).

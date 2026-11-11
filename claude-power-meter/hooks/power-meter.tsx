@@ -43,6 +43,8 @@ import {
 import type { Counted, ImpactRates, Rates, UsageLike } from './estimate'
 
 const COMMAND = 'power'
+const PANE = 'power-meter'
+const PANE_TITLE = '⚡ Power meter'
 /** `$.fs.read` refuses a larger file; past it the transcript is summed with grep. */
 const FOUR_MIB = 4 * 1024 * 1024
 /** A turn in progress that reported nothing for this long is dropped. */
@@ -111,6 +113,7 @@ export const register: Register = (on, options) => {
     } catch {
       // An observer never holds up the session.
     }
+    void $.ui.open({ id: PANE, title: PANE_TITLE }).catch(() => undefined)
     return next(e)
   })
 
@@ -179,7 +182,44 @@ export const register: Register = (on, options) => {
       return { text: 'Power meter reset: counting from now.' }
     }
     const [m, now] = await Promise.all([read($, meter), $.clock.now()])
+    await $.ui.open({ id: PANE, title: PANE_TITLE }).catch(() => undefined)
     return { text: report(m, now, rates, impact) }
+  })
+
+  // The panel: the same figures, kept beside the chat on every surface.
+  on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
+    const { Box, Text, Button } = $.ui.resolve(e)
+    const m = await read($, meter)
+    const pendingWh = pendingWhOf(m, rates)
+    const total = totalWh(mergeByModel(m.seeded, m.live), rates) + pendingWh
+    const i = impactOf(total, impact)
+    let turnLine = 'Waiting for the first response…'
+    if (pendingWh > 0) {
+      turnLine = `This turn so far: ≈${fmtWh(pendingWh)}`
+    } else if (m.lastTurn !== null) {
+      const wh = whOf(m.lastTurn.tally, m.lastTurn.model, rates)
+      const d = m.lastTurn.durationMs
+      turnLine = `Last turn: ≈${fmtWh(wh)}` + (d > 0 ? ` in ${fmtDuration(d)} (≈${fmtW(wattsOf(wh, d))})` : '')
+    }
+    return (
+      <Box flexDirection="column">
+        <Text weight="bold" size="title">≈ {fmtWh(total)}</Text>
+        <Text dimColor>watt-hours used by this chat ({fmtRange(total)})</Text>
+        <Text> </Text>
+        <Text>{turnLine}</Text>
+        <Text> </Text>
+        <Text weight="semibold">Damage</Text>
+        <Text>≈ {fmtGrams(i.co2Grams)} CO₂</Text>
+        <Text>≈ {fmtWater(i.waterMl)} water</Text>
+        <Text>≈ {fmtUsd(i.damageUsd)} of climate damage</Text>
+        <Text> </Text>
+        <Text dimColor>{total > 0 ? `About ${equivalents(total).slice(0, 2).join(' or ')}.` : ' '}</Text>
+        <Text dimColor>An estimate: Anthropic publishes no energy data.</Text>
+        <Box flexDirection="row" gap={1}>
+          <Button key="reset" label="Reset" onPress={() => resetMeter($, null).then(() => refresh($, view))} />
+        </Box>
+      </Box>
+    )
   })
 }
 
