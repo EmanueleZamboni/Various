@@ -1,0 +1,73 @@
+{
+  "name": "power-meter",
+  "version": "0.1.0",
+  "description": "Estimates the electricity your Claude Code session is using (watt-hours and watts) from the tokens each model response reports",
+  "author": { "name": "Emanuele Zamboni" },
+  "repository": "https://github.com/EmanueleZamboni/Various",
+  "keywords": ["energy", "electricity", "sustainability", "tokens", "status-line"],
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "wh_per_1k_output_haiku": {
+      "type": "number",
+      "title": "Haiku: Wh per 1,000 output tokens",
+      "description": "Energy of 1,000 generated tokens on a Haiku-class model, in watt-hours (default 0.3)",
+      "default": 0.3,
+      "min": 0
+    },
+    "wh_per_1k_output_sonnet": {
+      "type": "number",
+      "title": "Sonnet: Wh per 1,000 output tokens",
+      "description": "Energy of 1,000 generated tokens on a Sonnet-class model, in watt-hours (default 1). Also used for models the plugin cannot classify",
+      "default": 1,
+      "min": 0
+    },
+    "wh_per_1k_output_opus": {
+      "type": "number",
+      "title": "Opus: Wh per 1,000 output tokens",
+      "description": "Energy of 1,000 generated tokens on an Opus-class model, in watt-hours (default 2)",
+      "default": 2,
+      "min": 0
+    },
+    "wh_per_1k_output_fable": {
+      "type": "number",
+      "title": "Fable/Mythos: Wh per 1,000 output tokens",
+      "description": "Energy of 1,000 generated tokens on a Fable- or Mythos-class model, in watt-hours (default 3)",
+      "default": 3,
+      "min": 0
+    },
+    "input_fraction": {
+      "type": "number",
+      "title": "Uncached input token, as a fraction of an output token",
+      "description": "How much energy one uncached input token costs relative to one output token (default 0.2)",
+      "default": 0.2,
+      "min": 0
+    },
+    "cache_write_fraction": {
+      "type": "number",
+      "title": "Cache-write token, as a fraction of an output token",
+      "description": "How much energy one input token written to the prompt cache costs relative to one output token (default 0.2)",
+      "default": 0.2,
+      "min": 0
+    },
+    "cache_read_fraction": {
+      "type": "number",
+      "title": "Cache-read token, as a fraction of an output token",
+      "description": "How much energy one input token served from the prompt cache costs relative to one output token (default 0.005)",
+      "default": 0.005,
+      "min": 0
+    },
+    "grid_g_co2_per_kwh": {
+      "type": "number",
+      "title": "Grid carbon intensity (g CO2 per kWh)",
+      "description": "Used for the CO2 line of /power. Roughly 400 for the US grid average, lower in the EU (default 400)",
+      "default": 400,
+      "min": 0
+    },
+    "show_status_line": {
+      "type": "boolean",
+      "title": "Show the status line",
+      "description": "Keep a live energy figure pinned under the prompt (default on). /power works either way",
+      "default": true
+    }
+  }
+}
