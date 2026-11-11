@@ -63,8 +63,20 @@ export type Meter = {
   pending: Record<string, PendingTurn>
 }
 
+/** Every chat's tokens this calendar month, read from the transcripts on this machine. */
+export type MonthTotal = {
+  /** The month, as YYYY-MM in local time. */
+  month: string
+  byModel: Record<string, Tally>
+  /** Chats (transcript files) with at least one response this month. */
+  chats: number
+  messages: number
+  /** `$.clock.now()` when it was read. */
+  at: number
+}
+
 declare module 'claude-code' {
   interface PluginState {
-    'power-meter': { meter: Shaped<Meter> }
+    'power-meter': { meter: Shaped<Meter>; month: Shaped<MonthTotal | null> }
   }
 }

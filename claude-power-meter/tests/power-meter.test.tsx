@@ -236,3 +236,29 @@ test('the band shows the watt-hours, the home share and More', async ($, on) => 
   }
   expect(OPENED.filter(id => id === 'power-meter').length).toBeGreaterThan(1)
 })
+
+test('a resumed session also reads its subagents back', async ($, on) => {
+  const status: Array<string | undefined> = []
+  mock.clock(on, { now: 1_000_000 })
+  mock.env(on, { HOME: '/home/tester' })
+  const MAIN = '/home/tester/.claude/projects/-proj/session-1.jsonl'
+  const DIR = '/home/tester/.claude/projects/-proj/session-1/subagents'
+  const SUB = JSON.stringify({ type: 'assistant', message: { model: 'claude-haiku-5-5', id: 'msg_sub', usage: { output_tokens: 1000 } } })
+  on('command.register', () => ({ value: { command: 'power' } }))
+  on('ui.status', (_, e) => { status.push(e.text); return { value: undefined } })
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('session.surfaces', () => ({ value: [] }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('classic.SessionStart', () => ({}))
+  on('process.run', () => ({ value: { exitCode: 1, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }))
+  on('fs.exists', () => ({ value: true }))
+  on('fs.list', () => ({ value: [{ name: 'agent-a1.jsonl', kind: 'file', size: SUB.length, mtimeMs: 0, isLink: false }] }))
+  on('fs.stat', (_, e) => ({ value: { kind: 'file', size: e.path === MAIN ? TRANSCRIPT.length : SUB.length, mtimeMs: 0, isLink: false } }))
+  on('fs.read', (_, e) => ({ value: e.path === MAIN ? TRANSCRIPT : SUB }))
+  await $.classic.SessionStart({ source: 'resume', transcript_path: MAIN })
+  await $.session.start(START)
+  const ran = await $.command.run(RUN)
+  expect(ran.text).toContain('3 earlier responses read back')
+  expect(ran.text).toContain('claude-haiku-5-5')
+  expect(DIR.length).toBeGreaterThan(0)
+})

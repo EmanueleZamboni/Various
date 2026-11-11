@@ -9,7 +9,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, PluginOptions, Register } from 'claude-code'
 
-import type { Meter, PendingTurn, Seed, Tally } from '../types'
+import type { Meter, MonthTotal, PendingTurn, Seed, Tally } from '../types'
 import {
   DEFAULT_IMPACT,
   DEFAULT_RATES,
@@ -68,6 +68,9 @@ const EMPTY_METER: Meter = {
 // Bump the tag when Meter's fields change: what an earlier version stored
 // then reads as EMPTY_METER instead of breaking the new code.
 const meter = atom({ plugin: 'power-meter', key: 'meter' } as const, EMPTY_METER, { shape: 'meter-2' })
+const monthTotal = atom({ plugin: 'power-meter', key: 'month' } as const, null as MonthTotal | null, { shape: 'month-1' })
+/** Re-read every chat at most this often; a turn's end asks again. */
+const MONTH_EVERY_MS = 10 * 60 * 1000
 
 type Dollar = EngineInterface
 type Usage = { model: string } & UsageLike
@@ -118,6 +121,7 @@ export const register: Register = (on, options) => {
       // An observer never holds up the session.
     }
     void $.ui.open({ id: PANE, title: PANE_TITLE }).catch(() => undefined)
+    void scanMonth($, false).catch(() => undefined)
     if (autoUpdate) {
       void selfUpdate($).catch(() => undefined)
       $.clock.every(6 * 60 * 60 * 1000, () => void selfUpdate($).catch(() => undefined))
@@ -177,6 +181,7 @@ export const register: Register = (on, options) => {
       const now = await $.clock.now()
       await update($, meter, m => commitTurn(m, e, now))
       await refresh($, view)
+      void scanMonth($, false).catch(() => undefined)
     } catch {
       // As above.
     }
@@ -189,9 +194,10 @@ export const register: Register = (on, options) => {
       await refresh($, view)
       return { text: 'Power meter reset: counting from now.' }
     }
-    const [m, now] = await Promise.all([read($, meter), $.clock.now()])
+    await scanMonth($, true).catch(() => undefined)
+    const [m, now, month] = await Promise.all([read($, meter), $.clock.now(), read($, monthTotal)])
     await $.ui.open({ id: PANE, title: PANE_TITLE }).catch(() => undefined)
-    return { text: report(m, now, rates, impact) }
+    return { text: report(m, now, rates, impact) + monthReport(month, rates) }
   })
 
   // The band above the prompt: the one line, and More to open the panel.
@@ -211,6 +217,7 @@ export const register: Register = (on, options) => {
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Text, Button } = $.ui.resolve(e)
     const m = await read($, meter)
+    const month = await read($, monthTotal)
     const pendingWh = pendingWhOf(m, rates)
     const total = totalWh(mergeByModel(m.seeded, m.live), rates) + pendingWh
     const i = impactOf(total, impact)
@@ -236,6 +243,15 @@ export const register: Register = (on, options) => {
         <Text> </Text>
         <Text>{total > 0 ? `That is ${homeShare(total)}.` : ' '}</Text>
         <Text dimColor>{total > 0 ? `About ${equivalents(total).slice(0, 2).join(' or ')}.` : ' '}</Text>
+        {month !== null && (
+          <Box flexDirection="column">
+            <Text> </Text>
+            <Text weight="semibold">This month, all chats on this computer</Text>
+            <Text>≈ {fmtWh(totalWh(month.byModel, rates))} in {month.chats} chats</Text>
+            <Text dimColor>{homeShare(totalWh(month.byModel, rates))}</Text>
+          </Box>
+        )}
+        <Text> </Text>
         <Text dimColor>An estimate: Anthropic publishes no energy data.</Text>
         <Box flexDirection="row" gap={1}>
           <Button key="reset" label="Reset" onPress={() => resetMeter($, null).then(() => refresh($, view))} />
@@ -362,12 +378,31 @@ async function seedFromTranscript($: Dollar, knownPath: string | null): Promise<
     return
   }
   try {
-    const stat = await $.fs.stat(path)
-    const counted = stat.size <= FOUR_MIB ? tallyJsonl(await $.fs.read(path)) : await tallyWithGrep($, path)
+    // One set of message ids across the files, so a response stored twice is counted once.
+    const seen = new Set<string>()
+    const counted = await tallyFile($, path, seen)
+    // Subagents keep their own transcripts in <session id>/subagents/*.jsonl beside the main one.
+    const dir = `${path.replace(/\.jsonl$/, '')}/subagents`
+    const entries = (await $.fs.exists(dir).catch(() => false)) ? await $.fs.list(dir).catch(() => []) : []
+    for (const entry of entries) {
+      if (entry.kind !== 'file' || !entry.name.endsWith('.jsonl')) continue
+      try {
+        const sub = await tallyFile($, `${dir}/${entry.name}`, seen)
+        counted.byModel = mergeByModel(counted.byModel, sub.byModel)
+        counted.messages += sub.messages
+      } catch {
+        // One unreadable subagent file leaves the rest counted.
+      }
+    }
     await finish('transcript', counted)
   } catch {
     await finish('unavailable')
   }
+}
+
+async function tallyFile($: Dollar, path: string, seen: Set<string>): Promise<Counted> {
+  const stat = await $.fs.stat(path)
+  return stat.size <= FOUR_MIB ? tallyJsonl(await $.fs.read(path), seen) : await tallyWithGrep($, path, seen)
 }
 
 /** The same search as `grep -oE`, through PowerShell, which every Windows has (grep does not). */
@@ -375,11 +410,11 @@ const PS_SELECT =
   'Select-String -LiteralPath $env:PM_FILE -Pattern $env:PM_PATTERN -AllMatches -CaseSensitive | ' +
   'ForEach-Object { foreach ($m in $_.Matches) { $m.Value } }'
 
-async function tallyWithGrep($: Dollar, path: string): Promise<Counted> {
+async function tallyWithGrep($: Dollar, path: string, seen: Set<string>, since?: number): Promise<Counted> {
   try {
     const run = await $.process.run(['grep', '-oE', GREP_PATTERN, path], { timeoutMs: 60_000 })
     // grep exits 1 when nothing matched, which is an empty transcript, not a failure.
-    if (run.exitCode === 0 || run.exitCode === 1) return tallyGrepLines(run.stdout)
+    if (run.exitCode === 0 || run.exitCode === 1) return tallyGrepLines(run.stdout, seen, since)
   } catch {
     // No grep here (Windows): PowerShell below.
   }
@@ -388,7 +423,97 @@ async function tallyWithGrep($: Dollar, path: string): Promise<Counted> {
     env: { PM_FILE: path, PM_PATTERN: GREP_PATTERN },
   })
   if (run.exitCode !== 0) throw new Error(`powershell exited ${run.exitCode}`)
-  return tallyGrepLines(run.stdout.replace(/\r/g, ''))
+  return tallyGrepLines(run.stdout.replace(/\r/g, ''), seen, since)
+}
+
+// ---- this month, every chat ----
+
+let scanning = false
+
+/** Reads every transcript under <config dir>/projects touched this month and sums its responses dated this month. */
+async function scanMonth($: Dollar, force: boolean): Promise<void> {
+  if (scanning) return
+  const now = await $.clock.now()
+  const key = monthKey(now)
+  const held = await read($, monthTotal)
+  if (!force && held !== null && held.month === key && now - held.at < MONTH_EVERY_MS) return
+  const base = await claudeDir($)
+  if (base === null) return
+  scanning = true
+  try {
+    const d = new Date(now)
+    const since = new Date(d.getFullYear(), d.getMonth(), 1).getTime()
+    const projects = `${base}/projects`
+    if (!(await $.fs.exists(projects))) return
+    const seen = new Set<string>()
+    let byModel: Record<string, Tally> = {}
+    let chats = 0
+    let messages = 0
+    const add = async (path: string): Promise<boolean> => {
+      const stat = await $.fs.stat(path)
+      const c = stat.size <= FOUR_MIB ? tallyJsonl(await $.fs.read(path), seen, since) : await tallyWithGrep($, path, seen, since)
+      byModel = mergeByModel(byModel, c.byModel)
+      messages += c.messages
+      return c.messages > 0
+    }
+    for (const project of await $.fs.list(projects)) {
+      if (project.kind !== 'dir') continue
+      const dir = `${projects}/${project.name}`
+      for (const entry of await $.fs.list(dir).catch(() => [])) {
+        if (entry.kind !== 'file' || !entry.name.endsWith('.jsonl') || entry.mtimeMs < since) continue
+        let counted = false
+        try {
+          counted = await add(`${dir}/${entry.name}`)
+        } catch {
+          // A file being written or unreadable is skipped this time.
+        }
+        const subs = `${dir}/${entry.name.replace(/\.jsonl$/, '')}/subagents`
+        if (await $.fs.exists(subs).catch(() => false)) {
+          for (const sub of await $.fs.list(subs).catch(() => [])) {
+            if (sub.kind !== 'file' || !sub.name.endsWith('.jsonl') || sub.mtimeMs < since) continue
+            try {
+              counted = (await add(`${subs}/${sub.name}`)) || counted
+            } catch {
+              // As above.
+            }
+          }
+        }
+        if (counted) chats += 1
+      }
+    }
+    await update($, monthTotal, (): MonthTotal => ({ month: key, byModel, chats, messages, at: now }))
+  } finally {
+    scanning = false
+  }
+}
+
+const monthKey = (ms: number): string => {
+  const d = new Date(ms)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+
+function monthReport(month: MonthTotal | null, rates: Rates): string {
+  if (month === null) return ''
+  const wh = totalWh(month.byModel, rates)
+  return [
+    '',
+    '',
+    `This month (${month.month}), all chats on this computer: ≈ ${fmtWh(wh)} in ${plural(month.chats, 'chat')}, ${plural(month.messages, 'model response')}.`,
+    `That is ${homeShare(wh)}.`,
+  ].join('\n')
+}
+
+/** Claude Code's configuration folder: CLAUDE_CONFIG_DIR, else ~/.claude. */
+async function claudeDir($: Dollar): Promise<string | null> {
+  const [configDir, home, profile] = await Promise.all([
+    $.env.get('CLAUDE_CONFIG_DIR'),
+    $.env.get('HOME'),
+    $.env.get('USERPROFILE'),
+  ])
+  if (configDir !== undefined && configDir !== '') return configDir
+  if (home !== undefined && home !== '') return `${home}/.claude`
+  if (profile !== undefined && profile !== '') return `${profile}/.claude`
+  return null
 }
 
 /** Where Claude Code keeps this session's transcript: <config dir>/projects/<project slug>/<session id>.jsonl */
