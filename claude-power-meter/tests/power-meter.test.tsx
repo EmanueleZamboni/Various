@@ -15,7 +15,7 @@ const START = { cwd: '/proj', surface: 'terminal', isInteractive: true } as cons
 const RUN = { command: 'power', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 80 } } as const
 
 /** The engine beneath the plugin: each noun it reaches, answered from memory. */
-function engine(on: On, status: Array<string | undefined>, fs: { exists: boolean; text?: string } = { exists: false }) {
+function engine(on: On, status: Array<string | undefined>, fs: { exists: boolean; text?: string; size?: number } = { exists: false }) {
   mock.clock(on, { now: 1_000_000 })
   mock.env(on, { HOME: '/home/tester' })
   on('command.register', () => ({ value: { command: 'power' } }))
@@ -26,7 +26,7 @@ function engine(on: On, status: Array<string | undefined>, fs: { exists: boolean
   on('session.id', () => ({ value: 'session-1' }))
   on('session.root', () => ({ value: '/proj' }))
   on('fs.exists', () => ({ value: fs.exists }))
-  on('fs.stat', () => ({ value: { kind: 'file', size: fs.text?.length ?? 0, mtimeMs: 0, isLink: false } }))
+  on('fs.stat', () => ({ value: { kind: 'file', size: fs.size ?? fs.text?.length ?? 0, mtimeMs: 0, isLink: false } }))
   on('fs.read', () => ({ value: fs.text ?? '' }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('session.end', (_, e) => ({ sessionId: e.sessionId }))
@@ -145,6 +145,34 @@ test('a resumed session reads its earlier responses back, once per message id', 
   const ran = await $.command.run(RUN)
   expect(ran.text).toContain('2 earlier responses read back from the transcript')
   expect(ran.text).toContain('4,000')
+})
+
+test('a transcript over 4 MiB on Windows (no grep) is read back through PowerShell', async ($, on) => {
+  const status: Array<string | undefined> = []
+  engine(on, status, { exists: true, text: '', size: 44_000_000 })
+  const lines = [
+    '"model":"claude-opus-5-5"',
+    '"id":"msg_A1"',
+    '"input_tokens":100',
+    '"cache_creation_input_tokens":5000',
+    '"cache_read_input_tokens":100000',
+    '"output_tokens":2000',
+    '"model":"claude-opus-5-5"',
+    '"id":"msg_A1"',
+    '"input_tokens":100',
+  ].join('\r\n')
+  on('process.run', (_, e) => {
+    if (e.argv[0] === 'grep') throw new Error('spawn grep ENOENT')
+    expect(e.argv[0]).toBe('powershell.exe')
+    expect(e.init?.env?.['PM_PATTERN']).toContain('msg_')
+    return { value: { exitCode: 0, stdout: lines + '\r\n', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+  })
+
+  await $.session.start(START)
+  const ran = await $.command.run(RUN)
+  expect(ran.text).toContain('≈ 7 Wh')
+  expect(ran.text).toContain('1 earlier response')
+  expect(ran.text).not.toContain('could not be read back')
 })
 
 test('/power reset starts the count over', async ($, on) => {
