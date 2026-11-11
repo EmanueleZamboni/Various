@@ -20,13 +20,19 @@ COOKIE = os.path.join(OPS, "keep-cookie")
 
 
 def put(name: str, text: str) -> None:
+    """Root scrive nella cartella ops di Postino (di uid 1000): il .tmp viene tolto e ricreato con O_EXCL|O_NOFOLLOW,
+    così un link simbolico messo lì da un Postino compromesso non fa scrivere root altrove (sudoers, shadow...)."""
     st = os.stat(OPS)
     path = os.path.join(OPS, name)
     tmp = path + ".tmp"
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        os.unlink(tmp)
+    except FileNotFoundError:
+        pass
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
     with os.fdopen(fd, "w") as f:
+        os.fchown(f.fileno(), st.st_uid, st.st_gid)
         f.write(text)
-    os.chown(tmp, st.st_uid, st.st_gid)
     os.replace(tmp, path)
 
 

@@ -17,13 +17,26 @@ publish() {
   $S install -o 1000 -g 1000 -m 600 "$R" "$OPS/report.txt"
   rm -f "$R"
 }
-status() { printf '{"stage":"%s","detail":"%s","at":"%s"}\n' "$1" "${2:-}" "$(date -u +%FT%TZ)" | $S tee "$OPS/keep-status" >/dev/null; $S chown 1000:1000 "$OPS/keep-status"; $S chmod 600 "$OPS/keep-status"; }
+# Root writes into data/ops (Postino's folder, uid 1000): the file is removed and recreated with O_EXCL|O_NOFOLLOW,
+# so a symlink planted there by a compromised Postino never makes root write somewhere else (sudoers, shadow...).
+SAFE_PY='import os,sys
+p=sys.argv[1]
+try:
+    os.unlink(p)
+except FileNotFoundError:
+    pass
+fd=os.open(p, os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW, 0o600)
+os.fchown(fd, 1000, 1000)
+os.write(fd, sys.stdin.buffer.read())
+os.close(fd)'
+safe_write() { $S python3 -c "$SAFE_PY" "$1"; }
+status() { printf '{"stage":"%s","detail":"%s","at":"%s"}\n' "$1" "${2:-}" "$(date -u +%FT%TZ)" | safe_write "$OPS/keep-status"; }
 log "Postino server report, $(date -u '+%F %H:%M UTC'), tasks v$VERSION"
 if ! $S true 2>/dev/null; then log "STOPPED: sudo needs a password for $(id -un); nothing changed."; publish 2>/dev/null; exit 0; fi
 $S install -d -o 1000 -g 1000 -m 700 "$OPS"
 # Mark this version done before doing anything: these tasks run once, never on every update.
 echo "$VERSION" > "$STAMP" 2>/dev/null || log "note: could not write $STAMP"
-echo "$VERSION" | $S tee "$STAMP2" >/dev/null
+echo "$VERSION" | safe_write "$STAMP2"
 DOMAIN="$(grep -E '^POSTINO_DOMAIN=' "$APP/.env" | cut -d= -f2-)"
 # Keys that let this user in. grep -c prints 0 AND fails when there are none, so never "|| echo".
 KEYS="$(grep -cE '^(ssh|ecdsa|sk-)' "$HOME/.ssh/authorized_keys" 2>/dev/null)"; KEYS="${KEYS:-0}"
@@ -225,9 +238,9 @@ fi
 if [ -f "$SEG/scripts/install.sh" ]; then
   bash "$SEG/scripts/install.sh" >> "$R" 2>&1 || log "segretario: install.sh failed (exit $?)"
 fi
-# Lo stato del Segretario in ops/keep-url: Postino lo serve su /api/ops/keep/url e lo cancella dopo 24 ore.
+# Lo stato del Segretario NON va più in ops/keep-url (Postino lo serviva a chiunque avesse una sessione): resta solo sulla VM.
 if [ -f "$SEG/STATUS.txt" ]; then
-  $S install -o 1000 -g 1000 -m 600 "$SEG/STATUS.txt" "$OPS/keep-url" && log "segretario: stato copiato in ops/keep-url"
+  log "segretario: stato in $SEG/STATUS.txt"
 else
   log "segretario: STATUS.txt mancante (report.sh non ha girato)"
 fi

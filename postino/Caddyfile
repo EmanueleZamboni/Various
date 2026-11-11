@@ -1,28 +1,29 @@
 {
-	# No request lines in Caddy's error log: the Keep connector's URL carries its secret.
+	# No request lines in Caddy's logs: the Segretario connector's URL carries its secret. The proxy's own errors
+	# ("aborting with incomplete response") would print the upstream path, so they are excluded too.
 	log default {
 		output stderr
-		exclude http.log.error
+		exclude http.log.error http.handlers.reverse_proxy
 	}
 }
 
 {$POSTINO_DOMAIN} {
 	encode zstd gzip
 
-	# Google Keep connector (keep-mcp) running on this same server, on the Docker bridge.
-	# Without it installed this path just answers 502. Its secret is in the path: no access log.
-	handle_path /keep/* {
-		reverse_proxy 172.17.0.1:8765 {
-			flush_interval -1
-		}
-	}
+	# Keep (keep-mcp) e WhatsApp NON hanno più un indirizzo pubblico (11/11/2026): i loro strumenti passano dal
+	# connettore del Segretario, che li raggiunge sulla rete interna (172.17.0.1:8765 e whatsapp:8787).
 
-	# WhatsApp del Segretario (servizio separato da Postino, stesso repo del Segretario): segreto nel percorso.
-	# Finché il container non esiste risponde 502, come Keep.
-	handle_path /whatsapp/* {
-		reverse_proxy whatsapp:8787 {
-			flush_interval -1
-		}
+	# Login (OAuth) del connettore del Segretario: i metadati stanno alla radice del dominio (RFC 8414, RFC 9728).
+	handle /.well-known/oauth-protected-resource/segretario/* {
+		reverse_proxy segretario:8766
+	}
+	handle /.well-known/oauth-authorization-server/segretario {
+		rewrite * /.well-known/oauth-authorization-server
+		reverse_proxy segretario:8766
+	}
+	handle /.well-known/openid-configuration/segretario {
+		rewrite * /.well-known/oauth-authorization-server
+		reverse_proxy segretario:8766
 	}
 
 	# Segretario (memoria condivisa per Claude): repo EmanueleZamboni/segretario, container sulla rete di Caddy.

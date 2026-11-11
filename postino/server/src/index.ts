@@ -24,6 +24,7 @@ import { registerPasskeyRoutes } from './passkeys.js';
 import { registerGoogleRoutes } from './google.js';
 import { registerMcpRoutes } from './mcp.js';
 import { registerOpsRoutes, startOps } from './ops.js';
+import { bloccoHook, startBloccoWatch } from './blocco.js';
 import { fixSentUnreadOnce } from './mail/store.js';
 import { registerWhatsAppRoutes, startWhatsApp } from './whatsapp.js';
 import { registerCallRoutes } from './calls.js';
@@ -42,6 +43,10 @@ export async function buildApp() {
   await app.register(cookie);
   await app.register(rateLimit, { global: false });
   await app.register(multipart, { limits: { fileSize: 25 * 1024 * 1024, files: 10 } });
+
+  // Segretario kill switch first: while Ema has switched everything off, nothing below runs.
+  startBloccoWatch();
+  app.addHook('onRequest', bloccoHook as never);
 
   // Routes anyone may call without a session. Everything else under /api needs one.
   const PUBLIC_ROUTES = new Set(['/api/setup', '/api/login', '/api/health', '/api/passkeys/login/options', '/api/passkeys/login/verify']);

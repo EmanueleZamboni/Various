@@ -113,7 +113,9 @@ def _content(note) -> dict:
 # token survived in a backup after the note was trashed).
 SECRET_RE = re.compile(
     r"(github_pat_[A-Za-z0-9_]{20,}|gh[pousr]_[A-Za-z0-9]{30,}|gsk_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9_-]{20,}"
-    r"|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,}|\d{8,10}:AA[A-Za-z0-9_-]{30,})"
+    r"|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,}|\d{8,10}:AA[A-Za-z0-9_-]{30,}"
+    r"|aas_et/[A-Za-z0-9._~+/=-]{20,}|oauth2_4/[A-Za-z0-9._~+/=-]{20,}|ya29\.[A-Za-z0-9._-]{20,}|1//0[A-Za-z0-9_-]{20,}"
+    r"|sk_live_[A-Za-z0-9]{16,}|rk_live_[A-Za-z0-9]{16,}|xkeysib-[A-Za-z0-9-]{20,})"
 )
 
 
