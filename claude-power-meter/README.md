@@ -16,7 +16,7 @@ public measurements that exist, and every coefficient can be changed in
 
 ## What you get
 
-- **A status line** under the prompt, updated after every model response:
+- **A line above the prompt**: the watt-hours used and their share of a one-person home's month, with a **More** button that opens the panel. Where that band is not drawn (the phone), the same line is the status line. Previously: **a status line** under the prompt, updated after every model response:
   energy so far, and either the turn in progress or the last turn with its
   average power while it ran.
 - **A panel** beside the chat with the energy, the damage and a Reset button. It opens on its own where there is room, and with `/power`.
@@ -43,6 +43,29 @@ From a shell: `claude plugin install power-meter --marketplace EmanueleZamboni/V
 In the desktop app, where `/plugin` does not run: click **+** next to the
 prompt box, then **Plugins**, **Add marketplace** with `EmanueleZamboni/Various`,
 then **Add plugin**.
+
+### Always up to date, no restart
+
+Run it from a git checkout instead of installing it. The plugin then pulls
+its own updates from GitHub when a session starts and every 6 hours, and
+Claude Code reloads it on the spot.
+
+1. Clone the repository on its `main` branch, for example into your home folder:
+   `git clone -b main https://github.com/EmanueleZamboni/Various.git`
+2. If you installed it from the marketplace, remove that copy:
+   `claude plugin uninstall power-meter@various`
+3. In `~/.claude/settings.json` add (with the real path to the clone):
+   ```json
+   "env": {
+     "CLAUDE_CODE_PLUGIN_DIRS": "/path/to/Various/claude-power-meter",
+     "CLAUDE_CODE_PLUGIN_DIR_WATCH": "1"
+   }
+   ```
+   The first line loads the plugin from the clone; the second makes the
+   desktop app watch it too (a terminal session always does).
+4. Restart Claude once. From then on updates arrive by themselves.
+
+The `auto_update` setting turns the self-update off.
 
 To run it from a checkout while developing: `claude --plugin-dir ./claude-power-meter`.
 
@@ -181,6 +204,7 @@ plugin and applies to everything counted so far.
 | `grid_g_co2_per_kwh` | 450 | Grid carbon intensity for the CO₂ line |
 | `water_ml_per_wh` | 1.7 | Water per Wh, cooling plus power generation |
 | `social_cost_usd_per_tonne` | 190 | Climate damage per tonne of CO₂, in US dollars |
+| `auto_update` | true | Pull updates from GitHub when running from a git checkout |
 | `show_status_line` | true | Keep the live figure under the prompt |
 
 ## Limitations

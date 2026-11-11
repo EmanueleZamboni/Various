@@ -14,6 +14,8 @@ const OPUS_TURN = {
 const START = { cwd: '/proj', surface: 'terminal', isInteractive: true } as const
 const RUN = { command: 'power', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 80 } } as const
 
+const OPENED: string[] = []
+
 /** The engine beneath the plugin: each noun it reaches, answered from memory. */
 function engine(on: On, status: Array<string | undefined>, fs: { exists: boolean; text?: string; size?: number } = { exists: false }) {
   mock.clock(on, { now: 1_000_000 })
@@ -25,6 +27,7 @@ function engine(on: On, status: Array<string | undefined>, fs: { exists: boolean
   })
   on('session.id', () => ({ value: 'session-1' }))
   on('session.root', () => ({ value: '/proj' }))
+  on('session.surfaces', () => ({ value: [] }))
   on('fs.exists', () => ({ value: fs.exists }))
   on('fs.stat', () => ({ value: { kind: 'file', size: fs.size ?? fs.text?.length ?? 0, mtimeMs: 0, isLink: false } }))
   on('fs.read', () => ({ value: fs.text ?? '' }))
@@ -32,7 +35,10 @@ function engine(on: On, status: Array<string | undefined>, fs: { exists: boolean
   on('session.end', (_, e) => ({ sessionId: e.sessionId }))
   on('turn.complete', (_, e) => ({ text: e.answer }))
   on('classic.SessionStart', () => ({}))
-  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('ui.open', (_, e) => {
+    OPENED.push(e.id)
+    return { value: { isPlaced: true } }
+  })
 }
 
 test('a finished turn is counted and pinned to the status line', async ($, on) => {
@@ -42,10 +48,7 @@ test('a finished turn is counted and pinned to the status line', async ($, on) =
   await $.session.start(START)
   await $.turn.complete({ answer: 'done', durationMs: 20_000, isAborted: false, turnId: 't1', reason: 'answer', usage: OPUS_TURN })
 
-  expect(status.at(-1)).toContain('≈8.5 Wh so far')
-  expect(status.at(-1)).toContain('≈3.8 g CO₂')
-  expect(status.at(-1)).toContain('≈14.5 mL water')
-  expect(status.at(-1)).toContain('last turn ≈8.5 Wh')
+  expect(status.at(-1)).toContain('≈8.5 Wh used')
 
   const ran = await $.command.run(RUN)
   expect(ran.text).toContain('Energy so far')
@@ -70,11 +73,9 @@ test('a turn in progress shows what its responses reported, and an interrupt kee
   for await (const _chunk of step) {
     // drained
   }
-  expect(status.at(-1)).toContain('this turn ≈8.5 Wh')
 
   await $.turn.complete({ answer: '', durationMs: 5_000, isAborted: true, turnId: 't2', reason: 'aborted' })
-  expect(status.at(-1)).toContain('≈8.5 Wh so far')
-  expect(status.at(-1)).toContain('last turn ≈8.5 Wh')
+  expect(status.at(-1)).toContain('≈8.5 Wh used')
 })
 
 test('the rates follow the plugin options', { options: { wh_per_1k_output_opus: 4 } }, async ($, on) => {
@@ -84,7 +85,7 @@ test('the rates follow the plugin options', { options: { wh_per_1k_output_opus: 
   await $.session.start(START)
   await $.turn.complete({ answer: 'done', durationMs: 20_000, isAborted: false, turnId: 't1', reason: 'answer', usage: OPUS_TURN })
 
-  expect(status.at(-1)).toContain('≈17.1 Wh so far')
+  expect(status.at(-1)).toContain('≈17.1 Wh used')
 })
 
 test('a subagent turn is counted but does not become the last turn', async ($, on) => {
@@ -103,8 +104,7 @@ test('a subagent turn is counted but does not become the last turn', async ($, o
     usage: { ...OPUS_TURN, model: 'claude-haiku-5-5' },
   })
 
-  expect(status.at(-1)).toContain('≈9.8 Wh so far')
-  expect(status.at(-1)).toContain('last turn ≈8.5 Wh')
+  expect(status.at(-1)).toContain('≈9.8 Wh used')
   const ran = await $.command.run(RUN)
   expect(ran.text).toContain('1 turn, 1 subagent turn, 2 model responses')
   expect(ran.text).toContain('claude-haiku-5-5')
@@ -142,13 +142,13 @@ test('a resumed session reads its earlier responses back, once per message id', 
   await $.session.start(START)
 
   // Sonnet, 1 Wh/1k: output 4000 + 20 × 0.2 + 40 × 0.2 + 1000 × 0.005 = 4017 weighted → 4.0 Wh
-  expect(status.at(-1)).toContain('≈4 Wh so far')
+  expect(status.at(-1)).toContain('≈4 Wh used')
   const ran = await $.command.run(RUN)
   expect(ran.text).toContain('2 earlier responses read back from the transcript')
   expect(ran.text).toContain('4,000')
 })
 
-test('a transcript over 4 MiB on Windows (no grep) is read back through PowerShell', async ($, on) => {
+test('a transcript over 4 MiB on Windows (no grep) is read back through PowerShell', { options: { auto_update: false } }, async ($, on) => {
   const status: Array<string | undefined> = []
   engine(on, status, { exists: true, text: '', size: 44_000_000 })
   const lines = [
@@ -184,7 +184,7 @@ test('/power reset starts the count over', async ($, on) => {
   await $.turn.complete({ answer: 'done', durationMs: 20_000, isAborted: false, turnId: 't1', reason: 'answer', usage: OPUS_TURN })
   const reset = await $.command.run({ ...RUN, args: 'reset' })
   expect(reset.text).toContain('reset')
-  expect(status.at(-1)).toContain('≈0 Wh so far')
+  expect(status.at(-1)).toContain('≈0 Wh used')
 
   const ran = await $.command.run(RUN)
   expect(ran.text).toContain('Nothing counted yet')
@@ -213,4 +213,26 @@ test('the panel shows energy and damage on every surface', async ($, on) => {
   await ui.press({ key: 'reset' })
   expect((await ui.find({ type: 'Text', text: /≈ 0 Wh/ }))?.text).toBe('≈ 0 Wh')
   await ui.unmount()
+})
+
+const BAND = {
+  plugin: 'power-meter',
+  component: 'AbovePrompt',
+  requestId: 'band',
+  props: { hasSurvey: false, isCollapsed: false, isWorking: false, maxRows: 10, bodyColumns: 100, scroll: { offset: 0, bodyRows: 9 }, view: {} },
+} as const
+
+test('the band shows the watt-hours, the home share and More', async ($, on) => {
+  const status: Array<string | undefined> = []
+  engine(on, status)
+  OPENED.length = 0
+  await $.session.start(START)
+  await $.turn.complete({ answer: 'done', durationMs: 20_000, isAborted: false, turnId: 't1', reason: 'answer', usage: OPUS_TURN })
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const ui = await $.ui.mount({ ...BAND, surface })
+    expect((await ui.find({ type: 'Text', text: /Wh used/ }))?.text).toBe("⚡ ≈8.5 Wh used · 0.006% of a one-person home's month (EU), 0.002% (US)")
+    await ui.press({ key: 'more' })
+    await ui.unmount()
+  }
+  expect(OPENED.filter(id => id === 'power-meter').length).toBeGreaterThan(1)
 })

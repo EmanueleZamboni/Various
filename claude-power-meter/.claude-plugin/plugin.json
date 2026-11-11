@@ -1,6 +1,6 @@
 {
   "name": "power-meter",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Estimates the electricity your Claude Code session uses (watt-hours and watts) and the damage it does (CO2, water, climate cost), from the tokens each model response reports",
   "author": {
     "name": "Emanuele Zamboni"
@@ -96,6 +96,12 @@
       "type": "boolean",
       "title": "Show the status line",
       "description": "Keep a live energy figure pinned under the prompt (default on). /power works either way",
+      "default": true
+    },
+    "auto_update": {
+      "type": "boolean",
+      "title": "Update itself",
+      "description": "When the plugin runs from a git checkout, pull updates from GitHub at start and every 6 hours; Claude Code reloads it without a restart (default on)",
       "default": true
     }
   }
