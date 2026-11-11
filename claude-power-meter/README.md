@@ -60,7 +60,8 @@ Wh = rate[model family] / 1000
      × ( output
        + uncached input   × 0.2
        + cache writes     × 0.2
-       + cache reads      × 0.005 )
+       + cache reads      × 0.002
+       + output × context ÷ 200,000 )
 ```
 
 | Model family | Wh per 1,000 output tokens (default) |
@@ -80,14 +81,20 @@ Why the weights look like this:
   processed in parallel at high utilisation. Writing it to the prompt cache is
   that same pass plus a store. Anthropic prices output at five times input,
   which points the same way.
-- **Cache reads cost about half a percent.** A cached prefix is not
-  recomputed; what remains is holding its key-value state and streaming it
-  through the attention layers for every generated token. That is small per
-  token but, in Claude Code, cache reads are over ninety percent of all
-  tokens, so with this weight they still come to about a third of a typical
-  request's energy. Published pricing puts a cache read at a hundredth to a
-  two-hundredth of an output token; a back-of-envelope on key-value cache
-  traffic for a 100,000-token context lands near one two-hundredth as well.
+- **Long chats cost more per token.** Every generated token re-reads the
+  conversation's memory (the KV cache), so its cost grows with the context
+  length. The plugin counts each response's output tokens times its context,
+  so a token costs double at 200,000 tokens of context and triple at 400,000.
+  Measurements show the growth depends on the model's design: memory-hungry
+  attention grows steeply, compressed designs grow about 1.4 times over long
+  contexts ([energy scaling across context lengths](https://arxiv.org/abs/2608.25096),
+  [phase-aware decode energy](https://arxiv.org/abs/2605.11999)); an
+  Epoch-style estimate puts one token at 100,000 tokens of context at 36 GB of
+  memory reads for a model like Mistral Large 2 ([inference economics](https://arxiv.org/abs/2506.04645)).
+  200,000 is the middle choice; set `context_doubling_tokens` to 0 to drop it.
+- **Cache reads cost about a fifth of a percent** for handling the cached
+  prefix once per request; the bigger cost of a long context is the
+  re-reading above.
 - **Model families scale the rate.** Anthropic does not say how big its
   models are. The defaults keep the tiers in the order Anthropic prices them,
   with a smaller spread than the prices, because serving cost is not
@@ -118,11 +125,10 @@ your own computer, or the network between you and the model.
 A median chat response is a few hundred generated tokens, so the Google and
 OpenAI figures put a mainstream model at roughly 0.5 to 1.5 Wh per 1,000
 output tokens, overhead included; that is the Sonnet default of 1. As a check
-on the whole model: the session that wrote this plugin (a Fable-class model;
-after three prompts, 14 responses, 127,000 output tokens, 349,000 cache
-writes and 3.45 million cache reads) comes to about 640 Wh under these
-defaults, roughly 210 Wh per prompt, inside Hausfather's range for agentic
-coding.
+on the whole model: the session that wrote this plugin (56 responses on
+Fable- and Opus-class models, contexts up to about 300,000 tokens) comes to
+about 2.1 kWh under these defaults, roughly 130 Wh per prompt, inside
+Hausfather's 60 to 290 Wh range for agentic coding.
 
 ### Reading the figures
 
@@ -134,15 +140,25 @@ coding.
   the wall-clock time since then, idle minutes included. Responses read back
   from the transcript count toward the energy total but not toward these
   rates, because their timing is not known.
-- **CO₂** uses the grid intensity you set, 400 g/kWh by default, roughly the
-  US average; the EU average is lower. Where Anthropic's providers buy
-  renewable power the market-based figure is lower still.
+- **CO₂** uses 450 g/kWh by default: the physical (location-based) intensity
+  of the US regions Claude runs in. Claude runs on AWS (its main partner),
+  Google Cloud TPUs and Microsoft Azure ([Anthropic](https://www.anthropic.com/news/google-broadcom-partnership-compute)).
+  Google lists its US regions at 98 to 432 g/kWh ([Google Cloud](https://cloud.google.com/sustainability/region-carbon)),
+  and a Harvard-led study found US data centres draw power at about 545 g/kWh
+  against a 370 g/kWh national average ([review](https://www.themoonlight.io/en/review/assessing-the-carbon-emissions-and-energy-consumption-of-us-hyperscale-data-centers)).
+  The providers' market-based figures, after renewable purchases, are lower.
 - **Damage** turns the energy into three harms. CO₂ is energy times the grid
-  intensity. Water is 2 mL per Wh by default: Google reports about 1.1 mL per
-  Wh for cooling (0.26 mL per 0.24 Wh prompt), and power plants consume
-  roughly as much again. Climate cost prices the CO₂ at the social cost of
+  intensity. Water is 1.7 mL per Wh by default: cooling takes about 0.12 mL per
+  Wh at AWS ([Trellis](https://trellis.net/article/behind-amazons-industry-leading-water-efficiency-score/))
+  and about 1.1 at Google (0.26 mL per 0.24 Wh prompt), about 0.45 blended,
+  and US power plants evaporate about 1.25 mL per Wh ([Lee et al. 2018](https://ideas.repec.org/a/eee/appene/v210y2018icp661-672.html)). Climate cost prices the CO₂ at the social cost of
   carbon, $190 per tonne by default, the US EPA's 2023 central estimate of
   future damage from one more tonne emitted.
+- **Homes**: a one-person home uses about 135 kWh of electricity a month in
+  Europe (1,640 kWh a year, a Dutch estimate: [Keuze](https://www.keuze.nl/en/energy/average-power-consumption))
+  and about 550 kWh in the US (the average US home uses about 10,300 kWh a
+  year for about 2.5 people; one person uses roughly 60% of that). Neither
+  region publishes an official single-person figure, so both are estimates.
 - **Comparisons** use a 15 Wh phone battery, a 10 W LED bulb, a 1 kW
   microwave, an electric car at 170 Wh per km, and Google's 2009 figure of
   0.3 Wh per search.
@@ -160,9 +176,10 @@ plugin and applies to everything counted so far.
 | `wh_per_1k_output_fable` | 3 | Wh per 1,000 output tokens, Fable- or Mythos-class |
 | `input_fraction` | 0.2 | One uncached input token, as a fraction of one output token |
 | `cache_write_fraction` | 0.2 | One cache-written input token, as a fraction of one output token |
-| `cache_read_fraction` | 0.005 | One cache-read input token, as a fraction of one output token |
-| `grid_g_co2_per_kwh` | 400 | Grid carbon intensity for the CO₂ line |
-| `water_ml_per_wh` | 2 | Water per Wh, cooling plus power generation |
+| `cache_read_fraction` | 0.002 | One cache-read input token, as a fraction of one output token |
+| `context_doubling_tokens` | 200000 | Context length at which a generated token costs double; 0 turns it off |
+| `grid_g_co2_per_kwh` | 450 | Grid carbon intensity for the CO₂ line |
+| `water_ml_per_wh` | 1.7 | Water per Wh, cooling plus power generation |
 | `social_cost_usd_per_tonne` | 190 | Climate damage per tonne of CO₂, in US dollars |
 | `show_status_line` | true | Keep the live figure under the prompt |
 

@@ -30,6 +30,12 @@ export type Rates = {
   cacheWriteFraction: number
   /** Energy of one input token served from the prompt cache, as a fraction of one output token. */
   cacheReadFraction: number
+  /**
+   * Context length, in tokens, at which a generated token costs twice what it
+   * costs in a short chat: each one re-reads the conversation's memory (the KV
+   * cache). 0 turns the effect off.
+   */
+  contextDoublingTokens: number
 }
 
 export const DEFAULT_RATES: Rates = {
@@ -39,13 +45,14 @@ export const DEFAULT_RATES: Rates = {
   fable: 3,
   inputFraction: 0.2,
   cacheWriteFraction: 0.2,
-  cacheReadFraction: 0.005,
+  cacheReadFraction: 0.002,
+  contextDoublingTokens: 200_000,
 }
 
 /** The plausible range around a central estimate: one third to three times. */
 export const RANGE_FACTOR = 3
 
-export const EMPTY_TALLY: Tally = { input: 0, output: 0, cacheWrite: 0, cacheRead: 0, requests: 0 }
+export const EMPTY_TALLY: Tally = { input: 0, output: 0, cacheWrite: 0, cacheRead: 0, requests: 0, attn: 0 }
 
 /** The four counts as the API spells them; a count left out reads as zero. */
 export type UsageLike = {
@@ -58,13 +65,13 @@ export type UsageLike = {
 const count = (x: unknown): number => (typeof x === 'number' && Number.isFinite(x) && x > 0 ? x : 0)
 
 /** One response's usage as a tally. */
-export const tallyOf = (u: UsageLike): Tally => ({
-  input: count(u.input_tokens),
-  output: count(u.output_tokens),
-  cacheWrite: count(u.cache_creation_input_tokens),
-  cacheRead: count(u.cache_read_input_tokens),
-  requests: 1,
-})
+export function tallyOf(u: UsageLike): Tally {
+  const input = count(u.input_tokens)
+  const output = count(u.output_tokens)
+  const cacheWrite = count(u.cache_creation_input_tokens)
+  const cacheRead = count(u.cache_read_input_tokens)
+  return { input, output, cacheWrite, cacheRead, requests: 1, attn: output * (input + cacheWrite + cacheRead) }
+}
 
 export const isEmptyTally = (t: Tally): boolean => t.input + t.output + t.cacheWrite + t.cacheRead === 0
 
@@ -74,6 +81,7 @@ export const addTally = (a: Tally, b: Tally): Tally => ({
   cacheWrite: a.cacheWrite + b.cacheWrite,
   cacheRead: a.cacheRead + b.cacheRead,
   requests: a.requests + b.requests,
+  attn: (a.attn ?? 0) + (b.attn ?? 0),
 })
 
 /** `byModel` with `t` added under `model`; the input is left as it was. */
@@ -107,8 +115,10 @@ export function whPer1kOutput(model: string, rates: Rates): number {
 
 /** The tally as output-token equivalents. */
 export function weightedTokens(t: Tally, rates: Rates): number {
+  const context = rates.contextDoublingTokens > 0 ? (t.attn ?? 0) / rates.contextDoublingTokens : 0
   return (
     t.output +
+    context +
     t.input * rates.inputFraction +
     t.cacheWrite * rates.cacheWriteFraction +
     t.cacheRead * rates.cacheReadFraction
@@ -140,7 +150,7 @@ export type ImpactRates = {
   usdPerTonne: number
 }
 
-export const DEFAULT_IMPACT: ImpactRates = { gridGramsPerKwh: 400, waterMlPerWh: 2, usdPerTonne: 190 }
+export const DEFAULT_IMPACT: ImpactRates = { gridGramsPerKwh: 450, waterMlPerWh: 1.7, usdPerTonne: 190 }
 
 export type Impact = { co2Grams: number; waterMl: number; damageUsd: number }
 
@@ -190,6 +200,18 @@ export function fmtDuration(ms: number): string {
 }
 
 export const fmtRange = (wh: number): string => `${fmtWh(wh / RANGE_FACTOR)} to ${fmtWh(wh * RANGE_FACTOR)}`
+
+/** A one-person home's electricity in a month, in Wh: about 1,640 kWh a year in Europe, about 6,600 in the US. */
+export const HOME_MONTH_WH = { eu: 135_000, us: 550_000 }
+
+/** The share of a one-person home's monthly electricity, in Europe and in the US. */
+export function homeShare(wh: number): string {
+  const pct = (x: number): string => {
+    const p = (wh / x) * 100
+    return p >= 10 ? `${Math.round(p)}%` : p >= 0.1 ? `${p.toFixed(1)}%` : p > 0 ? `${Number(p.toPrecision(1))}%` : '0%'
+  }
+  return `${pct(HOME_MONTH_WH.eu)} of a one-person home's monthly electricity in Europe (≈135 kWh), ${pct(HOME_MONTH_WH.us)} in the US (≈550 kWh)`
+}
 
 /** Everyday comparisons for an amount of energy; the reference values are in the README. */
 export function equivalents(wh: number): string[] {

@@ -13,6 +13,8 @@ export type Tally = {
   cacheRead: number
   /** API responses summed into this tally. */
   requests: number
+  /** Each response's output tokens times its context length, summed: how much conversation memory the generated tokens re-read. */
+  attn: number
 }
 
 /** A turn that finished: what it cost, on which model, and how long it ran. */

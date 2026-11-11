@@ -27,6 +27,7 @@ import {
   fmtGrams,
   fmtUsd,
   fmtWater,
+  homeShare,
   impactOf,
   isEmptyTally,
   mergeByModel,
@@ -65,7 +66,7 @@ const EMPTY_METER: Meter = {
 
 // Bump the tag when Meter's fields change: what an earlier version stored
 // then reads as EMPTY_METER instead of breaking the new code.
-const meter = atom({ plugin: 'power-meter', key: 'meter' } as const, EMPTY_METER, { shape: 'meter-1' })
+const meter = atom({ plugin: 'power-meter', key: 'meter' } as const, EMPTY_METER, { shape: 'meter-2' })
 
 type Dollar = EngineInterface
 type Usage = { model: string } & UsageLike
@@ -85,6 +86,7 @@ export const register: Register = (on, options) => {
     inputFraction: numberOption(options, 'input_fraction', DEFAULT_RATES.inputFraction),
     cacheWriteFraction: numberOption(options, 'cache_write_fraction', DEFAULT_RATES.cacheWriteFraction),
     cacheReadFraction: numberOption(options, 'cache_read_fraction', DEFAULT_RATES.cacheReadFraction),
+    contextDoublingTokens: numberOption(options, 'context_doubling_tokens', DEFAULT_RATES.contextDoublingTokens),
   }
   const impact: ImpactRates = {
     gridGramsPerKwh: numberOption(options, 'grid_g_co2_per_kwh', DEFAULT_IMPACT.gridGramsPerKwh),
@@ -213,6 +215,7 @@ export const register: Register = (on, options) => {
         <Text>≈ {fmtWater(i.waterMl)} water</Text>
         <Text>≈ {fmtUsd(i.damageUsd)} of climate damage</Text>
         <Text> </Text>
+        <Text>{total > 0 ? `That is ${homeShare(total)}.` : ' '}</Text>
         <Text dimColor>{total > 0 ? `About ${equivalents(total).slice(0, 2).join(' or ')}.` : ' '}</Text>
         <Text dimColor>An estimate: Anthropic publishes no energy data.</Text>
         <Box flexDirection="row" gap={1}>
@@ -269,7 +272,14 @@ function commitTurn(m: Meter, e: TurnEnd, now: number): Meter {
     activeMs: m.activeMs + (isAgent ? 0 : duration),
   }
   const tally: Tally | undefined =
-    e.usage !== undefined ? { ...tallyOf(e.usage), requests: Math.max(1, open?.tally.requests ?? 1) } : open?.tally
+    e.usage !== undefined
+      ? {
+          ...tallyOf(e.usage),
+          requests: Math.max(1, open?.tally.requests ?? 1),
+          // the steps saw each request's own context; the turn's sum would multiply sums
+          attn: open !== undefined ? open.tally.attn : tallyOf(e.usage).attn,
+        }
+      : open?.tally
   const model = e.usage?.model ?? open?.model ?? 'unknown'
   if (tally === undefined || isEmptyTally(tally)) return next
   return {
@@ -451,7 +461,7 @@ function report(m: Meter, now: number, rates: Rates, impact: ImpactRates): strin
     )
     const width = Math.max(...rows.map(([label]) => label.length))
     for (const [label, value] of rows) lines.push(value === '' ? label : `${padRight(label, width)}  ${value}`)
-    lines.push('', `That is about ${equivalents(total).join(', ')}.`)
+    lines.push('', `That is ${homeShare(total)}.`, `It is also about ${equivalents(total).join(', ')}.`)
   }
 
   lines.push('')
@@ -477,7 +487,7 @@ function report(m: Meter, now: number, rates: Rates, impact: ImpactRates): strin
   lines.push(
     '',
     `Assumptions: Wh per 1,000 output tokens by model family: haiku ${String(rates.haiku)}, sonnet ${String(rates.sonnet)}, opus ${String(rates.opus)}, fable/mythos ${String(rates.fable)}; ` +
-      `an uncached input token costs ${percent(rates.inputFraction)} of an output token, a cache-written one ${percent(rates.cacheWriteFraction)}, a cache-read one ${percent(rates.cacheReadFraction)}. ` +
+      `an uncached input token costs ${percent(rates.inputFraction)} of an output token, a cache-written one ${percent(rates.cacheWriteFraction)}, a cache-read one ${percent(rates.cacheReadFraction)}; a generated token costs double at ${fmtInt(rates.contextDoublingTokens)} tokens of context. ` +
       'Anthropic publishes no per-token energy figures: this is a model-based estimate (the README says how it was calibrated). ' +
       'Tune it in /config under power-meter; "/power reset" starts the count over.',
   )

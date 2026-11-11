@@ -42,17 +42,18 @@ test('a finished turn is counted and pinned to the status line', async ($, on) =
   await $.session.start(START)
   await $.turn.complete({ answer: 'done', durationMs: 20_000, isAborted: false, turnId: 't1', reason: 'answer', usage: OPUS_TURN })
 
-  expect(status.at(-1)).toContain('≈7 Wh so far')
-  expect(status.at(-1)).toContain('≈2.8 g CO₂')
-  expect(status.at(-1)).toContain('≈14.1 mL water')
-  expect(status.at(-1)).toContain('last turn ≈7 Wh')
+  expect(status.at(-1)).toContain('≈8.5 Wh so far')
+  expect(status.at(-1)).toContain('≈3.8 g CO₂')
+  expect(status.at(-1)).toContain('≈14.5 mL water')
+  expect(status.at(-1)).toContain('last turn ≈8.5 Wh')
 
   const ran = await $.command.run(RUN)
   expect(ran.text).toContain('Energy so far')
-  expect(ran.text).toContain('≈ 7 Wh')
+  expect(ran.text).toContain('≈ 8.5 Wh')
   expect(ran.text).toContain('claude-opus-5-5')
   expect(ran.text).toContain('Climate cost at $190/t CO₂')
-  expect(ran.text).toContain('0.05¢')
+  expect(ran.text).toContain('0.07¢')
+  expect(ran.text).toContain('of a one-person home')
   expect(ran.text).toContain('100,000')
   expect(ran.text).toContain('1 turn, 0 subagent turns, 1 model response')
 })
@@ -69,11 +70,11 @@ test('a turn in progress shows what its responses reported, and an interrupt kee
   for await (const _chunk of step) {
     // drained
   }
-  expect(status.at(-1)).toContain('this turn ≈7 Wh')
+  expect(status.at(-1)).toContain('this turn ≈8.5 Wh')
 
   await $.turn.complete({ answer: '', durationMs: 5_000, isAborted: true, turnId: 't2', reason: 'aborted' })
-  expect(status.at(-1)).toContain('≈7 Wh so far')
-  expect(status.at(-1)).toContain('last turn ≈7 Wh')
+  expect(status.at(-1)).toContain('≈8.5 Wh so far')
+  expect(status.at(-1)).toContain('last turn ≈8.5 Wh')
 })
 
 test('the rates follow the plugin options', { options: { wh_per_1k_output_opus: 4 } }, async ($, on) => {
@@ -83,7 +84,7 @@ test('the rates follow the plugin options', { options: { wh_per_1k_output_opus: 
   await $.session.start(START)
   await $.turn.complete({ answer: 'done', durationMs: 20_000, isAborted: false, turnId: 't1', reason: 'answer', usage: OPUS_TURN })
 
-  expect(status.at(-1)).toContain('≈14.1 Wh so far')
+  expect(status.at(-1)).toContain('≈17.1 Wh so far')
 })
 
 test('a subagent turn is counted but does not become the last turn', async ($, on) => {
@@ -102,8 +103,8 @@ test('a subagent turn is counted but does not become the last turn', async ($, o
     usage: { ...OPUS_TURN, model: 'claude-haiku-5-5' },
   })
 
-  expect(status.at(-1)).toContain('≈8.1 Wh so far')
-  expect(status.at(-1)).toContain('last turn ≈7 Wh')
+  expect(status.at(-1)).toContain('≈9.8 Wh so far')
+  expect(status.at(-1)).toContain('last turn ≈8.5 Wh')
   const ran = await $.command.run(RUN)
   expect(ran.text).toContain('1 turn, 1 subagent turn, 2 model responses')
   expect(ran.text).toContain('claude-haiku-5-5')
@@ -170,7 +171,7 @@ test('a transcript over 4 MiB on Windows (no grep) is read back through PowerShe
 
   await $.session.start(START)
   const ran = await $.command.run(RUN)
-  expect(ran.text).toContain('≈ 7 Wh')
+  expect(ran.text).toContain('≈ 8.5 Wh')
   expect(ran.text).toContain('1 earlier response')
   expect(ran.text).not.toContain('could not be read back')
 })
@@ -203,8 +204,8 @@ test('the panel shows energy and damage on every surface', async ($, on) => {
   await $.turn.complete({ answer: 'done', durationMs: 20_000, isAborted: false, turnId: 't1', reason: 'answer', usage: OPUS_TURN })
   for (const surface of ['terminal', 'desktop', 'vscode', 'mobile'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
-    expect((await ui.find({ type: 'Text', text: /≈ 7 Wh/ }))?.text).toBe('≈ 7 Wh')
-    expect(await ui.find({ type: 'Text', text: /2.8 g CO₂/ })).toBeDefined()
+    expect((await ui.find({ type: 'Text', text: /≈ 8.5 Wh/ }))?.text).toBe('≈ 8.5 Wh')
+    expect(await ui.find({ type: 'Text', text: /3.8 g CO₂/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /Last turn/ })).toBeDefined()
     await ui.unmount()
   }
