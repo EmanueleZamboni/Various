@@ -32,6 +32,7 @@ function engine(on: On, status: Array<string | undefined>, fs: { exists: boolean
   on('session.end', (_, e) => ({ sessionId: e.sessionId }))
   on('turn.complete', (_, e) => ({ text: e.answer }))
   on('classic.SessionStart', () => ({}))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
 }
 
 test('a finished turn is counted and pinned to the status line', async ($, on) => {
@@ -158,4 +159,29 @@ test('/power reset starts the count over', async ($, on) => {
 
   const ran = await $.command.run(RUN)
   expect(ran.text).toContain('Nothing counted yet')
+})
+
+const PANE = {
+  plugin: 'power-meter',
+  component: 'Pane',
+  requestId: 'power-meter',
+  props: { title: 'Power meter', isFocused: false, bodyColumns: 40, placement: 'dock', scroll: { offset: 0, bodyRows: 20 }, view: {} },
+} as const
+
+test('the panel shows energy and damage on every surface', async ($, on) => {
+  const status: Array<string | undefined> = []
+  engine(on, status)
+  await $.session.start(START)
+  await $.turn.complete({ answer: 'done', durationMs: 20_000, isAborted: false, turnId: 't1', reason: 'answer', usage: OPUS_TURN })
+  for (const surface of ['terminal', 'desktop', 'vscode', 'mobile'] as const) {
+    const ui = await $.ui.mount({ ...PANE, surface })
+    expect((await ui.find({ type: 'Text', text: /≈ 7 Wh/ }))?.text).toBe('≈ 7 Wh')
+    expect(await ui.find({ type: 'Text', text: /2.8 g CO₂/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /Last turn/ })).toBeDefined()
+    await ui.unmount()
+  }
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.press({ key: 'reset' })
+  expect((await ui.find({ type: 'Text', text: /≈ 0 Wh/ }))?.text).toBe('≈ 0 Wh')
+  await ui.unmount()
 })

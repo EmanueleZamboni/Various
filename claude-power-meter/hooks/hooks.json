@@ -1,1 +1,1 @@
-{ "modules": ["./power-meter.ts"] }
+{ "modules": ["./power-meter.tsx"] }
