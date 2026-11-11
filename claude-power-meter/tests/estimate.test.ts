@@ -1,7 +1,10 @@
 import { expect, test } from 'claude-code/testing'
 
 import {
+  DEFAULT_IMPACT,
   DEFAULT_RATES,
+  fmtUsd,
+  impactOf,
   equivalents,
   familyOf,
   fmtDuration,
@@ -75,4 +78,12 @@ test('a transcript is summed once per message id, skipping rows without usage', 
   const counted = tallyJsonl(text)
   expect(counted.messages).toBe(2)
   expect(counted.byModel['claude-sonnet-5-5']?.output).toBe(15)
+})
+
+test('damage follows the energy', async () => {
+  const i = impactOf(640, DEFAULT_IMPACT)
+  expect(i.co2Grams).toBe(256)
+  expect(i.waterMl).toBe(1280)
+  expect(fmtUsd(i.damageUsd)).toBe('4.9¢')
+  expect(fmtUsd(12.5)).toBe('$12.50')
 })

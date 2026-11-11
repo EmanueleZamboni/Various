@@ -6,7 +6,7 @@ reports. It keeps a live figure under the prompt and prints a full account on
 demand.
 
 ```
-⚡ ≈12.4 Wh so far · last turn ≈3.2 Wh (≈210 W)
+⚡ ≈12.4 Wh so far · ≈5 g CO₂ · ≈25 mL water · last turn ≈3.2 Wh (≈210 W)
 ```
 
 Anthropic publishes no energy figures for Claude, so every number here is an
@@ -136,6 +136,12 @@ coding.
 - **CO₂** uses the grid intensity you set, 400 g/kWh by default, roughly the
   US average; the EU average is lower. Where Anthropic's providers buy
   renewable power the market-based figure is lower still.
+- **Damage** turns the energy into three harms. CO₂ is energy times the grid
+  intensity. Water is 2 mL per Wh by default: Google reports about 1.1 mL per
+  Wh for cooling (0.26 mL per 0.24 Wh prompt), and power plants consume
+  roughly as much again. Climate cost prices the CO₂ at the social cost of
+  carbon, $190 per tonne by default, the US EPA's 2023 central estimate of
+  future damage from one more tonne emitted.
 - **Comparisons** use a 15 Wh phone battery, a 10 W LED bulb, a 1 kW
   microwave, an electric car at 170 Wh per km, and Google's 2009 figure of
   0.3 Wh per search.
@@ -155,6 +161,8 @@ plugin and applies to everything counted so far.
 | `cache_write_fraction` | 0.2 | One cache-written input token, as a fraction of one output token |
 | `cache_read_fraction` | 0.005 | One cache-read input token, as a fraction of one output token |
 | `grid_g_co2_per_kwh` | 400 | Grid carbon intensity for the CO₂ line |
+| `water_ml_per_wh` | 2 | Water per Wh, cooling plus power generation |
+| `social_cost_usd_per_tonne` | 190 | Climate damage per tonne of CO₂, in US dollars |
 | `show_status_line` | true | Keep the live figure under the prompt |
 
 ## Limitations
