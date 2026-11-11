@@ -214,7 +214,7 @@ export const register: Register = (on, options) => {
     const m = await read($, meter)
     return (
       <Box flexDirection="row" gap={1}>
-        <Text>{statusLine(m, rates)}</Text>
+        <Text>{statusLine(m, rates, impact)}</Text>
         <Button key="more" label="More" onPress={() => $.ui.open({ id: PANE, title: PANE_TITLE })} />
       </Box>
     )
@@ -294,7 +294,7 @@ async function refresh($: Dollar, view: View): Promise<void> {
     return
   }
   const m = await read($, meter)
-  $.ui.status(statusLine(m, view.rates))
+  $.ui.status(statusLine(m, view.rates, view.impact))
 }
 
 /** Pulls the plugin's own folder when it is a git checkout, so a session's hot reload picks the update up. */
@@ -578,9 +578,10 @@ const pendingByModel = (m: Meter): Record<string, Tally> => {
 const pendingWhOf = (m: Meter, rates: Rates): number => totalWh(pendingByModel(m), rates)
 
 /** The one line: watt-hours used, and that as a share of a one-person home's month. */
-function statusLine(m: Meter, rates: Rates): string {
+function statusLine(m: Meter, rates: Rates, impact: ImpactRates): string {
   const total = totalWh(mergeByModel(m.seeded, m.live), rates) + pendingWhOf(m, rates)
-  return `⚡ ≈${fmtWh(total)} used · ${homeShareShort(total)}`
+  const water = impactOf(total, impact).waterMl
+  return `⚡ ≈${fmtWh(total)} used · 💧 ≈${fmtWater(water)} water · ${homeShareShort(total)}`
 }
 
 const percent = (fraction: number): string => {
