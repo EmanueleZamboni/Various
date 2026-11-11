@@ -110,7 +110,7 @@ export const register: Register = (on, options) => {
     try {
       const now = await $.clock.now()
       const m = await update($, meter, cur => ({ ...cur, liveSinceMs: cur.liveSinceMs ?? now }))
-      if (m.seed.kind === 'none') await seedFromTranscript($, m.transcriptPath)
+      if (m.seed.kind === 'none' || m.seed.kind === 'unavailable') await seedFromTranscript($, m.transcriptPath)
       await refresh($, view)
     } catch {
       // An observer never holds up the session.
@@ -302,12 +302,16 @@ async function resetMeter($: Dollar, transcriptPath: string | null): Promise<voi
 // ---- reading the session's earlier responses back ----
 
 async function seedFromTranscript($: Dollar, knownPath: string | null): Promise<void> {
+  const retry = (await read($, meter)).seed.kind === 'unavailable'
   const path = knownPath ?? (await guessTranscriptPath($))
   const finish = (kind: Seed['kind'], counted?: Counted): Promise<Meter> =>
     update($, meter, (m): Meter => ({
       ...m,
       seed: { kind, messages: counted?.messages ?? 0, path },
       seeded: counted?.byModel ?? m.seeded,
+      // Read back after live counting had started (an earlier try failed): the transcript already holds those
+      // responses, so the live tokens would count twice. Turns and time stay; only the tokens move over.
+      live: kind === 'transcript' && retry ? {} : m.live,
     }))
   if (path === null) {
     await finish('unavailable')
@@ -333,11 +337,25 @@ async function seedFromTranscript($: Dollar, knownPath: string | null): Promise<
   }
 }
 
+/** The same search as `grep -oE`, through PowerShell, which every Windows has (grep does not). */
+const PS_SELECT =
+  'Select-String -LiteralPath $env:PM_FILE -Pattern $env:PM_PATTERN -AllMatches -CaseSensitive | ' +
+  'ForEach-Object { foreach ($m in $_.Matches) { $m.Value } }'
+
 async function tallyWithGrep($: Dollar, path: string): Promise<Counted> {
-  const run = await $.process.run(['grep', '-oE', GREP_PATTERN, path], { timeoutMs: 60_000 })
-  // grep exits 1 when nothing matched, which is an empty transcript, not a failure.
-  if (run.exitCode !== 0 && run.exitCode !== 1) throw new Error(`grep exited ${run.exitCode}`)
-  return tallyGrepLines(run.stdout)
+  try {
+    const run = await $.process.run(['grep', '-oE', GREP_PATTERN, path], { timeoutMs: 60_000 })
+    // grep exits 1 when nothing matched, which is an empty transcript, not a failure.
+    if (run.exitCode === 0 || run.exitCode === 1) return tallyGrepLines(run.stdout)
+  } catch {
+    // No grep here (Windows): PowerShell below.
+  }
+  const run = await $.process.run(['powershell.exe', '-NoProfile', '-NonInteractive', '-Command', PS_SELECT], {
+    timeoutMs: 180_000,
+    env: { PM_FILE: path, PM_PATTERN: GREP_PATTERN },
+  })
+  if (run.exitCode !== 0) throw new Error(`powershell exited ${run.exitCode}`)
+  return tallyGrepLines(run.stdout.replace(/\r/g, ''))
 }
 
 /** Where Claude Code keeps this session's transcript: <config dir>/projects/<project slug>/<session id>.jsonl */

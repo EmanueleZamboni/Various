@@ -208,7 +208,7 @@ export const HOME_MONTH_WH = { eu: 135_000, us: 550_000 }
 export function homeShare(wh: number): string {
   const pct = (x: number): string => {
     const p = (wh / x) * 100
-    return p >= 10 ? `${Math.round(p)}%` : p >= 0.1 ? `${p.toFixed(1)}%` : '<0.1%'
+    return p >= 10 ? `${Math.round(p)}%` : p >= 0.1 ? `${p.toFixed(1)}%` : p > 0 ? `${Number(p.toPrecision(1))}%` : '0%'
   }
   return `${pct(HOME_MONTH_WH.eu)} of a one-person home's monthly electricity in Europe (≈135 kWh), ${pct(HOME_MONTH_WH.us)} in the US (≈550 kWh)`
 }
