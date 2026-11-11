@@ -202,27 +202,35 @@ if [ ! -d "$SEG/.git" ]; then
 fi
 # Gli aggiornamenti del Segretario li fa SOLO il suo auto-update.sh, che controlla le firme (.deploy/).
 chmod +x "$SEG"/scripts/*.sh 2>/dev/null
-# Segreto del Segretario derivato da quello di Keep (sha256, a senso unico): così l'URL del connettore è
-# calcolabile da chi conosce già l'URL di Keep, senza doverlo leggere dalla VM. Va in .env PRIMA del container.
-# Per usare un segreto proprio: in .env mettere SEGRETARIO_SECRET=<tuo> e SEGRETARIO_SECRET_SOURCE=manual.
+# Segreto del Segretario: casuale e INDIPENDENTE (dal 12/11/2026; prima era derivato da quello di Keep, con una formula
+# pubblica, quindi chi aveva l'URL di Keep calcolava quello del Segretario). Una volta sola: se il .env non è già
+# "manual", ne mette uno nuovo e lo segna manual. L'indirizzo del connettore cambia: Ema lo ricopia in claude.ai da
+# Impostazioni > Sicurezza. Mai stampato né scritto nel rapporto.
 KEEP_SECRET="$($S grep -E '^KEEP_MCP_SECRET=' /etc/keep-mcp.env 2>/dev/null | cut -d= -f2-)"
-if [ -n "$KEEP_SECRET" ] && [ -d "$SEG" ]; then
-  DER="$(printf '%s' "segretario:$KEEP_SECRET" | sha256sum | cut -c1-48)"
-  ENVS="$SEG/.env"
-  if [ -f "$ENVS" ] && grep -qE '^SEGRETARIO_SECRET_SOURCE=manual' "$ENVS"; then
-    log "segretario: segreto manuale in .env, non toccato"
-  else
-    [ -f "$ENVS" ] || { umask 077; printf 'CADDY_NETWORK=postino_default
+ENVS="$SEG/.env"
+if [ -d "$SEG" ]; then
+  [ -f "$ENVS" ] || { umask 077; printf 'CADDY_NETWORK=postino_default
 SEGRETARIO_PUBLIC_HOST=%s
 ' "$DOMAIN" > "$ENVS"; }
-    if grep -qE '^SEGRETARIO_SECRET=' "$ENVS"; then
-      sed -i "s|^SEGRETARIO_SECRET=.*|SEGRETARIO_SECRET=$DER|" "$ENVS"
-    else
+  if grep -qE '^SEGRETARIO_SECRET_SOURCE=manual' "$ENVS"; then
+    log "segretario: segreto proprio già presente, non toccato"
+  else
+    NEW_SECRET="$(head -c 36 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=
+')"
+    if [ "${#NEW_SECRET}" -ge 40 ]; then
+      sed -i '/^SEGRETARIO_SECRET=/d;/^SEGRETARIO_SECRET_SOURCE=/d' "$ENVS"
       printf 'SEGRETARIO_SECRET=%s
-' "$DER" >> "$ENVS"
+SEGRETARIO_SECRET_SOURCE=manual
+' "$NEW_SECRET" >> "$ENVS"
+      chmod 600 "$ENVS"
+      log "segretario: segreto NUOVO e indipendente in .env (l'indirizzo del connettore è cambiato)"
+    else
+      log "segretario: segreto nuovo NON generato (errore), resta il vecchio"
     fi
-    log "segretario: segreto derivato da Keep in .env"
+    unset NEW_SECRET
   fi
+fi
+if [ -n "$KEEP_SECRET" ] && [ -f "$ENVS" ]; then
   # Il Segretario legge Keep (TASKS, SPESA) per il brief del mattino: gli serve l'URL interno di keep-mcp
   # e l'host pubblico (keep-mcp accetta solo quello nell'header Host). Scritti una volta, mai stampati.
   if ! grep -qE '^KEEP_MCP_URL=' "$ENVS"; then

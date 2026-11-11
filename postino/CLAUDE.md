@@ -27,3 +27,13 @@ Only for: the Spam? button and AI search (Opus 5.5), and marking new mail from p
 important / recognising brand deals (`server/src/triage.ts`, Haiku 5.5 by default, behind free
 rule filters, 150 a day, switchable in Settings). Everything else uses rules, not Claude:
 tell Ema what any new Claude use would cost before adding it.
+
+## Going live: only signed commits (since 2026-11-12)
+
+The server installs only commits signed with Ema's deploy key, which exists only on his PC
+(`.deploy/` at the repo root, checked by `postino/scripts/auto-update.sh`). A commit or PR merged
+from a cloud or phone session is NOT live until a Claude Code session on Ema's PC signs a commit
+on top. So when you push or merge from elsewhere, tell Ema in plain words: "this goes live when a
+Claude Code chat on your PC releases it". On the PC: pull, read what is new underneath (your
+signature vouches for it), then push a signed commit (an empty one is fine:
+`git commit --allow-empty -m "release"`; signing is automatic in this checkout).
