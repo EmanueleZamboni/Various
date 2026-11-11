@@ -117,6 +117,27 @@ export type SendFields = { accountId?: string; to?: string; cc?: string; bcc?: s
 
 const badRequest = (code: string, message: string) => Object.assign(new Error(message), { statusCode: 400, code });
 
+/** Stop a scheduled (or failed) email and keep it as a draft, attachments included. */
+export function cancelToDraft(outboxId: number): DraftRow | null {
+  const job = cancel(outboxId);
+  if (!job) return null;
+  const atts = job.uploadIds.map((id) => {
+    const clean = String(id).replace(/[^A-Za-z0-9_-]/g, '');
+    try {
+      const meta = JSON.parse(fs.readFileSync(path.join(config.uploadsDir, clean + '.json'), 'utf8')) as { filename: string; size: number };
+      return { id: clean, filename: meta.filename, size: meta.size };
+    } catch {
+      return { id: clean, filename: 'attachment', size: 0 };
+    }
+  });
+  const info = db
+    .prepare('INSERT INTO drafts(account_id, thread_id, in_reply_to, forward_of, to_text, cc_text, bcc_text, subject, text, attachments_json, from_address) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
+    .run(job.accountId, job.threadId ?? null, job.inReplyTo?.row ?? null, job.forwardOf ?? null, job.to, job.cc, job.bcc, job.subject, job.text, JSON.stringify(atts), job.fromAddress || '');
+  const d = db.prepare('SELECT * FROM drafts WHERE id = ?').get(info.lastInsertRowid) as DraftRow;
+  if (d.thread_id) bus.publish({ type: 'thread.updated', threadId: String(d.thread_id), accountId: String(d.account_id) });
+  return d;
+}
+
 /** Checks the fields and builds the job, exactly as the web app's Send does (signature, Bcc myself, quoting). */
 export function buildSendJob(b: SendFields): SendJob {
   const settings = uiSettings();
@@ -267,22 +288,8 @@ export function registerComposeRoutes(app: FastifyInstance): void {
 
   // Undo: the job comes back as a draft so it can be reopened.
   app.delete<{ Params: { id: string } }>('/api/outbox/:id', async (req, reply) => {
-    const job = cancel(Number(req.params.id));
-    if (!job) return reply.code(404).send({ error: 'gone', message: 'That email was already sent.' });
-    const atts = job.uploadIds.map((id) => {
-      const clean = String(id).replace(/[^A-Za-z0-9_-]/g, '');
-      try {
-        const meta = JSON.parse(fs.readFileSync(path.join(config.uploadsDir, clean + '.json'), 'utf8')) as { filename: string; size: number };
-        return { id: clean, filename: meta.filename, size: meta.size };
-      } catch {
-        return { id: clean, filename: 'attachment', size: 0 };
-      }
-    });
-    const info = db
-      .prepare('INSERT INTO drafts(account_id, thread_id, in_reply_to, forward_of, to_text, cc_text, bcc_text, subject, text, attachments_json, from_address) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
-      .run(job.accountId, job.threadId ?? null, job.inReplyTo?.row ?? null, job.forwardOf ?? null, job.to, job.cc, job.bcc, job.subject, job.text, JSON.stringify(atts), job.fromAddress || '');
-    const d = db.prepare('SELECT * FROM drafts WHERE id = ?').get(info.lastInsertRowid) as DraftRow;
-    if (d.thread_id) bus.publish({ type: 'thread.updated', threadId: String(d.thread_id), accountId: String(d.account_id) });
+    const d = cancelToDraft(Number(req.params.id));
+    if (!d) return reply.code(404).send({ error: 'gone', message: 'That email was already sent.' });
     return { ok: true, draft: draftView(d) };
   });
 

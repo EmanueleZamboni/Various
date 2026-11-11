@@ -10,7 +10,9 @@ import { threadView } from './views.js';
 import type { ThreadRow } from './mail/store.js';
 import { buildSendJob } from './routes/compose.js';
 import { stageAttachments, attachmentsSchema } from './mcpAttachments.js';
-import { enqueue, executeSend } from './mail/outbox.js';
+import { enqueue, executeSend, listQueued } from './mail/outbox.js';
+import { cancelToDraft } from './routes/compose.js';
+import { parseSendAt } from './sendAt.js';
 import { uiSettings } from './settings.js';
 import { htmlToText } from './mail/sanitize.js';
 import { listGroups, groupSuggestions, addSenders, removeSender, updateGroup } from './groups.js';
@@ -347,7 +349,7 @@ const TOOLS: Tool[] = [
   {
     name: 'send_email',
     title: 'Send an email',
-    description: 'Send an email from one of the mailboxes, with the default signature. To reply in a conversation pass reply_to_message_id (the original is quoted below). Files can be attached (attachments). Always show the user the final text, recipients and attachments and get their OK before calling this.',
+    description: 'Send an email from one of the mailboxes, with the default signature. To reply in a conversation pass reply_to_message_id (the original is quoted below). Files can be attached (attachments). To send it later, pass send_at (it then waits in Postino → Drafts → Scheduled, and can be cancelled with cancel_scheduled). Always show the user the final text, recipients, attachments and send time and get their OK before calling this.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -359,6 +361,7 @@ const TOOLS: Tool[] = [
         body: { type: 'string', description: 'Plain text.' },
         reply_to_message_id: { type: 'string' },
         attachments: attachmentsSchema,
+        send_at: { type: 'string', description: 'Schedule: when to send, e.g. 2026-11-12T09:00 (Italian time when no offset is given) or an ISO time with offset. Omit to send now.' },
       },
       required: ['account_id', 'to', 'body'],
       additionalProperties: false,
@@ -370,7 +373,9 @@ const TOOLS: Tool[] = [
       const subject = str(a.subject, 500) || (reply ? (/^re:/i.test(reply.subject) ? reply.subject : `Re: ${reply.subject}`) : '');
       let job;
       let files: Awaited<ReturnType<typeof stageAttachments>> = [];
+      let at: Date | null = null;
       try {
+        if (a.send_at !== undefined && a.send_at !== '') at = parseSendAt(str(a.send_at, 100));
         const fields = { accountId: String(accountId(a.account_id)), to: str(a.to, 4000), cc: str(a.cc, 4000), bcc: str(a.bcc, 4000), subject, text: str(a.body, 200_000), inReplyTo: reply ? String(a.reply_to_message_id) : undefined, quote: reply ? '1' : undefined };
         buildSendJob(fields); // check the recipients before downloading anything
         files = await stageAttachments(a.attachments);
@@ -379,6 +384,10 @@ const TOOLS: Tool[] = [
         throw fail((e as Error).message);
       }
       const attached = files.map((f) => `${f.filename} (${Math.round(f.size / 1024)} KB)`);
+      if (at) {
+        const row = enqueue(job, at);
+        return { ok: true, scheduled: true, outbox_id: String(row.id), send_at: row.send_at, send_at_italy: italianTime(at), attached, note: 'Scheduled: it waits in Postino → Drafts → Scheduled until then.' };
+      }
       const undo = uiSettings().compose.undoSendSec;
       if (undo > 0) {
         const row = enqueue(job, new Date(Date.now() + undo * 1000));
@@ -386,6 +395,28 @@ const TOOLS: Tool[] = [
       }
       const r = await executeSend(job);
       return { ok: true, sent: true, attached, thread_id: r.threadId ? String(r.threadId) : null };
+    },
+  },
+  {
+    name: 'list_scheduled',
+    title: 'Scheduled emails',
+    description: 'Emails waiting to be sent later (scheduled), and any that failed to send, with their outbox_id and time.',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+    run: () => ({
+      scheduled: listQueued().map((o) => ({ outbox_id: o.id, account_id: o.accountId, to: o.to, cc: o.cc || undefined, subject: o.subject, send_at: o.sendAt, send_at_italy: italianTime(new Date(o.sendAt)), status: o.status, error: o.error || undefined, preview: o.text })),
+    }),
+  },
+  {
+    name: 'cancel_scheduled',
+    title: 'Cancel a scheduled email',
+    description: 'Stop a scheduled email (outbox_id from list_scheduled or send_email). It is kept in Postino → Drafts, so it can be edited and sent again; to change the time, cancel it and send_email again with the new send_at.',
+    inputSchema: { type: 'object', properties: { outbox_id: { type: 'string' } }, required: ['outbox_id'], additionalProperties: false },
+    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+    run: (a) => {
+      const d = cancelToDraft(Number(a.outbox_id));
+      if (!d) throw fail('Nothing scheduled with that outbox_id: it was already sent or cancelled.');
+      return { ok: true, draft_id: String(d.id), note: 'Not sent. Kept in Postino → Drafts.' };
     },
   },
   {
@@ -836,3 +867,7 @@ export function registerMcpRoutes(app: FastifyInstance): void {
 }
 
 export const _test = { TOOLS, handleRpc, ALLOWED_REDIRECT };
+
+function italianTime(d: Date): string {
+  return new Intl.DateTimeFormat('it-IT', { timeZone: 'Europe/Rome', weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(d);
+}
