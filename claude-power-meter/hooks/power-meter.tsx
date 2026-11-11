@@ -28,6 +28,7 @@ import {
   fmtUsd,
   fmtWater,
   homeShare,
+  homeShareShort,
   impactOf,
   isEmptyTally,
   mergeByModel,
@@ -94,6 +95,7 @@ export const register: Register = (on, options) => {
     usdPerTonne: numberOption(options, 'social_cost_usd_per_tonne', DEFAULT_IMPACT.usdPerTonne),
   }
   const showStatusLine = options['show_status_line'] !== false
+  const autoUpdate = options['auto_update'] !== false
 
   const view: View = { rates, impact, showStatusLine }
 
@@ -116,6 +118,10 @@ export const register: Register = (on, options) => {
       // An observer never holds up the session.
     }
     void $.ui.open({ id: PANE, title: PANE_TITLE }).catch(() => undefined)
+    if (autoUpdate) {
+      void selfUpdate($).catch(() => undefined)
+      $.clock.every(6 * 60 * 60 * 1000, () => void selfUpdate($).catch(() => undefined))
+    }
     return next(e)
   })
 
@@ -188,6 +194,19 @@ export const register: Register = (on, options) => {
     return { text: report(m, now, rates, impact) }
   })
 
+  // The band above the prompt: the one line, and More to open the panel.
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    if (!showStatusLine || e.props.hasSurvey) return next(e)
+    const { Box, Text, Button } = $.ui.resolve(e)
+    const m = await read($, meter)
+    return (
+      <Box flexDirection="row" gap={1}>
+        <Text>{statusLine(m, rates)}</Text>
+        <Button key="more" label="More" onPress={() => $.ui.open({ id: PANE, title: PANE_TITLE })} />
+      </Box>
+    )
+  })
+
   // The panel: the same figures, kept beside the chat on every surface.
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Text, Button } = $.ui.resolve(e)
@@ -231,8 +250,22 @@ type View = { rates: Rates; impact: ImpactRates; showStatusLine: boolean }
 
 async function refresh($: Dollar, view: View): Promise<void> {
   if (!view.showStatusLine) return
+  const surfaces = await $.session.surfaces().catch((): readonly string[] => [])
+  // The terminal and desktop draw the band above the prompt, which has the same line and a More button.
+  if (surfaces.some(s => s === 'terminal' || s === 'desktop')) {
+    $.ui.status(undefined)
+    return
+  }
   const m = await read($, meter)
-  $.ui.status(statusLine(m, view.rates, view.impact))
+  $.ui.status(statusLine(m, view.rates))
+}
+
+/** Pulls the plugin's own folder when it is a git checkout, so a session's hot reload picks the update up. */
+async function selfUpdate($: Dollar): Promise<void> {
+  const root = $.plugin.root
+  const inside = await $.process.run(['git', '-C', root, 'rev-parse', '--is-inside-work-tree'], { timeoutMs: 10_000 })
+  if (inside.exitCode !== 0 || inside.stdout.trim() !== 'true') return
+  await $.process.run(['git', '-C', root, 'pull', '--ff-only', '--quiet'], { timeoutMs: 60_000 })
 }
 
 // ---- the tally ----
@@ -394,25 +427,10 @@ const pendingByModel = (m: Meter): Record<string, Tally> => {
 
 const pendingWhOf = (m: Meter, rates: Rates): number => totalWh(pendingByModel(m), rates)
 
-function statusLine(m: Meter, rates: Rates, impact: ImpactRates): string {
-  const pendingWh = pendingWhOf(m, rates)
-  const total = totalWh(mergeByModel(m.seeded, m.live), rates) + pendingWh
-  const parts = [`⚡ ≈${fmtWh(total)} so far`]
-  if (total > 0) {
-    const i = impactOf(total, impact)
-    parts.push(`≈${fmtGrams(i.co2Grams)} CO₂`, `≈${fmtWater(i.waterMl)} water`)
-  }
-  if (pendingWh > 0) {
-    parts.push(`this turn ≈${fmtWh(pendingWh)}…`)
-  } else if (m.lastTurn !== null) {
-    const wh = whOf(m.lastTurn.tally, m.lastTurn.model, rates)
-    parts.push(
-      m.lastTurn.durationMs > 0
-        ? `last turn ≈${fmtWh(wh)} (≈${fmtW(wattsOf(wh, m.lastTurn.durationMs))})`
-        : `last turn ≈${fmtWh(wh)}`,
-    )
-  }
-  return parts.join(' · ')
+/** The one line: watt-hours used, and that as a share of a one-person home's month. */
+function statusLine(m: Meter, rates: Rates): string {
+  const total = totalWh(mergeByModel(m.seeded, m.live), rates) + pendingWhOf(m, rates)
+  return `⚡ ≈${fmtWh(total)} used · ${homeShareShort(total)}`
 }
 
 const percent = (fraction: number): string => {

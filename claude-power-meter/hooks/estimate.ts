@@ -213,6 +213,15 @@ export function homeShare(wh: number): string {
   return `${pct(HOME_MONTH_WH.eu)} of a one-person home's monthly electricity in Europe (≈135 kWh), ${pct(HOME_MONTH_WH.us)} in the US (≈550 kWh)`
 }
 
+/** The same comparison, short enough for the line under the prompt. */
+export function homeShareShort(wh: number): string {
+  const pct = (x: number): string => {
+    const p = (wh / x) * 100
+    return p >= 10 ? `${Math.round(p)}%` : p >= 0.1 ? `${p.toFixed(1)}%` : p > 0 ? `${Number(p.toPrecision(1))}%` : '0%'
+  }
+  return `${pct(HOME_MONTH_WH.eu)} of a one-person home's month (EU), ${pct(HOME_MONTH_WH.us)} (US)`
+}
+
 /** Everyday comparisons for an amount of energy; the reference values are in the README. */
 export function equivalents(wh: number): string[] {
   if (!(wh > 0)) return []
