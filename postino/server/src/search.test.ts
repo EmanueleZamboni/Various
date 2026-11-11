@@ -35,3 +35,13 @@ describe('buildMatch', () => {
     expect(buildMatch(parseQuery('say"hi'))).toBe('"say""hi"*');
   });
 });
+
+describe('search highlight', () => {
+  it('marks the words around the first match, ignoring case and accents', async () => {
+    const { highlightText } = await import('./search.js');
+    const h = highlightText('Ciao, ecco il preventivo per la Città che avevamo detto. Il PREVENTIVO scade venerdì.', ['preventiv', 'citta'], 14)!;
+    expect(h).toContain('\u0001preventivo\u0002');
+    expect(h).toContain('\u0001Città\u0002');
+    expect(highlightText('nothing here', ['zzz'], 14)).toBeNull();
+  });
+});

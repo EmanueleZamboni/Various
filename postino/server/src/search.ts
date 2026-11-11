@@ -224,26 +224,26 @@ export function searchThreads(q: string, opts: { accountId: number | null; limit
   let countSql: string;
   const base = `FROM messages m JOIN folders f ON f.id = m.folder_id`;
   if (match) {
-    sql = `WITH hits AS (
-             SELECT rowid AS id, bm25(fts, 6.0, 4.0, 2.0, 1.0) AS rank,
-                    snippet(fts, 3, '\u0001', '\u0002', '…', 14) AS snip,
-                    snippet(fts, 0, '\u0001', '\u0002', '', 20) AS subj
-             FROM fts WHERE fts MATCH ?
-           ),
-           scored AS (
-             SELECT m.thread_id, m.id AS message_id, h.rank, h.snip, h.subj, m.date,
-                    ROW_NUMBER() OVER (PARTITION BY m.thread_id ORDER BY h.rank ASC, m.date DESC) AS rn
-             ${base} JOIN hits h ON h.id = m.id ${whereSql}
-           )
-           SELECT thread_id, message_id, rank, snip, subj, date FROM scored WHERE rn = 1
-           ORDER BY date DESC LIMIT ? OFFSET ?`;
+    // Results are listed newest first, so nothing is ranked: the matching messages are grouped by
+    // conversation and only the page shown is read. The highlight is cut from those few messages
+    // alone (FTS5 would otherwise build one for every match, which took seconds on a big mailbox).
+    sql = `WITH hits AS (SELECT rowid AS id FROM fts WHERE fts MATCH ?)
+           SELECT m.thread_id, m.id AS message_id, MAX(m.date) AS date
+           ${base} JOIN hits h ON h.id = m.id ${whereSql}
+           GROUP BY m.thread_id ORDER BY date DESC LIMIT ? OFFSET ?`;
     countSql = `WITH hits AS (SELECT rowid AS id FROM fts WHERE fts MATCH ?)
                 SELECT COUNT(DISTINCT m.thread_id) AS n ${base} JOIN hits h ON h.id = m.id ${whereSql}`;
-    const rows = db.prepare(sql).all(match, ...params, opts.limit, opts.offset) as { thread_id: number; message_id: number; rank: number; snip: string; subj: string; date: string }[];
+    const rows = db.prepare(sql).all(match, ...params, opts.limit, opts.offset) as { thread_id: number; message_id: number; date: string }[];
     const total = (db.prepare(countSql).get(match, ...params) as { n: number }).n;
+    const words = [...p.terms, ...p.phrases.flatMap((x) => x.split(/\s+/)), ...p.subject.flatMap((x) => x.split(/\s+/))].filter(Boolean);
+    const text = db.prepare('SELECT subject, body FROM fts WHERE rowid = ?');
     return {
       total,
-      results: rows.map((r) => ({ threadId: r.thread_id, messageId: r.message_id, rank: r.rank, highlight: toHighlight(r.snip.includes('\u0001') ? r.snip : r.subj) })),
+      results: rows.map((r) => {
+        const t = text.get(r.message_id) as { subject: string; body: string } | undefined;
+        const hl = t ? highlightText(t.body || '', words, 14) || highlightText(t.subject || '', words, 20) : null;
+        return { threadId: r.thread_id, messageId: r.message_id, rank: 0, highlight: hl ? toHighlight(hl) : null };
+      }),
     };
   }
   sql = `SELECT m.thread_id, m.id AS message_id, m.date FROM (
@@ -268,4 +268,25 @@ export function rememberSearch(q: string): void {
   if (!t) return;
   db.prepare('INSERT INTO recent_searches(query, used_at) VALUES (?, ?) ON CONFLICT(query) DO UPDATE SET used_at = excluded.used_at').run(t, new Date().toISOString());
   db.prepare('DELETE FROM recent_searches WHERE query NOT IN (SELECT query FROM recent_searches ORDER BY used_at DESC LIMIT 30)').run();
+}
+
+const fold = (c: string): string => c.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+/**
+ * The words around the first match, with every match wrapped in \u0001…\u0002 (as FTS5's
+ * snippet() does): words match at their start, ignoring case and accents, like the search itself.
+ */
+export function highlightText(text: string, words: string[], size: number): string | null {
+  const wanted = [...new Set(words.map((w) => fold(w).replace(/[^\p{L}\p{N}]/gu, '')).filter(Boolean))];
+  if (!wanted.length || !text) return null;
+  const tokens = text.replace(/\s+/g, ' ').trim().slice(0, 20_000).split(' ');
+  const hit = (tok: string) => {
+    const f = fold(tok).replace(/^[^\p{L}\p{N}]+/u, '');
+    return wanted.some((w) => f.startsWith(w));
+  };
+  const first = tokens.findIndex(hit);
+  if (first < 0) return null;
+  const from = Math.max(0, first - Math.floor(size / 3));
+  const part = tokens.slice(from, from + size).map((tok) => (hit(tok) ? `\u0001${tok}\u0002` : tok));
+  return (from > 0 ? '…' : '') + part.join(' ') + (from + size < tokens.length ? '…' : '');
 }
