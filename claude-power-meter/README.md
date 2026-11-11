@@ -25,7 +25,7 @@ public measurements that exist, and every coefficient can be changed in
   intensity you set, everyday comparisons (phone charges, LED-bulb hours,
   microwave seconds, metres of electric driving, Google searches), and the
   token counts by model that the estimate rests on.
-- **This month, all chats**: `/power` and the panel add up every Claude Code
+- **This month, local Claude Code chats only**: `/power` and the panel add up every Claude Code
   chat on this computer this calendar month (main conversations and their
   subagents), read from the transcripts Claude Code keeps, refreshed every 10
   minutes. Chats in the web, phone or cloud sessions run elsewhere and are

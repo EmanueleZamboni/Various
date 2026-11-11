@@ -246,7 +246,7 @@ export const register: Register = (on, options) => {
         {month !== null && (
           <Box flexDirection="column">
             <Text> </Text>
-            <Text weight="semibold">This month, all chats on this computer</Text>
+            <Text weight="semibold">This month, local Claude Code chats only</Text>
             <Text>≈ {fmtWh(totalWh(month.byModel, rates))} in {month.chats} chats</Text>
             <Text dimColor>{homeShare(totalWh(month.byModel, rates))}</Text>
           </Box>
@@ -498,7 +498,7 @@ function monthReport(month: MonthTotal | null, rates: Rates): string {
   return [
     '',
     '',
-    `This month (${month.month}), all chats on this computer: ≈ ${fmtWh(wh)} in ${plural(month.chats, 'chat')}, ${plural(month.messages, 'model response')}.`,
+    `This month (${month.month}), local Claude Code chats only: ≈ ${fmtWh(wh)} in ${plural(month.chats, 'chat')}, ${plural(month.messages, 'model response')}.`,
     `That is ${homeShare(wh)}.`,
   ].join('\n')
 }
