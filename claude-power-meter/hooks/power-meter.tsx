@@ -120,7 +120,7 @@ export const register: Register = (on, options) => {
     } catch {
       // An observer never holds up the session.
     }
-    void $.ui.open({ id: PANE, title: PANE_TITLE }).catch(() => undefined)
+    void openPaneUnasked($).catch(() => undefined)
     void scanMonth($, false).catch(() => undefined)
     if (autoUpdate) {
       void selfUpdate($).catch(() => undefined)
@@ -145,6 +145,13 @@ export const register: Register = (on, options) => {
       // As above.
     }
     return next(e)
+  })
+
+  on('session.attach', async ($, e, next) => {
+    const attached = await next(e)
+    void openPaneUnasked($).catch(() => undefined)
+    void refresh($, view).catch(() => undefined)
+    return attached
   })
 
   on('session.end', async ($, e, next) => {
@@ -262,6 +269,17 @@ export const register: Register = (on, options) => {
       </Box>
     )
   })
+}
+
+/**
+ * Opens the panel without being asked, only where it can be drawn: with no window attached yet (the desktop
+ * app attaches after the session starts) the open would be refused and logged, so `session.attach` opens it
+ * then. A pane already open, a reload's, is left as it is.
+ */
+async function openPaneUnasked($: Dollar): Promise<void> {
+  if ((await $.session.surfaces()).length === 0) return
+  if ((await $.ui.panes()).some(pane => pane.id === PANE)) return
+  await $.ui.open({ id: PANE, title: PANE_TITLE })
 }
 
 /** What the status line is drawn from: the rates in force, and whether to draw it at all. */
