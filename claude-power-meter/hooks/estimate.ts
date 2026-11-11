@@ -130,6 +130,33 @@ export const wattsOf = (wh: number, ms: number): number => (ms > 0 ? (wh * 3_600
 
 export const co2Grams = (wh: number, gramsPerKwh: number): number => (wh / 1000) * gramsPerKwh
 
+/** What the electricity does beyond the meter: the grid's CO2, the water, and the CO2's climate damage. */
+export type ImpactRates = {
+  /** Grams of CO2 per kWh of the grid that powers the data centre. */
+  gridGramsPerKwh: number
+  /** Millilitres of water per Wh: data-centre cooling plus power generation. */
+  waterMlPerWh: number
+  /** Social cost of carbon: US dollars of climate damage per tonne of CO2. */
+  usdPerTonne: number
+}
+
+export const DEFAULT_IMPACT: ImpactRates = { gridGramsPerKwh: 400, waterMlPerWh: 2, usdPerTonne: 190 }
+
+export type Impact = { co2Grams: number; waterMl: number; damageUsd: number }
+
+export function impactOf(wh: number, r: ImpactRates): Impact {
+  const grams = co2Grams(wh, r.gridGramsPerKwh)
+  return { co2Grams: grams, waterMl: wh * r.waterMlPerWh, damageUsd: (grams / 1_000_000) * r.usdPerTonne }
+}
+
+export const fmtGrams = (g: number): string => (g >= 1000 ? `${fmtNum(g / 1000)} kg` : `${fmtNum(g)} g`)
+export const fmtWater = (ml: number): string => (ml >= 1000 ? `${fmtNum(ml / 1000)} L` : `${fmtNum(ml)} mL`)
+export function fmtUsd(usd: number): string {
+  if (usd >= 1) return `$${usd.toFixed(2)}`
+  const cents = usd * 100
+  return cents >= 0.01 ? `${fmtNum(cents)}¢` : '<0.01¢'
+}
+
 // ---- words ----
 
 export function fmtInt(x: number): string {

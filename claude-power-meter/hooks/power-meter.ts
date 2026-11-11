@@ -11,12 +11,12 @@ import type { EngineInterface, PluginOptions, Register } from 'claude-code'
 
 import type { Meter, PendingTurn, Seed, Tally } from '../types'
 import {
+  DEFAULT_IMPACT,
   DEFAULT_RATES,
   EMPTY_TALLY,
   GREP_PATTERN,
   addTally,
   addTo,
-  co2Grams,
   equivalents,
   fmtDuration,
   fmtInt,
@@ -24,6 +24,10 @@ import {
   fmtRange,
   fmtW,
   fmtWh,
+  fmtGrams,
+  fmtUsd,
+  fmtWater,
+  impactOf,
   isEmptyTally,
   mergeByModel,
   padLeft,
@@ -36,7 +40,7 @@ import {
   wattsOf,
   whOf,
 } from './estimate'
-import type { Counted, Rates, UsageLike } from './estimate'
+import type { Counted, ImpactRates, Rates, UsageLike } from './estimate'
 
 const COMMAND = 'power'
 /** `$.fs.read` refuses a larger file; past it the transcript is summed with grep. */
@@ -80,10 +84,14 @@ export const register: Register = (on, options) => {
     cacheWriteFraction: numberOption(options, 'cache_write_fraction', DEFAULT_RATES.cacheWriteFraction),
     cacheReadFraction: numberOption(options, 'cache_read_fraction', DEFAULT_RATES.cacheReadFraction),
   }
-  const gridGramsPerKwh = numberOption(options, 'grid_g_co2_per_kwh', 400)
+  const impact: ImpactRates = {
+    gridGramsPerKwh: numberOption(options, 'grid_g_co2_per_kwh', DEFAULT_IMPACT.gridGramsPerKwh),
+    waterMlPerWh: numberOption(options, 'water_ml_per_wh', DEFAULT_IMPACT.waterMlPerWh),
+    usdPerTonne: numberOption(options, 'social_cost_usd_per_tonne', DEFAULT_IMPACT.usdPerTonne),
+  }
   const showStatusLine = options['show_status_line'] !== false
 
-  const view: View = { rates, showStatusLine }
+  const view: View = { rates, impact, showStatusLine }
 
   on('session.start', async ($, e, next) => {
     try {
@@ -171,17 +179,17 @@ export const register: Register = (on, options) => {
       return { text: 'Power meter reset: counting from now.' }
     }
     const [m, now] = await Promise.all([read($, meter), $.clock.now()])
-    return { text: report(m, now, rates, gridGramsPerKwh) }
+    return { text: report(m, now, rates, impact) }
   })
 }
 
 /** What the status line is drawn from: the rates in force, and whether to draw it at all. */
-type View = { rates: Rates; showStatusLine: boolean }
+type View = { rates: Rates; impact: ImpactRates; showStatusLine: boolean }
 
 async function refresh($: Dollar, view: View): Promise<void> {
   if (!view.showStatusLine) return
   const m = await read($, meter)
-  $.ui.status(statusLine(m, view.rates))
+  $.ui.status(statusLine(m, view.rates, view.impact))
 }
 
 // ---- the tally ----
@@ -318,10 +326,14 @@ const pendingByModel = (m: Meter): Record<string, Tally> => {
 
 const pendingWhOf = (m: Meter, rates: Rates): number => totalWh(pendingByModel(m), rates)
 
-function statusLine(m: Meter, rates: Rates): string {
+function statusLine(m: Meter, rates: Rates, impact: ImpactRates): string {
   const pendingWh = pendingWhOf(m, rates)
   const total = totalWh(mergeByModel(m.seeded, m.live), rates) + pendingWh
   const parts = [`⚡ ≈${fmtWh(total)} so far`]
+  if (total > 0) {
+    const i = impactOf(total, impact)
+    parts.push(`≈${fmtGrams(i.co2Grams)} CO₂`, `≈${fmtWater(i.waterMl)} water`)
+  }
   if (pendingWh > 0) {
     parts.push(`this turn ≈${fmtWh(pendingWh)}…`)
   } else if (m.lastTurn !== null) {
@@ -343,13 +355,13 @@ const percent = (fraction: number): string => {
 
 const plural = (n: number, word: string): string => `${fmtInt(n)} ${word}${n === 1 ? '' : 's'}`
 
-function report(m: Meter, now: number, rates: Rates, gridGramsPerKwh: number): string {
+function report(m: Meter, now: number, rates: Rates, impact: ImpactRates): string {
   const pending = pendingByModel(m)
   const pendingWh = totalWh(pending, rates)
   const counted = mergeByModel(m.seeded, m.live)
   const total = totalWh(counted, rates) + pendingWh
   const liveWh = totalWh(m.live, rates) + pendingWh
-  const lines: string[] = ['⚡ Power meter: estimated electricity for this session', '']
+  const lines: string[] = ['⚡ Power meter: estimated electricity (watt-hours) and damage for this session', '']
 
   if (total <= 0) {
     lines.push('Nothing counted yet. The meter fills in as model responses arrive.')
@@ -371,9 +383,16 @@ function report(m: Meter, now: number, rates: Rates, gridGramsPerKwh: number): s
         `≈ ${fmtWh(wh)} in ${fmtDuration(d)}` + (d > 0 ? `, about ${fmtW(wattsOf(wh, d))} while it ran` : ''),
       ])
     }
-    rows.push([`CO₂ at ${fmtInt(gridGramsPerKwh)} g/kWh`, `≈ ${fmtNum(co2Grams(total, gridGramsPerKwh))} g`])
+    const i = impactOf(total, impact)
+    rows.push(
+      ['', ''],
+      ['Damage', ''],
+      [`CO₂ at ${fmtInt(impact.gridGramsPerKwh)} g/kWh`, `≈ ${fmtGrams(i.co2Grams)}`],
+      [`Water at ${fmtNum(impact.waterMlPerWh)} mL/Wh`, `≈ ${fmtWater(i.waterMl)} (cooling and power plants)`],
+      [`Climate cost at $${fmtInt(impact.usdPerTonne)}/t CO₂`, `≈ ${fmtUsd(i.damageUsd)} of future climate damage`],
+    )
     const width = Math.max(...rows.map(([label]) => label.length))
-    for (const [label, value] of rows) lines.push(`${padRight(label, width)}  ${value}`)
+    for (const [label, value] of rows) lines.push(value === '' ? label : `${padRight(label, width)}  ${value}`)
     lines.push('', `That is about ${equivalents(total).join(', ')}.`)
   }
 

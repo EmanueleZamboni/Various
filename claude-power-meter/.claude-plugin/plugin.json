@@ -1,10 +1,18 @@
 {
   "name": "power-meter",
-  "version": "0.1.0",
-  "description": "Estimates the electricity your Claude Code session is using (watt-hours and watts) from the tokens each model response reports",
-  "author": { "name": "Emanuele Zamboni" },
+  "version": "0.2.0",
+  "description": "Estimates the electricity your Claude Code session uses (watt-hours and watts) and the damage it does (CO2, water, climate cost), from the tokens each model response reports",
+  "author": {
+    "name": "Emanuele Zamboni"
+  },
   "repository": "https://github.com/EmanueleZamboni/Various",
-  "keywords": ["energy", "electricity", "sustainability", "tokens", "status-line"],
+  "keywords": [
+    "energy",
+    "electricity",
+    "sustainability",
+    "tokens",
+    "status-line"
+  ],
   "types": "./types/index.d.ts",
   "userConfig": {
     "wh_per_1k_output_haiku": {
@@ -61,6 +69,20 @@
       "title": "Grid carbon intensity (g CO2 per kWh)",
       "description": "Used for the CO2 line of /power. Roughly 400 for the US grid average, lower in the EU (default 400)",
       "default": 400,
+      "min": 0
+    },
+    "water_ml_per_wh": {
+      "type": "number",
+      "title": "Water per Wh (mL)",
+      "description": "Water used per watt-hour: data-centre cooling plus power generation (default 2)",
+      "default": 2,
+      "min": 0
+    },
+    "social_cost_usd_per_tonne": {
+      "type": "number",
+      "title": "Climate damage per tonne of CO2 (USD)",
+      "description": "Social cost of carbon used to price the damage of the CO2 (default 190, the US EPA 2023 central estimate)",
+      "default": 190,
       "min": 0
     },
     "show_status_line": {

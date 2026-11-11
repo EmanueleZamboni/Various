@@ -42,12 +42,16 @@ test('a finished turn is counted and pinned to the status line', async ($, on) =
   await $.turn.complete({ answer: 'done', durationMs: 20_000, isAborted: false, turnId: 't1', reason: 'answer', usage: OPUS_TURN })
 
   expect(status.at(-1)).toContain('≈7 Wh so far')
+  expect(status.at(-1)).toContain('≈2.8 g CO₂')
+  expect(status.at(-1)).toContain('≈14.1 mL water')
   expect(status.at(-1)).toContain('last turn ≈7 Wh')
 
   const ran = await $.command.run(RUN)
   expect(ran.text).toContain('Energy so far')
   expect(ran.text).toContain('≈ 7 Wh')
   expect(ran.text).toContain('claude-opus-5-5')
+  expect(ran.text).toContain('Climate cost at $190/t CO₂')
+  expect(ran.text).toContain('0.05¢')
   expect(ran.text).toContain('100,000')
   expect(ran.text).toContain('1 turn, 0 subagent turns, 1 model response')
 })
