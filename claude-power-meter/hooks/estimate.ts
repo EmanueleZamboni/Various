@@ -254,8 +254,7 @@ export type Counted = { byModel: Record<string, Tally>; messages: number }
  * A response is written as one row per content block, each carrying the same
  * `message.id` and the same usage, so rows are counted once per id.
  */
-export function tallyJsonl(text: string): Counted {
-  const seen = new Set<string>()
+export function tallyJsonl(text: string, seen: Set<string> = new Set(), since?: number): Counted {
   let byModel: Record<string, Tally> = {}
   let messages = 0
   for (const line of text.split('\n')) {
@@ -269,6 +268,7 @@ export function tallyJsonl(text: string): Counted {
     if (typeof row !== 'object' || row === null) continue
     const r = row as Record<string, unknown>
     if (r['type'] !== 'assistant') continue
+    if (since !== undefined && !(typeof r['timestamp'] === 'string' && Date.parse(r['timestamp']) >= since)) continue
     const msg = r['message']
     if (typeof msg !== 'object' || msg === null) continue
     const m = msg as Record<string, unknown>
@@ -293,17 +293,18 @@ export function tallyJsonl(text: string): Counted {
  * follow it; text quoted inside a tool result is escaped and never matches.
  */
 export const GREP_PATTERN =
-  '"id":"msg_[A-Za-z0-9_-]+"|"model":"[^"]+"|"(input_tokens|output_tokens|cache_read_input_tokens|cache_creation_input_tokens)":[0-9]+'
+  '"id":"msg_[A-Za-z0-9_-]+"|"model":"[^"]+"|"(input_tokens|output_tokens|cache_read_input_tokens|cache_creation_input_tokens)":[0-9]+|"timestamp":"[^"]+"'
 
 /** Sums the lines `grep -oE GREP_PATTERN` printed, once per message id. */
-export function tallyGrepLines(stdout: string): Counted {
-  const seen = new Set<string>()
+export function tallyGrepLines(stdout: string, seen: Set<string> = new Set(), since?: number): Counted {
   let byModel: Record<string, Tally> = {}
   let messages = 0
   let model = 'unknown'
-  let current: { id: string; model: string; usage: Record<string, number> } | null = null
+  // A row's timestamp follows its message, so it lands on the response being read.
+  let current: { id: string; model: string; usage: Record<string, number>; at?: number } | null = null
   const flush = (): void => {
-    if (current !== null && !seen.has(current.id)) {
+    const inRange = since === undefined || (current?.at !== undefined && current.at >= since)
+    if (current !== null && inRange && !seen.has(current.id)) {
       seen.add(current.id)
       const t = tallyOf(current.usage)
       if (!isEmptyTally(t)) {
@@ -323,6 +324,11 @@ export function tallyGrepLines(stdout: string): Counted {
     if (asId?.[1] !== undefined) {
       flush()
       current = { id: asId[1], model, usage: {} }
+      continue
+    }
+    const asTime = /^"timestamp":"([^"]+)"$/.exec(line)
+    if (asTime?.[1] !== undefined) {
+      if (current !== null && current.at === undefined) current.at = Date.parse(asTime[1])
       continue
     }
     const asCount = /^"(\w+)":(\d+)$/.exec(line)

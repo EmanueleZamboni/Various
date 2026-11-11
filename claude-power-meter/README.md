@@ -25,6 +25,11 @@ public measurements that exist, and every coefficient can be changed in
   intensity you set, everyday comparisons (phone charges, LED-bulb hours,
   microwave seconds, metres of electric driving, Google searches), and the
   token counts by model that the estimate rests on.
+- **This month, all chats**: `/power` and the panel add up every Claude Code
+  chat on this computer this calendar month (main conversations and their
+  subagents), read from the transcripts Claude Code keeps, refreshed every 10
+  minutes. Chats in the web, phone or cloud sessions run elsewhere and are
+  not on this computer, so they are not counted.
 - **`/power reset`**: start the count over, to measure one task.
 - **Resumed sessions** (`claude --resume`, `--continue`) and a plugin turned
   on mid-session read the responses already in the transcript file, so the

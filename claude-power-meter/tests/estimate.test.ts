@@ -95,3 +95,15 @@ test('damage follows the energy', async () => {
   expect(fmtUsd(i.damageUsd)).toBe('5.5¢')
   expect(fmtUsd(12.5)).toBe('$12.50')
 })
+
+test('a month filter keeps only rows dated inside it, in both readers', async () => {
+  const since = Date.parse('2026-11-01T00:00:00Z')
+  const row = (id: string, at: string) =>
+    JSON.stringify({ type: 'assistant', message: { id, model: 'claude-opus-5-5', usage: { output_tokens: 100 } }, timestamp: at })
+  const text = [row('msg_old', '2026-10-31T23:00:00Z'), row('msg_new', '2026-11-02T10:00:00Z')].join('\n')
+  expect(tallyJsonl(text, new Set(), since).messages).toBe(1)
+  const grep = ['"model":"claude-opus-5-5"', '"id":"msg_old"', '"output_tokens":100', '"timestamp":"2026-10-31T23:00:00Z"',
+    '"model":"claude-opus-5-5"', '"id":"msg_new"', '"output_tokens":100', '"timestamp":"2026-11-02T10:00:00Z"'].join('\n')
+  expect(tallyGrepLines(grep, new Set(), since).messages).toBe(1)
+  expect(tallyGrepLines(grep).messages).toBe(2)
+})
