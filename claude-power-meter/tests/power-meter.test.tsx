@@ -262,3 +262,16 @@ test('a resumed session also reads its subagents back', async ($, on) => {
   expect(ran.text).toContain('claude-haiku-5-5')
   expect(DIR.length).toBeGreaterThan(0)
 })
+
+test('the monthly total carries its tag on every surface', async ($, on) => {
+  const status: Array<string | undefined> = []
+  engine(on, status)
+  on('fs.list', () => ({ value: [] }))
+  await $.session.start(START)
+  await $.command.run(RUN)
+  for (const surface of ['terminal', 'desktop', 'vscode', 'mobile'] as const) {
+    const ui = await $.ui.mount({ ...PANE, surface })
+    expect((await ui.find({ type: 'Text', text: /LOCAL CLAUDE CODE CHATS ONLY/ }))?.text).toBe(' LOCAL CLAUDE CODE CHATS ONLY ')
+    await ui.unmount()
+  }
+})

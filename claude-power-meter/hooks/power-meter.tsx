@@ -246,7 +246,10 @@ export const register: Register = (on, options) => {
         {month !== null && (
           <Box flexDirection="column">
             <Text> </Text>
-            <Text weight="semibold">This month, local Claude Code chats only</Text>
+            <Box flexDirection="row" gap={1}>
+              <Text weight="semibold">This month</Text>
+              <Text backgroundColor="claude" color="inverseText" weight="bold"> LOCAL CLAUDE CODE CHATS ONLY </Text>
+            </Box>
             <Text>≈ {fmtWh(totalWh(month.byModel, rates))} in {month.chats} chats</Text>
             <Text dimColor>{homeShare(totalWh(month.byModel, rates))}</Text>
           </Box>
@@ -444,7 +447,11 @@ async function scanMonth($: Dollar, force: boolean): Promise<void> {
     const d = new Date(now)
     const since = new Date(d.getFullYear(), d.getMonth(), 1).getTime()
     const projects = `${base}/projects`
-    if (!(await $.fs.exists(projects))) return
+    if (!(await $.fs.exists(projects))) {
+      // No chats saved on this computer yet: the month is zero, said as such.
+      await update($, monthTotal, (): MonthTotal => ({ month: key, byModel: {}, chats: 0, messages: 0, at: now }))
+      return
+    }
     const seen = new Set<string>()
     let byModel: Record<string, Tally> = {}
     let chats = 0
@@ -498,7 +505,7 @@ function monthReport(month: MonthTotal | null, rates: Rates): string {
   return [
     '',
     '',
-    `This month (${month.month}), local Claude Code chats only: ≈ ${fmtWh(wh)} in ${plural(month.chats, 'chat')}, ${plural(month.messages, 'model response')}.`,
+    `[LOCAL CLAUDE CODE CHATS ONLY] This month (${month.month}): ≈ ${fmtWh(wh)} in ${plural(month.chats, 'chat')}, ${plural(month.messages, 'model response')}.`,
     `That is ${homeShare(wh)}.`,
   ].join('\n')
 }
