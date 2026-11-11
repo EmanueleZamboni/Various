@@ -275,3 +275,13 @@ test('the monthly total carries its tag on every surface', async ($, on) => {
     await ui.unmount()
   }
 })
+
+test('the panel opens unasked only once a window is attached', async ($, on) => {
+  const status: Array<string | undefined> = []
+  engine(on, status)
+  on('session.attach', (_, e) => ({ clientId: e.clientId }))
+  on('ui.panes', () => ({ value: [] }))
+  OPENED.length = 0
+  await $.session.start(START)
+  expect(OPENED.length).toBe(0)
+})
