@@ -1,6 +1,6 @@
 {
   "name": "power-meter",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Estimates the electricity your Claude Code session uses (watt-hours and watts) and the damage it does (CO2, water, climate cost), from the tokens each model response reports",
   "author": {
     "name": "Emanuele Zamboni"
@@ -60,22 +60,29 @@
     "cache_read_fraction": {
       "type": "number",
       "title": "Cache-read token, as a fraction of an output token",
-      "description": "How much energy one input token served from the prompt cache costs relative to one output token (default 0.005)",
-      "default": 0.005,
+      "description": "How much energy one input token served from the prompt cache costs relative to one output token, for handling it once per request (default 0.002)",
+      "default": 0.002,
+      "min": 0
+    },
+    "context_doubling_tokens": {
+      "type": "number",
+      "title": "Context length that doubles a generated token's cost",
+      "description": "Each generated token re-reads the conversation's memory, so it costs more in a long chat: at this many tokens of context it costs twice a short chat's. 0 turns this off (default 200000)",
+      "default": 200000,
       "min": 0
     },
     "grid_g_co2_per_kwh": {
       "type": "number",
       "title": "Grid carbon intensity (g CO2 per kWh)",
-      "description": "Used for the CO2 line of /power. Roughly 400 for the US grid average, lower in the EU (default 400)",
-      "default": 400,
+      "description": "Used for CO2. 450 is the location-based intensity of the US data-centre regions Claude runs in; the EU and Italy are lower (default 450)",
+      "default": 450,
       "min": 0
     },
     "water_ml_per_wh": {
       "type": "number",
       "title": "Water per Wh (mL)",
-      "description": "Water used per watt-hour: data-centre cooling plus power generation (default 2)",
-      "default": 2,
+      "description": "Water consumed per watt-hour: about 0.45 mL for data-centre cooling plus 1.25 mL at power plants (default 1.7)",
+      "default": 1.7,
       "min": 0
     },
     "social_cost_usd_per_tonne": {

@@ -4,6 +4,7 @@ import {
   DEFAULT_IMPACT,
   DEFAULT_RATES,
   fmtUsd,
+  homeShare,
   impactOf,
   equivalents,
   familyOf,
@@ -24,11 +25,13 @@ test('model families are read off the model id', async () => {
 })
 
 test('the energy of a tally follows the rates', async () => {
-  const tally = { input: 100, output: 2000, cacheWrite: 5000, cacheRead: 100_000, requests: 1 }
-  // 2 Wh/1k × (2000 + 20 + 1000 + 500)
-  expect(whOf(tally, 'claude-opus-5-5', DEFAULT_RATES).toFixed(5)).toBe('7.04000')
+  const tally = { input: 100, output: 2000, cacheWrite: 5000, cacheRead: 100_000, requests: 1, attn: 2000 * 105_100 }
+  // 2 Wh/1k × (2000 + 1051 context + 20 + 1000 + 200)
+  expect(whOf(tally, 'claude-opus-5-5', DEFAULT_RATES).toFixed(5)).toBe('8.54200')
   // an unknown model is priced as Sonnet
-  expect(whOf(tally, 'mystery', DEFAULT_RATES).toFixed(5)).toBe('3.52000')
+  expect(whOf(tally, 'mystery', DEFAULT_RATES).toFixed(5)).toBe('4.27100')
+  // with the context effect off
+  expect(whOf(tally, 'claude-opus-5-5', { ...DEFAULT_RATES, contextDoublingTokens: 0 }).toFixed(5)).toBe('6.44000')
 })
 
 test('numbers read naturally', async () => {
@@ -67,8 +70,8 @@ test('grep output is summed once per message id', async () => {
   ].join('\n')
   const counted = tallyGrepLines(stdout)
   expect(counted.messages).toBe(2)
-  expect(counted.byModel['claude-opus-5-5']).toEqual({ input: 2, output: 1000, cacheWrite: 20, cacheRead: 300, requests: 1 })
-  expect(counted.byModel['claude-haiku-5-5']).toEqual({ input: 0, output: 500, cacheWrite: 0, cacheRead: 0, requests: 1 })
+  expect(counted.byModel['claude-opus-5-5']).toEqual({ input: 2, output: 1000, cacheWrite: 20, cacheRead: 300, requests: 1, attn: 322_000 })
+  expect(counted.byModel['claude-haiku-5-5']).toEqual({ input: 0, output: 500, cacheWrite: 0, cacheRead: 0, requests: 1, attn: 0 })
 })
 
 test('a transcript is summed once per message id, skipping rows without usage', async () => {
@@ -80,10 +83,15 @@ test('a transcript is summed once per message id, skipping rows without usage', 
   expect(counted.byModel['claude-sonnet-5-5']?.output).toBe(15)
 })
 
+test('a home month reads as a share', async () => {
+  expect(homeShare(1350)).toBe("1.0% of a one-person home's monthly electricity in Europe (≈135 kWh), 0.2% in the US (≈550 kWh)")
+  expect(homeShare(67_500)).toBe("50% of a one-person home's monthly electricity in Europe (≈135 kWh), 12% in the US (≈550 kWh)")
+})
+
 test('damage follows the energy', async () => {
   const i = impactOf(640, DEFAULT_IMPACT)
-  expect(i.co2Grams).toBe(256)
-  expect(i.waterMl).toBe(1280)
-  expect(fmtUsd(i.damageUsd)).toBe('4.9¢')
+  expect(i.co2Grams).toBe(288)
+  expect(i.waterMl.toFixed(1)).toBe('1088.0')
+  expect(fmtUsd(i.damageUsd)).toBe('5.5¢')
   expect(fmtUsd(12.5)).toBe('$12.50')
 })
