@@ -255,7 +255,7 @@ export const register: Register = (on, options) => {
             <Text> </Text>
             <Box flexDirection="row" gap={1}>
               <Text weight="semibold">This month</Text>
-              <Text backgroundColor="claude" color="inverseText" weight="bold"> LOCAL CLAUDE CODE CHATS ONLY </Text>
+              <Text dimColor size="footnote">local Claude Code chats only</Text>
             </Box>
             <Text>≈ {fmtWh(totalWh(month.byModel, rates))} in {month.chats} chats</Text>
             <Text dimColor>{homeShare(totalWh(month.byModel, rates))}</Text>
@@ -523,7 +523,7 @@ function monthReport(month: MonthTotal | null, rates: Rates): string {
   return [
     '',
     '',
-    `[LOCAL CLAUDE CODE CHATS ONLY] This month (${month.month}): ≈ ${fmtWh(wh)} in ${plural(month.chats, 'chat')}, ${plural(month.messages, 'model response')}.`,
+    `This month (${month.month}, local Claude Code chats only): ≈ ${fmtWh(wh)} in ${plural(month.chats, 'chat')}, ${plural(month.messages, 'model response')}.`,
     `That is ${homeShare(wh)}.`,
   ].join('\n')
 }

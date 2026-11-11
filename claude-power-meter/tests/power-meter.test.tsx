@@ -272,7 +272,7 @@ test('the monthly total carries its tag on every surface', async ($, on) => {
   await $.command.run(RUN)
   for (const surface of ['terminal', 'desktop', 'vscode', 'mobile'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
-    expect((await ui.find({ type: 'Text', text: /LOCAL CLAUDE CODE CHATS ONLY/ }))?.text).toBe(' LOCAL CLAUDE CODE CHATS ONLY ')
+    expect((await ui.find({ type: 'Text', text: /local Claude Code chats only/ }))?.text).toBe('local Claude Code chats only')
     await ui.unmount()
   }
 })
