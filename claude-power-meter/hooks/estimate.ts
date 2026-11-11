@@ -219,7 +219,7 @@ export function homeShareShort(wh: number): string {
     const p = (wh / x) * 100
     return p >= 10 ? `${Math.round(p)}%` : p >= 0.1 ? `${p.toFixed(1)}%` : p > 0 ? `${Number(p.toPrecision(1))}%` : '0%'
   }
-  return `${pct(HOME_MONTH_WH.eu)} of a one-person home's month (EU), ${pct(HOME_MONTH_WH.us)} (US)`
+  return `${pct(HOME_MONTH_WH.eu)} person/month EU · ${pct(HOME_MONTH_WH.us)} person/month US`
 }
 
 /** Everyday comparisons for an amount of energy; the reference values are in the README. */

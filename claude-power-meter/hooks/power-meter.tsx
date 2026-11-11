@@ -581,7 +581,7 @@ const pendingWhOf = (m: Meter, rates: Rates): number => totalWh(pendingByModel(m
 function statusLine(m: Meter, rates: Rates, impact: ImpactRates): string {
   const total = totalWh(mergeByModel(m.seeded, m.live), rates) + pendingWhOf(m, rates)
   const water = impactOf(total, impact).waterMl
-  return `⚡ ≈${fmtWh(total)} used · 💧 ≈${fmtWater(water)} water · ${homeShareShort(total)}`
+  return `⚡ ≈${fmtWh(total)} · ${homeShareShort(total)} · 💧 ≈${fmtWater(water)}`
 }
 
 const percent = (fraction: number): string => {

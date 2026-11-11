@@ -48,8 +48,8 @@ test('a finished turn is counted and pinned to the status line', async ($, on) =
   await $.session.start(START)
   await $.turn.complete({ answer: 'done', durationMs: 20_000, isAborted: false, turnId: 't1', reason: 'answer', usage: OPUS_TURN })
 
-  expect(status.at(-1)).toContain('≈8.5 Wh used')
-  expect(status.at(-1)).toContain('💧 ≈14.5 mL water')
+  expect(status.at(-1)).toContain('⚡ ≈8.5 Wh ·')
+  expect(status.at(-1)).toContain('💧 ≈14.5 mL')
 
   const ran = await $.command.run(RUN)
   expect(ran.text).toContain('Energy so far')
@@ -76,7 +76,7 @@ test('a turn in progress shows what its responses reported, and an interrupt kee
   }
 
   await $.turn.complete({ answer: '', durationMs: 5_000, isAborted: true, turnId: 't2', reason: 'aborted' })
-  expect(status.at(-1)).toContain('≈8.5 Wh used')
+  expect(status.at(-1)).toContain('⚡ ≈8.5 Wh ·')
 })
 
 test('the rates follow the plugin options', { options: { wh_per_1k_output_opus: 4 } }, async ($, on) => {
@@ -86,7 +86,7 @@ test('the rates follow the plugin options', { options: { wh_per_1k_output_opus: 
   await $.session.start(START)
   await $.turn.complete({ answer: 'done', durationMs: 20_000, isAborted: false, turnId: 't1', reason: 'answer', usage: OPUS_TURN })
 
-  expect(status.at(-1)).toContain('≈17.1 Wh used')
+  expect(status.at(-1)).toContain('⚡ ≈17.1 Wh ·')
 })
 
 test('a subagent turn is counted but does not become the last turn', async ($, on) => {
@@ -105,7 +105,7 @@ test('a subagent turn is counted but does not become the last turn', async ($, o
     usage: { ...OPUS_TURN, model: 'claude-haiku-5-5' },
   })
 
-  expect(status.at(-1)).toContain('≈9.8 Wh used')
+  expect(status.at(-1)).toContain('⚡ ≈9.8 Wh ·')
   const ran = await $.command.run(RUN)
   expect(ran.text).toContain('1 turn, 1 subagent turn, 2 model responses')
   expect(ran.text).toContain('claude-haiku-5-5')
@@ -143,7 +143,7 @@ test('a resumed session reads its earlier responses back, once per message id', 
   await $.session.start(START)
 
   // Sonnet, 1 Wh/1k: output 4000 + 20 × 0.2 + 40 × 0.2 + 1000 × 0.005 = 4017 weighted → 4.0 Wh
-  expect(status.at(-1)).toContain('≈4 Wh used')
+  expect(status.at(-1)).toContain('⚡ ≈4 Wh ·')
   const ran = await $.command.run(RUN)
   expect(ran.text).toContain('2 earlier responses read back from the transcript')
   expect(ran.text).toContain('4,000')
@@ -185,7 +185,7 @@ test('/power reset starts the count over', async ($, on) => {
   await $.turn.complete({ answer: 'done', durationMs: 20_000, isAborted: false, turnId: 't1', reason: 'answer', usage: OPUS_TURN })
   const reset = await $.command.run({ ...RUN, args: 'reset' })
   expect(reset.text).toContain('reset')
-  expect(status.at(-1)).toContain('≈0 Wh used')
+  expect(status.at(-1)).toContain('⚡ ≈0 Wh ·')
 
   const ran = await $.command.run(RUN)
   expect(ran.text).toContain('Nothing counted yet')
@@ -231,7 +231,7 @@ test('the band shows the watt-hours, the home share and More', async ($, on) => 
   await $.turn.complete({ answer: 'done', durationMs: 20_000, isAborted: false, turnId: 't1', reason: 'answer', usage: OPUS_TURN })
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...BAND, surface })
-    expect((await ui.find({ type: 'Text', text: /Wh used/ }))?.text).toBe("⚡ ≈8.5 Wh used · 💧 ≈14.5 mL water · 0.006% of a one-person home's month (EU), 0.002% (US)")
+    expect((await ui.find({ type: 'Text', text: /person\/month/ }))?.text).toBe('⚡ ≈8.5 Wh · 0.006% person/month EU · 0.002% person/month US · 💧 ≈14.5 mL')
     await ui.press({ key: 'more' })
     await ui.unmount()
   }
