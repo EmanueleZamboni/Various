@@ -199,9 +199,8 @@ $S rm -rf "$T"
 SEG="$HOME/segretario"
 if [ ! -d "$SEG/.git" ]; then
   if git clone -q https://github.com/EmanueleZamboni/segretario.git "$SEG" 2>/dev/null; then log "segretario: cloned into $SEG"; else log "segretario: clone FAILED"; fi
-else
-  git -C "$SEG" fetch -q origin 2>/dev/null && git -C "$SEG" merge -q --ff-only origin/main 2>/dev/null && log "segretario: updated to $(git -C "$SEG" log -1 --format=%h)"
 fi
+# Gli aggiornamenti del Segretario li fa SOLO il suo auto-update.sh, che controlla le firme (.deploy/).
 chmod +x "$SEG"/scripts/*.sh 2>/dev/null
 # Segreto del Segretario derivato da quello di Keep (sha256, a senso unico): così l'URL del connettore è
 # calcolabile da chi conosce già l'URL di Keep, senza doverlo leggere dalla VM. Va in .env PRIMA del container.
