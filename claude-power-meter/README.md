@@ -16,7 +16,7 @@ public measurements that exist, and every coefficient can be changed in
 
 ## What you get
 
-- **A line above the prompt**: the watt-hours used and their share of a one-person home's month, with a **More** button that opens the panel. Where that band is not drawn (the phone), the same line is the status line. Previously: **a status line** under the prompt, updated after every model response:
+- **A line above the prompt**: the watt-hours used, the water, and their share of a one-person home's month, with a **More** button that opens the panel. Where that band is not drawn (the phone), the same line is the status line. Previously: **a status line** under the prompt, updated after every model response:
   energy so far, and either the turn in progress or the last turn with its
   average power while it ran.
 - **A panel** beside the chat with the energy, the damage and a Reset button. It opens on its own where there is room, and with `/power`.

@@ -49,6 +49,7 @@ test('a finished turn is counted and pinned to the status line', async ($, on) =
   await $.turn.complete({ answer: 'done', durationMs: 20_000, isAborted: false, turnId: 't1', reason: 'answer', usage: OPUS_TURN })
 
   expect(status.at(-1)).toContain('≈8.5 Wh used')
+  expect(status.at(-1)).toContain('💧 ≈14.5 mL water')
 
   const ran = await $.command.run(RUN)
   expect(ran.text).toContain('Energy so far')
@@ -230,7 +231,7 @@ test('the band shows the watt-hours, the home share and More', async ($, on) => 
   await $.turn.complete({ answer: 'done', durationMs: 20_000, isAborted: false, turnId: 't1', reason: 'answer', usage: OPUS_TURN })
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...BAND, surface })
-    expect((await ui.find({ type: 'Text', text: /Wh used/ }))?.text).toBe("⚡ ≈8.5 Wh used · 0.006% of a one-person home's month (EU), 0.002% (US)")
+    expect((await ui.find({ type: 'Text', text: /Wh used/ }))?.text).toBe("⚡ ≈8.5 Wh used · 💧 ≈14.5 mL water · 0.006% of a one-person home's month (EU), 0.002% (US)")
     await ui.press({ key: 'more' })
     await ui.unmount()
   }
