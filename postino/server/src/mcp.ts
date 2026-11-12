@@ -1,6 +1,10 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import crypto from 'node:crypto';
 import { db } from './db.js';
+import { readAttachment } from './attachmentText.js';
+import { attachmentPath } from './mail/store.js';
+import { manager } from './mail/manager.js';
+import fs from 'node:fs';
 import { config } from './config.js';
 import { randomToken, sha256 } from './crypto.js';
 import { isAuthenticated } from './auth.js';
@@ -258,7 +262,7 @@ const TOOLS: Tool[] = [
   {
     name: 'read_thread',
     title: 'Read a conversation',
-    description: `All messages of a conversation as plain text, with sender, recipients, date and attachments. Message ids are what reply_to_message_id expects; attachment ids can be attached to a new email (send_email / create_draft). ${UNTRUSTED}`,
+    description: `All messages of a conversation as plain text, with sender, recipients, date and attachments. Message ids are what reply_to_message_id expects; attachment ids open with read_attachment, or can be attached to a new email (send_email / create_draft). ${UNTRUSTED}`,
     inputSchema: { type: 'object', properties: { thread_id: { type: 'string' } }, required: ['thread_id'], additionalProperties: false },
     annotations: { readOnlyHint: true, openWorldHint: true },
     run: (a) => {
@@ -284,6 +288,36 @@ const TOOLS: Tool[] = [
         };
       });
       return { thread_id: d.thread.id, account_id: d.thread.accountId, subject: d.thread.subject, messages };
+    },
+  },
+  {
+    name: 'read_attachment',
+    title: 'Open an attachment',
+    description: `Open an email attachment (attachment_id from read_thread): the text of a PDF, the image itself (photos, screenshots), or the text of a text/CSV/HTML file. A scanned PDF has no text: say so to the user. ${UNTRUSTED}`,
+    inputSchema: { type: 'object', properties: { attachment_id: { type: 'string' } }, required: ['attachment_id'], additionalProperties: false },
+    annotations: { readOnlyHint: true, openWorldHint: true },
+    run: async (a) => {
+      const row = db
+        .prepare('SELECT a.id, a.filename, a.content_type, a.size, m.account_id, m.subject FROM attachments a JOIN messages m ON m.id = a.message_row WHERE a.id = ?')
+        .get(Number(a.attachment_id)) as { id: number; filename: string; content_type: string; size: number; account_id: number; subject: string } | undefined;
+      if (!row) throw fail('No attachment with that id. Take the ids from read_thread.');
+      let bytes: Buffer;
+      try {
+        const sync = manager.get(row.account_id);
+        bytes = await fs.promises.readFile(sync ? await sync.cacheAttachment(row.id) : attachmentPath(row.id));
+      } catch (e) {
+        throw fail(`Could not download the attachment from the mail server: ${(e as Error).message}`);
+      }
+      const head = { attachment_id: String(row.id), filename: row.filename, type: row.content_type, size_kb: Math.round(bytes.length / 1024), email_subject: row.subject };
+      let r;
+      try {
+        r = await readAttachment(bytes, row.content_type, row.filename);
+      } catch (e) {
+        throw fail(`Could not read ${row.filename}: ${(e as Error).message}`);
+      }
+      if (r.kind === 'image') return { mcpContent: [{ type: 'text', text: JSON.stringify(head) }, { type: 'image', data: r.data, mimeType: r.mimeType }] };
+      if (r.kind === 'unreadable') return { ...head, readable: false, note: r.reason };
+      return { ...head, pages: r.pages, truncated: r.truncated || undefined, text: r.text };
     },
   },
   {
@@ -661,6 +695,8 @@ async function handleRpc(m: RpcReq): Promise<unknown | null> {
       const args = (m.params?.arguments && typeof m.params.arguments === 'object' ? m.params.arguments : {}) as Args;
       try {
         const out = await tool.run(args);
+        // A tool can answer with MCP content directly (an image, or text with an image).
+        if (out && typeof out === 'object' && Array.isArray((out as { mcpContent?: unknown }).mcpContent)) return ok({ content: (out as { mcpContent: unknown[] }).mcpContent });
         return ok({ content: [{ type: 'text', text: JSON.stringify(out) }], structuredContent: out });
       } catch (e) {
         const msg = (e as Error & { toolError?: boolean }).toolError ? (e as Error).message : 'Postino could not do that right now.';
