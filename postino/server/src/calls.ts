@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import crypto from 'node:crypto';
 import { db, getSetting, setSetting } from './db.js';
 import { randomToken } from './crypto.js';
+import { addSms, importSmsXml, smsCount, smsDir } from './sms.js';
 
 /**
  * Phone call log. A web app cannot read the phone's call log, so calls come in two ways:
@@ -222,6 +223,18 @@ export function registerCallRoutes(app: FastifyInstance): void {
     const got = Buffer.from(String(req.params.token || ''));
     if (got.length !== want.length || !crypto.timingSafeEqual(got, want)) return reply.code(404).send({ error: 'not_found' });
     const b = { ...(req.query || {}), ...((req.body && typeof req.body === 'object' ? req.body : {}) as Record<string, string>) };
+    // Text messages use the same link: type=sms_in / sms_out, the text in text (or message/body). The text is not
+    // kept in the "last received" note.
+    if (/^sms/i.test(String(b.type ?? ''))) {
+      const dir = smsDir(b.type);
+      const num = String(b.number ?? b.phone ?? '');
+      setSetting('sms.lastHook', { at: new Date().toISOString(), fields: { type: String(b.type).slice(0, 20), number: num.slice(0, 40) } });
+      if (!dir || !num || /[[\]%{}]/.test(num)) return reply.code(400).send({ error: 'bad_sms', message: 'Need number and type (sms_in or sms_out).' });
+      const text = String(b.text ?? b.message ?? b.body ?? '');
+      const name = /[[\]%{}]/.test(String(b.name ?? '')) ? '' : String(b.name ?? '');
+      addSms({ number: num, name, dir, body: /^\[[\w_]+\]$/.test(text) ? '' : text, at: parseTime(b.time) ?? new Date(), source: 'phone' });
+      return { ok: true };
+    }
     setSetting('calls.lastHook', { at: new Date().toISOString(), fields: Object.fromEntries(Object.entries(b).map(([k, v]) => [k, String(v).slice(0, 60)])) });
     const number = String(b.number ?? b.phone ?? '');
     const type = callType(b.type ?? b.direction);
@@ -240,7 +253,7 @@ export function registerCallRoutes(app: FastifyInstance): void {
   app.get('/api/calls/setup', async (req) => {
     const base = `${req.protocol}://${req.host}`;
     const n = db.prepare('SELECT COUNT(*) AS n, MAX(started_at) AS last FROM calls').get() as { n: number; last: string | null };
-    return { hookUrl: `${base}/hooks/calls/${token()}`, count: n.n, last: n.last, lastHook: getSetting('calls.lastHook', null) };
+    return { hookUrl: `${base}/hooks/calls/${token()}`, count: n.n, last: n.last, lastHook: getSetting('calls.lastHook', null), sms: smsCount(), smsLastHook: getSetting('sms.lastHook', null) };
   });
   app.post('/api/calls/token', async () => {
     setSetting('calls.token', randomToken(24));
@@ -250,7 +263,12 @@ export function registerCallRoutes(app: FastifyInstance): void {
     const file = await req.file();
     if (!file) return reply.code(400).send({ error: 'no_file', message: 'Choose the calls file.' });
     const xml = (await file.toBuffer()).toString('utf8');
-    if (!xml.includes('<call')) return reply.code(400).send({ error: 'bad_file', message: 'That is not a calls backup from SMS Backup & Restore (calls-….xml).' });
+    // The same button takes the calls file and the messages file (sms-….xml) of SMS Backup & Restore.
+    if (xml.includes('<sms') || xml.includes('<smses')) {
+      const r = importSmsXml(xml);
+      return { added: r.added, skipped: r.skipped, kind: 'sms', mms: r.mms };
+    }
+    if (!xml.includes('<call')) return reply.code(400).send({ error: 'bad_file', message: 'That is not a backup from SMS Backup & Restore (calls-….xml or sms-….xml).' });
     return importCallsXml(xml);
   });
   app.get<{ Querystring: { q?: string; limit?: string } }>('/api/calls', async (req) => listCalls({ query: req.query.q, limit: Number(req.query.limit) || 30 }));

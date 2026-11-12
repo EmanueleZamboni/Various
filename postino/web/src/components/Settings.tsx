@@ -1475,7 +1475,7 @@ function CallsSettings() {
     setBusy(true);
     try {
       const r = await api.calls.import(file);
-      toast({ text: `${r.added} calls added${r.skipped ? `, ${r.skipped} already there or unreadable` : ''}`, kind: 'success' });
+      toast({ text: `${r.added} ${r.kind === 'sms' ? 'texts' : 'calls'} added${r.skipped ? `, ${r.skipped} already there or unreadable` : ''}`, kind: 'success' });
       refresh();
     } catch (e) {
       toast({ text: (e as Error).message, kind: 'error' });
@@ -1493,33 +1493,35 @@ function CallsSettings() {
   };
   const url = setup?.hookUrl ?? '';
   const lines = [
-    { label: 'Incoming call ended', type: 'in' },
-    { label: 'Outgoing call ended', type: 'out' },
-    { label: 'Missed call', type: 'missed' },
+    { label: 'Incoming call ended', type: 'in', extra: '&number=[call_number]&name=[call_name]' },
+    { label: 'Outgoing call ended', type: 'out', extra: '&number=[call_number]&name=[call_name]' },
+    { label: 'Missed call', type: 'missed', extra: '&number=[call_number]&name=[call_name]' },
+    { label: 'SMS received', type: 'sms_in', extra: '&number=[sms_number]&name=[sms_name]&text=[sms_message]' },
+    { label: 'SMS sent', type: 'sms_out', extra: '&number=[sms_number]&name=[sms_name]&text=[sms_message]' },
   ];
   return (
     <>
-      <h2>Calls</h2>
+      <h2>Calls and texts</h2>
       <div className="settings-section">
-        <p className="help">Your phone&apos;s call log (who, when, which way, how long; never what was said), so Claude can answer things like “when did I last call Marco?”. {setup ? `${setup.count} calls stored.` : ''}</p>
+        <p className="help">Your phone&apos;s call log (who, when, which way, how long; never what was said) and text messages, so Claude can answer things like “when did I last call Marco?”. {setup ? `${setup.count} calls and ${setup.sms?.count ?? 0} texts stored.` : ''}</p>
         <div className="card claude-steps">
-          <h3 className="keep-title">1. Past calls, from a file</h3>
+          <h3 className="keep-title">1. Past calls and texts, from a file</h3>
           <ol>
             <li>On the phone install <b>SMS Backup &amp; Restore</b> (Play Store, free).</li>
-            <li>Open it → <b>Back up</b> → keep only <b>Phone calls</b> → save the backup to your phone or Google Drive.</li>
-            <li>Upload the <code>calls-….xml</code> file here (from the phone, or from a computer):</li>
+            <li>Open it → <b>Back up</b> → keep <b>Phone calls</b> and <b>Messages</b> → save the backup to your phone or Google Drive.</li>
+            <li>Upload the <code>calls-….xml</code> file here, then the <code>sms-….xml</code> file (from the phone, or from a computer):</li>
           </ol>
           <label className="btn btn-primary btn-sm calls-upload">
-            {busy ? 'Importing…' : 'Choose the calls file'}
+            {busy ? 'Importing…' : 'Choose a backup file'}
             <input type="file" accept=".xml,text/xml,application/xml" hidden onChange={(e) => void upload(e.target.files?.[0])} disabled={busy} />
           </label>
-          <small className="help">You can upload a newer backup any time: calls already here are skipped.</small>
+          <small className="help">You can upload a newer backup any time: calls and texts already here are skipped.</small>
         </div>
         <div className="card claude-steps">
-          <h3 className="keep-title">2. New calls, automatically</h3>
-          <p className="help">Install <b>MacroDroid</b> (Play Store, free) and make 3 macros. In each: <b>Trigger</b> as below, <b>Action → Connectivity → HTTP Request</b>, method GET, and this URL. In the URL, <code>[call_number]</code> and <code>[call_name]</code> are MacroDroid&apos;s “magic text” for the caller&apos;s number and contact name: if your version names them differently, pick them from the <b>[…]</b> button.</p>
+          <h3 className="keep-title">2. New calls and texts, automatically</h3>
+          <p className="help">Install <b>MacroDroid</b> (Play Store, free) and make 5 macros. In each: <b>Trigger</b> as below, <b>Action → Connectivity → HTTP Request</b>, method GET, and this URL. The words in square brackets are MacroDroid&apos;s “magic text” (number, contact name, SMS text): if your version names them differently, pick them from the <b>[…]</b> button. For the SMS macros turn on <b>URL encode</b> if it is offered.</p>
           {lines.map((l) => {
-            const full = `${url}?type=${l.type}&number=[call_number]&name=[call_name]`;
+            const full = `${url}?type=${l.type}${l.extra}`;
             return (
               <div key={l.type} className="calls-macro">
                 <b>{l.label}</b>

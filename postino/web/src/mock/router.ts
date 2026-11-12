@@ -352,7 +352,7 @@ const mockGroups: Record<string, string> = { 'no-reply@accounts.google.com': 'Go
 for (const n of ['Amazon', 'AliExpress', 'Canva', 'Cloudflare', 'Github', 'Instagram', 'Spotify', 'TikTok', 'Twitch', 'Waze', 'YouTube', 'Zoho', 'eBay', 'Patreon', 'Steam', 'Splitwise', 'Microsoft', 'Openai', 'Brevo', 'Envato'])
   mockGroups[`no-reply@${n.toLowerCase()}.com`] = n;
 const mockGroupUsed: Record<string, string> = {};
-on('GET', '/api/calls/setup', () => json({ hookUrl: 'https://postino.example.com/hooks/calls/abc', count: 2, last: new Date().toISOString(), lastHook: null }));
+on('GET', '/api/calls/setup', () => json({ hookUrl: 'https://postino.example.com/hooks/calls/abc', count: 2, last: new Date().toISOString(), lastHook: null, sms: { count: 0, last: null } }));
 on('GET', '/api/calls', () => json({ total: 2, calls: [{ name: 'Marco Rossi', number: '+393331112222', type: 'outgoing', at: new Date().toISOString(), duration: '2:05' }, { name: '', number: '+390511234567', type: 'missed', at: new Date(Date.now() - 3600_000).toISOString(), duration: '0:00' }] }));
 on('GET', '/api/whatsapp/status', () => json({ state: 'off', qr: null, code: null, me: null, chats: 0, messages: 0 }));
 on('GET', '/api/ops/keep', () => json({ installed: true, stage: 'installed', detail: '', email: 'you@gmail.com', urlReady: false }));

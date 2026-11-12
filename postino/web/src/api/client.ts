@@ -157,12 +157,12 @@ export const api = {
     done: (name: string, account?: string) => post<{ affected: number }>('/api/groups/done', { name, account }),
   },
   calls: {
-    setup: () => get<{ hookUrl: string; count: number; last: string | null; lastHook: { at: string; fields: Record<string, string> } | null }>('/api/calls/setup'),
+    setup: () => get<{ hookUrl: string; count: number; last: string | null; lastHook: { at: string; fields: Record<string, string> } | null; sms?: { count: number; last: string | null } }>('/api/calls/setup'),
     list: (q?: string) => get<{ total: number; calls: { name: string; number: string; type: string; at: string; duration: string }[] }>(`/api/calls${qs({ q, limit: '30' })}`),
     import: (file: File) => {
       const f = new FormData();
       f.append('file', file);
-      return post<{ added: number; skipped: number }>('/api/calls/import', f);
+      return post<{ added: number; skipped: number; kind?: 'sms' }>('/api/calls/import', f);
     },
     newLink: () => post<{ ok: true }>('/api/calls/token'),
     clear: () => del<{ ok: true }>('/api/calls'),
