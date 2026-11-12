@@ -31,12 +31,14 @@ if [ "$MODE" != off ] && [ "$LOCAL" != "$REMOTE" ]; then
   if [ "$MODE" = obbligo ]; then TARGET="${NEWEST_SIGNED:-$LOCAL}"; fi
 fi
 report() {   # what the Segretario shows in stato(): no secrets, only commit ids and yes/no
-  local dir="$HOME/segretario/deploy-stato" inst="$1" note="$2" hs=false rs=false
+  local dir="$HOME/segretario/deploy-stato" inst="$1" note="$2" hs=false rs=false srv=false
   [ -d "$dir" ] || return 0
   [ "$MODE" != off ] && signed "$inst" && hs=true
   [ "$MODE" != off ] && signed "$REMOTE" && rs=true
-  printf '{"repo":"various","modo":"%s","installato":"%s","installato_firmato":%s,"github":"%s","github_firmato":%s,"nota":"%s","quando":"%s"}\n' \
-    "$MODE" "${inst:0:7}" "$hs" "${REMOTE:0:7}" "$rs" "$note" "$(date -u +%FT%TZ)" > "$dir/various.json.tmp" \
+  # Waiting changes that touch what runs on the server (not e.g. power-meter): the Segretario tells Ema about these.
+  [ "$inst" != "$REMOTE" ] && [ -n "$(git -C "$REPO" diff --name-only "$inst" "$REMOTE" -- postino keep-mcp .deploy 2>/dev/null | head -1)" ] && srv=true
+  printf '{"repo":"various","modo":"%s","installato":"%s","installato_firmato":%s,"github":"%s","github_firmato":%s,"attesa_server":%s,"nota":"%s","quando":"%s"}\n' \
+    "$MODE" "${inst:0:7}" "$hs" "${REMOTE:0:7}" "$rs" "$srv" "$note" "$(date -u +%FT%TZ)" > "$dir/various.json.tmp" \
     && mv -f "$dir/various.json.tmp" "$dir/various.json"
 }
 
