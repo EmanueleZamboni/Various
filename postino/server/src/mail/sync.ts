@@ -15,7 +15,7 @@ import {
   upsertHeader, updateFlags, storeBody, markBodyError, recomputeThread, storeAttachment, registerAttachmentMeta, attachmentPath,
   deleteMessagesByIds, deleteFolderMessages, refreshFolderCounts, isBlocked, isSafeSender, folderByRole, type FolderRow, type FolderRole, type MessageRow,
 } from './store.js';
-import { bodyFromParsed, normalizeMsgId, parseReferences, pickUnsubscribe, splitQuoted, makeSnippet, parserOptions, defaultFilename, type ParsedHeaders, type Address } from './parse.js';
+import { bodyFromParsed, looksLikeHtml, normalizeMsgId, parseReferences, pickUnsubscribe, splitQuoted, makeSnippet, parserOptions, defaultFilename, type ParsedHeaders, type Address } from './parse.js';
 import { sanitizeEmailHtml, htmlToText, textToHtml } from './sanitize.js';
 
 const EXTRA_HEADERS = ['references', 'list-unsubscribe', 'list-id', 'precedence', 'auto-submitted', 'x-auto-response-suppress', 'feedback-id', 'x-mailgun-sid', 'x-campaign', 'x-mailchimp-id', 'x-sg-eid'];
@@ -1007,6 +1007,11 @@ export class AccountSync {
       };
       text = first(textParts);
       html = first(htmlParts);
+    }
+    if (text && looksLikeHtml(text)) {
+      // HTML code sent as the plain-text part (see bodyFromParsed).
+      if (!html) html = text;
+      text = null;
     }
     if (!text && html) text = htmlToText(html);
     let outHtml: string | null = null;

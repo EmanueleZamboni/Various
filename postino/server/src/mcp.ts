@@ -19,6 +19,7 @@ import { cancelToDraft } from './routes/compose.js';
 import { parseSendAt } from './sendAt.js';
 import { uiSettings } from './settings.js';
 import { htmlToText } from './mail/sanitize.js';
+import { looksLikeHtml } from './mail/parse.js';
 import { listGroups, groupSuggestions, addSenders, removeSender, updateGroup } from './groups.js';
 import { bus } from './events.js';
 import { blockSender } from './routes/blocked.js';
@@ -263,16 +264,31 @@ const TOOLS: Tool[] = [
     name: 'read_thread',
     title: 'Read a conversation',
     description: `All messages of a conversation as plain text, with sender, recipients, date and attachments. Message ids are what reply_to_message_id expects; attachment ids open with read_attachment, or can be attached to a new email (send_email / create_draft). ${UNTRUSTED}`,
-    inputSchema: { type: 'object', properties: { thread_id: { type: 'string' } }, required: ['thread_id'], additionalProperties: false },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        thread_id: { type: 'string' },
+        message_id: { type: 'string', description: 'Only this message (to read the rest of a cut one).' },
+        offset: { type: 'integer', minimum: 0, description: 'With message_id: start at this character (the "continue_at" a cut message gives).' },
+      },
+      required: ['thread_id'],
+      additionalProperties: false,
+    },
     annotations: { readOnlyHint: true, openWorldHint: true },
     run: (a) => {
       const d = threadDetail(Number(a.thread_id));
       if (!d) throw fail('No conversation with that thread_id.');
+      const only = a.message_id !== undefined ? String(a.message_id) : null;
+      if (only && !d.messages.some((m) => m.id === only)) throw fail('That message_id is not in this conversation.');
+      const start = only ? Math.max(0, Number(a.offset) || 0) : 0;
       let budget = 60_000;
-      const messages = d.messages.map((m) => {
+      const messages = d.messages.filter((m) => !only || m.id === only).map((m) => {
         let text = m.body.text || (m.body.html ? htmlToText(m.body.html) : '');
+        // Mail stored before HTML-in-plain-text was recognised: give the words, not the code.
+        if (looksLikeHtml(text)) text = htmlToText(text);
+        if (start) text = text.slice(start);
         if (!m.body.fetched) text = m.body.error ? `(could not download this message: ${m.body.error}; trying again now)` : '(still downloading this message; try again in a few seconds)';
-        const cut = Math.max(0, Math.min(text.length, 15_000, budget));
+        const cut = Math.max(0, Math.min(text.length, only ? 60_000 : 15_000, budget));
         budget -= cut;
         return {
           message_id: m.id,
@@ -284,7 +300,10 @@ const TOOLS: Tool[] = [
           mine: m.mine,
           attachments: m.attachments.map((x) => ({ attachment_id: String(x.id), name: `${x.filename} (${Math.round(x.size / 1024)} KB)` })),
           calendar_invite: m.calendar ? { title: m.calendar.summary, start: m.calendar.start, end: m.calendar.end, location: m.calendar.location } : undefined,
-          text: text.slice(0, cut) + (cut < text.length ? '\n[…truncated]' : ''),
+          text: text.slice(0, cut),
+          ...(cut < text.length
+            ? { cut: true, chars_not_shown: text.length - cut, continue_at: start + cut, note: `The rest of this message was not sent: call read_thread again with message_id ${m.id} and offset ${start + cut}. Do not guess what it says.` }
+            : {}),
         };
       });
       return { thread_id: d.thread.id, account_id: d.thread.accountId, subject: d.thread.subject, messages };

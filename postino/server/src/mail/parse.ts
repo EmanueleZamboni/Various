@@ -203,8 +203,14 @@ export function bodyFromParsed(mail: ParsedMail, cidUrl: (contentId: string) => 
       cidMap.set(a.contentId.toLowerCase(), url);
     }
   }
-  const rawHtml = typeof mail.html === 'string' ? mail.html : null;
+  let rawHtml = typeof mail.html === 'string' ? mail.html : null;
   let text = mail.text ? mail.text.replace(/\r\n/g, '\n') : null;
+  // Some senders (airline itineraries, for one) put the page's HTML code in the "plain text"
+  // part: read it as HTML, and take the words out of it.
+  if (text && looksLikeHtml(text)) {
+    if (!rawHtml) rawHtml = text;
+    text = null;
+  }
   if (!text && rawHtml) text = htmlToText(rawHtml);
   const split = text ? splitQuoted(text) : { visible: '', quoted: null };
   let html: string | null = null;
@@ -230,6 +236,14 @@ export function bodyFromParsed(mail: ParsedMail, cidUrl: (contentId: string) => 
     }
   }
   return { text, html, quoted, hasRemoteImages, snippet, attachments, calendar };
+}
+
+/** HTML code where plain text was expected (a whole page, or text full of tags). */
+export function looksLikeHtml(text: string): boolean {
+  const head = text.slice(0, 2000).trimStart();
+  if (/^(<!doctype html|<html[\s>]|<head[\s>]|<body[\s>]|<!--\[if|<table[\s>]|<div[\s>])/i.test(head)) return true;
+  const tags = text.slice(0, 50_000).match(/<\/?(table|tbody|tr|td|div|span|p|br|img|a|style|center|font)\b[^>]*>/gi);
+  return !!tags && tags.length >= 15 && tags.join('').length > text.slice(0, 50_000).length * 0.2;
 }
 
 export function defaultFilename(contentType?: string): string {

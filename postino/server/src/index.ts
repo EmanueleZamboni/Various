@@ -30,6 +30,7 @@ import { registerWhatsAppRoutes, startWhatsApp } from './whatsapp.js';
 import { registerCallRoutes } from './calls.js';
 import { registerAiRoutes } from './ai.js';
 import { backfill, registerSmartRoutes } from './smart.js';
+import { fixHtmlInTextOnce } from './mail/repair.js';
 import { registerTriageRoutes, startTriage } from './triage.js';
 import { manager } from './mail/manager.js';
 import { startPushBridge, vapidKeys } from './push.js';
@@ -227,6 +228,14 @@ async function main(): Promise<void> {
     }
   }, 20_000).unref();
   setTimeout(() => fixSentUnreadOnce(), 20_000);
+  setTimeout(() => {
+    try {
+      const n = fixHtmlInTextOnce();
+      if (n) log.info({ n }, 'emails with HTML code as plain text repaired');
+    } catch (err) {
+      log.warn({ err: (err as Error).message }, 'html-in-text repair failed');
+    }
+  }, 25_000);
   startWhatsApp();
   await app.listen({ port: config.port, host: config.host });
   log.info({ port: config.port, data: config.dataDir }, 'postino listening');

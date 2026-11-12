@@ -138,7 +138,8 @@ function stripTags(html: string): string {
 
 export function htmlToText(html: string): string {
   let h = html.length > 400_000 ? html.slice(0, 400_000) : html;
-  for (const tag of ['style', 'script', 'head']) h = stripBlocks(h, tag);
+  h = h.replace(/<!--[\s\S]*?-->/g, ' ').replace(/<!\[(?:end)?if[^>]*>/gi, ' ');
+  for (const tag of ['style', 'script', 'head', 'title']) h = stripBlocks(h, tag);
   return stripTags(h)
     .replace(/&nbsp;/gi, ' ')
     .replace(/&amp;/gi, '&')
