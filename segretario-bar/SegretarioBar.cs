@@ -47,6 +47,10 @@ namespace SegretarioBar
         [DllImport("user32.dll")] public static extern bool GetCursorPos(out POINT p);
         [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
         [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+        public delegate void WinEventProc(IntPtr hook, uint ev, IntPtr hwnd, int idObject, int idChild, uint thread, uint time);
+        [DllImport("user32.dll")] public static extern IntPtr SetWinEventHook(uint min, uint max, IntPtr mod, WinEventProc proc, uint pid, uint tid, uint flags);
+        [DllImport("user32.dll")] public static extern bool UnhookWinEvent(IntPtr hook);
+        [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
         [DllImport("user32.dll")] public static extern IntPtr GetDC(IntPtr h);
         [DllImport("user32.dll")] public static extern int ReleaseDC(IntPtr h, IntPtr dc);
         [DllImport("gdi32.dll")] public static extern uint GetPixel(IntPtr dc, int x, int y);
@@ -269,6 +273,8 @@ namespace SegretarioBar
                             d.ContainsKey("top") ? Num(d["top"]) : 0 });
                     }
                 shape = list;
+                shapeVw = m.ContainsKey("vw") ? Num(m["vw"]) : 0;
+                shapeRight = m.ContainsKey("destra") && m["destra"] is bool && (bool)m["destra"];
                 open = m.ContainsKey("aperto") && m["aperto"] is bool && (bool)m["aperto"];
                 pageReady = true;
                 Follow();
@@ -404,7 +410,24 @@ namespace SegretarioBar
             catch { }
         }
 
-        int[] rowRel;            // the top row's free space, relative to the Claude window's top-left corner
+        // Windows tells us the moment the Claude window moves or changes size (EVENT_OBJECT_LOCATIONCHANGE), so the bar
+        // follows every step of a drag or a resize instead of trailing behind a timer.
+        Native.WinEventProc moveProc;   // kept in a field: the delegate must outlive the hook
+        IntPtr moveHook = IntPtr.Zero;
+        void HookMoves()
+        {
+            if (moveHook != IntPtr.Zero) { Native.UnhookWinEvent(moveHook); moveHook = IntPtr.Zero; }
+            uint pid; Native.GetWindowThreadProcessId(claude, out pid);
+            if (pid == 0) return;
+            if (moveProc == null)
+                moveProc = (hook, ev, hwnd, idObject, idChild, thread, time) => { if (hwnd == claude && idObject == 0) Follow(); };
+            moveHook = Native.SetWinEventHook(0x800B, 0x800B, IntPtr.Zero, moveProc, pid, 0, 0 /*OUTOFCONTEXT*/);
+            if (moveHook == IntPtr.Zero) Program.Log("could not watch the Claude window's moves; following it on the timer only");
+        }
+
+        // the top row's free space: left end from the window's LEFT edge, right end from its RIGHT edge (Claude's icons
+        // stay against the right edge when the window is resized), top and button line from its top
+        int[] rowRel;
         bool dockedNow; double rowCssNow = -1;
 
         void Follow()
@@ -417,7 +440,7 @@ namespace SegretarioBar
                 if (claude == IntPtr.Zero) { Hide2(); return; }
             }
             if (!pageReady || shape.Count == 0 || Native.IsIconic(claude) || !Native.IsWindowVisible(claude)) { Hide2(); return; }
-            if (owner != claude) { Native.SetWindowLongPtr(Handle, -8 /*GWLP_HWNDPARENT*/, claude); owner = claude; }
+            if (owner != claude) { Native.SetWindowLongPtr(Handle, -8 /*GWLP_HWNDPARENT*/, claude); owner = claude; HookMoves(); }
 
             Native.RECT r;
             if (Native.DwmGetWindowAttribute(claude, 9 /*EXTENDED_FRAME_BOUNDS*/, out r, Marshal.SizeOf(typeof(Native.RECT))) != 0) { Hide2(); return; }
@@ -439,7 +462,7 @@ namespace SegretarioBar
             if (rel != null && rel.Length > 4)
             {
                 int pad = (int)Math.Round(12 * s);
-                int L = r.L + rel[0] + pad, R = r.L + rel[1] - pad, top = r.T + rel[4], bottom = r.T + rel[3];
+                int L = r.L + rel[0] + pad, R = r.R - rel[1] - pad, top = r.T + rel[4], bottom = r.T + rel[3];
                 if ((R - L) / s >= 360 && bottom - top > 20 * s && top - (r.T + rel[2]) >= 3)
                 {
                     docked = true;
@@ -453,7 +476,7 @@ namespace SegretarioBar
                 dockedNow = docked; rowCssNow = rowCss;
                 Post(new Dictionary<string, object> { { "tipo", "modo" }, { "docked", docked }, { "alto", rowCss } });
             }
-            string shapeKey = json.Serialize(shape);
+            string shapeKey = json.Serialize(shape) + "|" + want.Width + "|" + shapeVw; // a resize re-cuts the window too
             if (want != placed || s != placedScale || !shown)
             {
                 Native.SetWindowPos(Handle, IntPtr.Zero, want.X, want.Y, want.Width, want.Height,
@@ -528,10 +551,22 @@ namespace SegretarioBar
             return string.Format("#{0:x2}{1:x2}{2:x2}", best & 0xFF, (best >> 8) & 0xFF, (best >> 16) & 0xFF); // COLORREF is 0x00BBGGRR
         }
 
+        // The page measured its shapes at width shapeVw; when the window has since been resized, the tabs (anchored on
+        // the right when docked, centred otherwise) have already moved by this much: shift the shapes the same way at
+        // once, instead of cutting the window in the old place until the page measures again.
+        double shapeVw; bool shapeRight;
+        double Shift(double s)
+        {
+            if (shapeVw <= 0 || placed.Width <= 0) return 0;
+            double d = placed.Width / s - shapeVw;
+            return shapeRight ? d : d / 2;
+        }
+
         bool Inside(int x, int y, double s)
         {
+            double sh = Shift(s);
             foreach (var q in shape)
-                if (x >= q[0] * s && x <= (q[0] + q[2]) * s && y >= q[1] * s && y <= (q[1] + q[3] + q[4]) * s) return true;
+                if (x >= (q[0] + sh) * s && x <= (q[0] + sh + q[2]) * s && y >= q[1] * s && y <= (q[1] + q[3] + q[4]) * s) return true;
             return false;
         }
 
@@ -539,8 +574,10 @@ namespace SegretarioBar
         {
             IntPtr all = Native.CreateRectRgn(0, 0, 0, 0);
             int d = (int)Math.Round(24 * s); // 12 px corners
-            foreach (var q in shape)
+            double sh = Shift(s);
+            foreach (var q0 in shape)
             {
+                var q = (double[])q0.Clone(); q[0] += sh;
                 int l = (int)Math.Floor(q[0] * s), t = (int)Math.Floor(q[1] * s);
                 int rr = (int)Math.Ceiling((q[0] + q[2]) * s), b = (int)Math.Ceiling((q[1] + q[3]) * s);
                 int ledge = (int)Math.Round(q[4] * s);
@@ -594,7 +631,7 @@ namespace SegretarioBar
                             {
                                 Native.RECT fr;
                                 if (dock == null || Native.DwmGetWindowAttribute(h, 9, out fr, Marshal.SizeOf(typeof(Native.RECT))) != 0) { TakeRow(null); return; }
-                                TakeRow(new[] { dock[0] - fr.L, dock[1] - fr.L, dock[2] - fr.T, dock[3] - fr.T, dock[4] - fr.T });
+                                TakeRow(new[] { dock[0] - fr.L, fr.R - dock[1], dock[2] - fr.T, dock[3] - fr.T, dock[4] - fr.T });
                             }));
                             if (url != lastUrl) { lastUrl = url; fastUntil = DateTime.Now.AddSeconds(3); } // a chat switch: look again soon
                         }
@@ -622,7 +659,7 @@ namespace SegretarioBar
             // a new layout must hold for 2.5 s (several readings), so a page caught mid-load never moves the bar
             if (rowHits >= 2 && (DateTime.Now - rowSince).TotalSeconds >= 2.5 || rowRel == null && rowHits >= 2)
             {
-                Program.Log("top row: free " + rel[0] + ".." + rel[1] + ", buttons " + rel[4] + ".." + rel[3]);
+                Program.Log("top row: free from " + rel[0] + " px after the left edge to " + rel[1] + " px before the right edge, buttons " + rel[4] + ".." + rel[3]);
                 rowRel = rowCandidate; rowCandidate = null;
             }
         }

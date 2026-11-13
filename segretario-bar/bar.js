@@ -323,7 +323,8 @@
         const riga = n.classList.contains("riga");
         rects.push({ x: r.left, y: r.top, w: r.width, h: r.height, ledge: 0, top: riga ? (root.classList.contains("docked") ? 2 : 1) : 0 });
       });
-      const m = { tipo: "forma", rects, aperto: !!st.open || st.more !== 0 };
+      // vw: the page width these were measured at, so the program can shift them itself the moment the window resizes
+      const m = { tipo: "forma", rects, aperto: !!st.open || st.more !== 0, vw: window.innerWidth, destra: root.classList.contains("docked") };
       const s = JSON.stringify(m);
       if (s !== ultima) { ultima = s; manda(m); }
     }, 0);
@@ -369,7 +370,10 @@
   document.body.appendChild(root);
   new ResizeObserver(() => { ultima = ""; forma(); }).observe(root);
   let largo = window.innerWidth;   // the Claude window got wider or narrower: redo how many tabs fit
-  window.addEventListener("resize", () => { if (Math.abs(window.innerWidth - largo) > 40) { largo = window.innerWidth; disegna(); } });
+  window.addEventListener("resize", () => {
+    if (Math.abs(window.innerWidth - largo) > 40) { largo = window.innerWidth; disegna(); }
+    else { ultima = ""; forma(); }
+  });
   disegna();
   manda({ tipo: "lista" });
   setInterval(() => manda({ tipo: "lista" }), 60000);
