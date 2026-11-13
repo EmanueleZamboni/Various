@@ -449,6 +449,7 @@ namespace SegretarioBar
             }
             if (docked != dockedNow || rowCss != rowCssNow)
             {
+                Program.Log("place: " + (docked ? "docked in the top row" : "under the top row") + " at " + want);
                 dockedNow = docked; rowCssNow = rowCss;
                 Post(new Dictionary<string, object> { { "tipo", "modo" }, { "docked", docked }, { "alto", rowCss } });
             }
@@ -592,16 +593,43 @@ namespace SegretarioBar
                             BeginInvoke(new Action(() =>
                             {
                                 Native.RECT fr;
-                                if (dock == null || Native.DwmGetWindowAttribute(h, 9, out fr, Marshal.SizeOf(typeof(Native.RECT))) != 0) { rowRel = null; return; }
-                                rowRel = new[] { dock[0] - fr.L, dock[1] - fr.L, dock[2] - fr.T, dock[3] - fr.T, dock[4] - fr.T };
+                                if (dock == null || Native.DwmGetWindowAttribute(h, 9, out fr, Marshal.SizeOf(typeof(Native.RECT))) != 0) { TakeRow(null); return; }
+                                TakeRow(new[] { dock[0] - fr.L, dock[1] - fr.L, dock[2] - fr.T, dock[3] - fr.T, dock[4] - fr.T });
                             }));
+                            if (url != lastUrl) { lastUrl = url; fastUntil = DateTime.Now.AddSeconds(3); } // a chat switch: look again soon
                         }
                     }
                 }
                 catch (Exception ex) { Program.Log("watch: " + ex.GetType().Name + " " + ex.Message); }
                 try { ScanCode(); } catch (Exception ex) { Program.Log("code scan: " + ex.GetType().Name + " " + ex.Message); }
-                Thread.Sleep(3000);
+                Thread.Sleep(DateTime.Now < fastUntil ? 500 : 3000);
             }
+        }
+
+        string lastUrl = "";
+        DateTime fastUntil = DateTime.MinValue;
+
+        // A new top-row layout is used only once two readings in a row agree (within 4 px): while a chat loads, the row
+        // is briefly half-built and one reading would throw the bar to the wrong place. A few failed readings in a row
+        // are needed before the bar leaves the row.
+        int[] rowCandidate; int rowHits, rowMisses;
+        void TakeRow(int[] rel)
+        {
+            if (rel == null) { if (++rowMisses >= 4) { rowRel = null; rowCandidate = null; } return; }
+            rowMisses = 0;
+            if (SameRow(rel, rowRel)) { rowCandidate = null; return; }
+            if (SameRow(rel, rowCandidate)) rowHits++; else { rowCandidate = rel; rowHits = 1; }
+            if (rowHits >= 2)
+            {
+                Program.Log("top row: free " + rel[0] + ".." + rel[1] + ", buttons " + rel[4] + ".." + rel[3]);
+                rowRel = rowCandidate; rowCandidate = null;
+            }
+        }
+        static bool SameRow(int[] a, int[] b)
+        {
+            if (a == null || b == null || a.Length != b.Length) return false;
+            for (int i = 0; i < a.Length; i++) if (Math.Abs(a[i] - b[i]) > 4) return false;
+            return true;
         }
 
         // ---------- the Claude app's own record of each Code chat ----------

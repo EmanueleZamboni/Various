@@ -29,9 +29,11 @@ html,body{margin:0;padding:0;background:transparent;overflow:hidden}
  background:var(--strip);border:1px solid var(--line);border-radius:10px;padding:3px;height:calc(var(--alto) + 8px)}
 #seg-schede .riga>button{flex:none;max-width:none;height:var(--alto);display:flex;align-items:center}
 /* docked inside Claude's top row: no frame, exactly the height of Claude's buttons, left-aligned like Chrome's tabs */
-#seg-schede.docked{left:0;transform:none;max-width:100vw}
+/* anchored on the right, against Claude's icons: switching chats changes the title's length on the left, and the
+   tabs must not move with it (only how many fit changes) */
+#seg-schede.docked{left:auto;right:0;transform:none;max-width:100vw}
 #seg-schede.docked .riga{height:var(--alto);border:0;border-radius:0;padding:0}
-#seg-schede.docked .scheda,#seg-schede.docked .storia{margin-left:0;max-width:min(600px,calc(100vw - 8px))}
+#seg-schede.docked .scheda,#seg-schede.docked .storia{margin-left:auto;margin-right:0;max-width:min(600px,calc(100vw - 8px))}
 #seg-schede button{appearance:none;font:inherit;color:var(--ink);background:transparent;border:1px solid transparent;border-radius:8px;
  padding:0 10px;cursor:pointer;white-space:nowrap;max-width:150px;font-size:13px;overflow:hidden;text-overflow:ellipsis}
 #seg-schede button:hover{background:color-mix(in srgb,var(--ink) 8%,transparent)}
