@@ -1,0 +1,10 @@
+{
+  "name": "segretario-tabs",
+  "version": "0.2.0",
+  "description": "Where was I: tabs above the prompt with your most recent Claude chats (claude.ai and Claude Code) and projects from your Segretario, an arrow for 4 more, the full history, and a dot on what is waiting for you",
+  "types": "./types/index.d.ts",
+  "license": "MIT",
+  "author": {
+    "name": "Ema"
+  }
+}
