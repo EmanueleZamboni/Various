@@ -153,8 +153,9 @@ export function pickUnsubscribe(raw: string): string | null {
  * their preheader are left out.
  */
 export function cleanSnippet(text: string): string {
-  return text
-    .replace(/[\u034f\u00ad\u200b-\u200f\u2060-\u2064\ufeff\u2007\u2800]/g, ' ')
+  return stripCss(repairEmbeddedMime(text))
+    .replace(/[\u00ad\u200b-\u200d\u2060-\u2064\ufeff]/g, '')
+    .replace(/[\u034f\u200e\u200f\u2007\u2800]/g, ' ')
     .replace(/\[(?:image|cid):[^\]]*\]/gi, ' ')
     .replace(/\s*[(<\[]\s*(?:https?:\/\/|mailto:|tel:|www\.)[^\s)>\]]*\s*[)>\]]/gi, ' ')
     .replace(/\b(?:https?:\/\/|www\.)[^\s<>()\[\]]+/gi, ' ')
@@ -236,6 +237,57 @@ export function bodyFromParsed(mail: ParsedMail, cidUrl: (contentId: string) => 
     }
   }
   return { text, html, quoted, hasRemoteImages, snippet, attachments, calendar };
+}
+
+/** Bytes written as quoted-printable (=E2=80=99 …) back to text. */
+export function decodeQuotedPrintable(s: string): string {
+  const flat = s.replace(/=\r?\n/g, '').replace(/= (?=[0-9A-F]{2})/g, '');
+  const bytes: number[] = [];
+  for (let i = 0; i < flat.length; i++) {
+    const c = flat[i];
+    if (c === '=' && /^[0-9A-F]{2}$/i.test(flat.slice(i + 1, i + 3))) {
+      bytes.push(parseInt(flat.slice(i + 1, i + 3), 16));
+      i += 2;
+    } else {
+      for (const b of Buffer.from(c, 'utf8')) bytes.push(b);
+    }
+  }
+  return Buffer.from(bytes).toString('utf8');
+}
+
+const MIME_HEADER = /(?:Content-(?:Type|Transfer-Encoding|Disposition|ID)|MIME-Version):[ \t]*[\w./+<>@-]+(?:;\s*[\w-]+=(?:"[^"]*"|[^\s;]+))*/gi;
+
+/**
+ * A badly built email can carry one of its parts raw inside the text: MIME headers
+ * ("Content-Transfer-Encoding: quoted-printable") followed by encoded bytes. Drop the headers and
+ * decode what follows, so previews and Claude get words.
+ */
+export function repairEmbeddedMime(text: string): string {
+  if (!/(?:Content-Transfer-Encoding|Content-Type):/i.test(text)) return text;
+  const qp = /Content-Transfer-Encoding:\s*quoted-printable/i.test(text);
+  let out = text.replace(MIME_HEADER, ' ').replace(/^--[\w'()+_,./:=?-]{8,}(?:--)?\s*$/gm, ' ');
+  if (qp && (out.match(/=[0-9A-F]{2}/gi) || []).length >= 3) out = decodeQuotedPrintable(out).replace(/\uFFFD+|=(?=\s|$)/g, '');
+  return out;
+}
+
+/** Style rules that leaked into a plain-text part ("body { font-family: Arial; … }"). */
+const CSS_TAGS = 'html|body|p|a|div|span|table|tbody|thead|tr|td|th|img|h[1-6]|ul|ol|li|strong|b|em|i|u|center|font|blockquote|pre|code|hr|br|\\*';
+const CSS_TOKEN = `(?:(?:${CSS_TAGS})|[.#][A-Za-z_][\\w-]*)(?:\\[[^\\]]*\\])?(?:::?[\\w-]+(?:\\([^)]*\\))?)?`;
+const CSS_RULE = new RegExp(`(?<![\\w.#-])${CSS_TOKEN}(?:\\s*[,>+~]?\\s*${CSS_TOKEN}){0,5}\\s*\\{\\s*[\\w-]+\\s*:[^{}]*\\}`, 'g');
+// A rule cut off by the end of a short preview.
+const CSS_CUT = new RegExp(`(?<![\\w.#-])${CSS_TOKEN}(?:\\s*[,>+~]?\\s*${CSS_TOKEN}){0,5}\\s*\\{\\s*[\\w-]+\\s*:[^{}]*$`);
+
+
+/** Style rules that leaked into a plain-text part ("body { font-family: Arial; … }"). */
+export function stripCss(text: string): string {
+  if (!text.includes('{')) return text;
+  let out = text;
+  for (let i = 0; i < 3; i++) {
+    const next = out.replace(CSS_RULE, ' ').replace(CSS_CUT, ' ').replace(/@media[^{}]{0,200}\{\s*\}/gi, ' ');
+    if (next === out) break;
+    out = next;
+  }
+  return out;
 }
 
 /** HTML code where plain text was expected (a whole page, or text full of tags). */

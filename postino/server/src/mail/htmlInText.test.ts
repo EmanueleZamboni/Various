@@ -39,3 +39,16 @@ describe('HTML code sent as plain text', () => {
     expect(fixHtmlInTextOnce()).toBe(0); // once only
   });
 });
+
+describe('previews from badly built emails', () => {
+  it('drops style rules that leaked into the text', async () => {
+    const { cleanSnippet } = await import('./parse.js');
+    expect(cleanSnippet('Order confirmed #123 body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; } .container { max-width: 600px; } Thanks for your order')).toBe('Order confirmed #123 Thanks for your order');
+    expect(cleanSnippet('Use {name} in templates')).toBe('Use {name} in templates');
+  });
+  it('decodes a raw quoted-printable part', async () => {
+    const { cleanSnippet } = await import('./parse.js');
+    const s = 'Now available. Find out more Content-Transfer-Encoding: quoted-printable Content-Type: text/plain; charset="UTF-8" Ea=E2=80=8Csy and fa=C3=A8st';
+    expect(cleanSnippet(s)).toBe('Now available. Find out more Easy and faèst');
+  });
+});
