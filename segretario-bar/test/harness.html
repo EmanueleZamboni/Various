@@ -3,25 +3,31 @@
 <link rel="stylesheet" href="../bar.css">
 <style>html,body{background:#888 !important;overflow:visible !important;height:700px}.cut{position:absolute;outline:1px dashed red;pointer-events:none;z-index:9}</style>
 </head><body>
+<!-- Segretario Bar with made-up chats and a fake program around it. Messages the page sends land in window.LOG.
+     window.FAKE.code(...) / FAKE.lista(...) push data the way SegretarioBar.cs does. -->
 <script>
+const now = Date.now();
 const ITEMS = [
- ["claude code","Home assistant","claude://claude.ai/epitaxy/local_aaaaaaaa-1","Assistant","in corso",false,"tabs plugin installed","check the bar in the app",""],
  ["claude.ai","Job search","https://claude.ai/chat/bbbbbbbb-2","Jobs","aspetta Ema",true,"sent 3 CVs","wait for replies","Shall I write to the third studio too?"],
  ["progetto","Drum machine","","Drum machine","in corso",false,"","",""],
- ["claude code","Claude power consumption plugin","claude://claude.ai/epitaxy/local_cccccccc-3","","in corso",false,"","",""],
  ["claude.ai","Video subtitles final pass","https://claude.ai/chat/dddddddd-4","Video","finita",false,"subs v2 done","",""],
- ["claude code","Old phone kit","claude://claude.ai/epitaxy/local_eeeeeeee-5","","in corso",false,"","",""],
  ["claude.ai","Monitor calibration","https://claude.ai/chat/ffffffff-6","","in corso",false,"","",""],
  ["progetto","Studio site","","Studio site","in corso",false,"","",""],
- ["claude.ai","Camcorder search","https://claude.ai/chat/gggggggg-7","","aspetta Ema",true,"","","Buy the second one?"],
-].map(([tipo,titolo,link,progetto,stato,aspetta,dove_sono,prossimo,domanda],i)=>({tipo,titolo,link,progetto,stato,aspetta,dove_sono,prossimo,domanda,quando:`2026-11-13 ${String(20-i).padStart(2,"0")}:00`,in_corso:false}));
+ ["claude.ai","Camcorder search","https://claude.ai/chat/gggggggg-7","","in corso",false,"","",""],
+].map(([tipo,titolo,link,progetto,stato,aspetta,dove_sono,prossimo,domanda],i)=>({tipo,titolo,link,progetto,stato,aspetta,dove_sono,prossimo,domanda,quando:new Date(now-(i+2)*3600e3).toLocaleString("sv-SE",{timeZone:"Europe/Rome"}).slice(0,16),in_corso:false}));
+const CODE = [
+ {link:"claude://claude.ai/epitaxy/local_aaaaaaaa-1",titolo:"Home assistant",turnEnd:now-60e3,focused:now-30e3,activity:now-30e3,running:false,needs:false,detail:"Tabs plugin installed"},
+ {link:"claude://claude.ai/epitaxy/local_cccccccc-3",titolo:"Power meter plugin",turnEnd:now-7200e3,focused:now-7000e3,activity:now-7000e3,running:true,needs:false,detail:"Measuring watts"},
+ {link:"claude://claude.ai/epitaxy/local_eeeeeeee-5",titolo:"Old phone kit",turnEnd:now-5000e3,focused:now-4000e3,activity:now-4000e3,running:false,needs:false,detail:"Kit built"},
+];
 const handlers = []; window.LOG = [];
+const send = (m) => handlers.forEach(h=>h({data:m}));
+window.FAKE = { code: (s)=>send({tipo:"code",sessioni:s}), lista: (c)=>send({tipo:"lista",dati:{chat:c}}), qui:(q)=>send(Object.assign({tipo:"qui"},q)) };
 window.chrome = { webview: {
-  postMessage(m){ LOG.push(m); if (m.tipo==="lista") setTimeout(()=>handlers.forEach(h=>h({data:{tipo:"lista",dati:{chat:ITEMS}}})),50);
+  postMessage(m){ LOG.push(JSON.parse(JSON.stringify(m))); if (m.tipo==="lista") setTimeout(()=>{FAKE.lista(ITEMS); FAKE.code(CODE);},50);
     if (m.tipo==="forma") { document.querySelectorAll(".cut").forEach(n=>n.remove()); m.rects.forEach(r=>{const d=document.createElement("div");d.className="cut";Object.assign(d.style,{left:r.x+"px",top:r.y+"px",width:r.w+"px",height:(r.h+r.ledge)+"px"});document.documentElement.appendChild(d);}); } },
   addEventListener(t,fn){ handlers.push(fn); } } };
-window.SEG_NASCOSTA = false;
+window.SEG_NASCOSTA = false; window.SEG_TABS = null;
 </script>
 <script src="../bar.js"></script>
-<script>setTimeout(()=>handlers.forEach(h=>h({data:{tipo:"qui",link:"https://claude.ai/chat/bbbbbbbb-2",titolo:"Job search",code:false}})),200);</script>
 </body></html>

@@ -221,11 +221,21 @@ namespace SegretarioBar
         {
             bool hidden = false;
             try { hidden = File.ReadAllText(Path.Combine(Program.DataDir, "hidden.txt")).Trim() == "1"; } catch { }
+            string tabs = "null";
+            try
+            {
+                string t = File.ReadAllText(TabsFile, Encoding.UTF8);
+                if (json.DeserializeObject(t) is Dictionary<string, object>) tabs = t.Replace("</", "<\\/");
+            }
+            catch { }
             return Asset("bar.html")
                 .Replace("/*CSS*/", Asset("bar.css"))
                 .Replace("/*NASCOSTA*/false", hidden ? "true" : "false")
+                .Replace("/*TABS*/null", tabs)
                 .Replace("/*JS*/", Asset("bar.js"));
         }
+
+        static string TabsFile { get { return Path.Combine(Program.DataDir, "tabs.json"); } }
 
         void Post(Dictionary<string, object> m)
         {
@@ -259,12 +269,22 @@ namespace SegretarioBar
                 pageReady = true;
                 Follow();
             }
-            else if (tipo == "lista") Refresh(false);
+            else if (tipo == "lista") { lastCode = ""; Refresh(false); } // the page (re)loaded: send the Code chats again too
             else if (tipo == "login") ShowLogin();
             else if (tipo == "nascosta")
             {
                 bool v = m.ContainsKey("valore") && m["valore"] is bool && (bool)m["valore"];
                 try { File.WriteAllText(Path.Combine(Program.DataDir, "hidden.txt"), v ? "1" : "0"); } catch { }
+            }
+            else if (tipo == "salva" && m.ContainsKey("stato") && m["stato"] is Dictionary<string, object>)
+            {
+                try
+                {
+                    string tmp = TabsFile + ".tmp";
+                    File.WriteAllText(tmp, json.Serialize(m["stato"]), Encoding.UTF8);
+                    if (File.Exists(TabsFile)) File.Replace(tmp, TabsFile, null); else File.Move(tmp, TabsFile);
+                }
+                catch (Exception ex) { Program.Log("save tabs: " + ex.Message); }
             }
             else if (tipo == "apri") OpenChat(m.ContainsKey("link") ? Convert.ToString(m["link"]) : "");
             else if (tipo == "fatto" && claude != IntPtr.Zero && Native.GetForegroundWindow() == Handle) Native.SetForegroundWindow(claude);
@@ -478,8 +498,92 @@ namespace SegretarioBar
                     }
                 }
                 catch (Exception ex) { Program.Log("watch: " + ex.GetType().Name + " " + ex.Message); }
+                try { ScanCode(); } catch (Exception ex) { Program.Log("code scan: " + ex.GetType().Name + " " + ex.Message); }
                 Thread.Sleep(3000);
             }
+        }
+
+        // ---------- the Claude app's own record of each Code chat ----------
+        // %LOCALAPPDATA%\Claude-Data\claude_<id>\claude-code-sessions\<account>\<org>\local_<id>.json holds, among much
+        // else: title, lastTurnEdgeAt (Claude finished a turn), lastFocusedAt (Ema last looked at it), latestUserFrameAt
+        // (his last message), isArchived and postTurnSummary {status_category, status_detail, needs_action}.
+        // Only those fields are read; files untouched for 7 days are skipped; only changed files are read again.
+        static readonly Regex LocalId = new Regex(@"^local_[A-Za-z0-9-]{8,80}$");
+        readonly JavaScriptSerializer codeJson = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
+        readonly Dictionary<string, KeyValuePair<DateTime, Dictionary<string, object>>> codeCache =
+            new Dictionary<string, KeyValuePair<DateTime, Dictionary<string, object>>>();
+        string lastCode = "";
+
+        static string SessionsRoot()
+        {
+            string b = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Claude-Data");
+            if (!Directory.Exists(b)) return null;
+            foreach (var d in Directory.GetDirectories(b, "claude_*"))
+            {
+                string s = Path.Combine(d, "claude-code-sessions");
+                if (Directory.Exists(s)) return s;
+            }
+            return null;
+        }
+
+        static double D(Dictionary<string, object> d, string k)
+        {
+            object v; return d.TryGetValue(k, out v) && v != null ? Num(v) : 0;
+        }
+        static string S(Dictionary<string, object> d, string k)
+        {
+            object v; return d.TryGetValue(k, out v) && v is string ? (string)v : "";
+        }
+
+        void ScanCode()
+        {
+            string root = SessionsRoot();
+            if (root == null) return;
+            var seenFiles = new HashSet<string>();
+            foreach (var f in Directory.EnumerateFiles(root, "local_*.json", SearchOption.AllDirectories))
+            {
+                DateTime t = File.GetLastWriteTimeUtc(f);
+                if (DateTime.UtcNow - t > TimeSpan.FromDays(7)) continue;
+                seenFiles.Add(f);
+                KeyValuePair<DateTime, Dictionary<string, object>> c;
+                if (codeCache.TryGetValue(f, out c) && c.Key == t) continue;
+                Dictionary<string, object> one = null;
+                try
+                {
+                    string txt;
+                    using (var fs = new FileStream(f, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+                    using (var r = new StreamReader(fs, Encoding.UTF8)) txt = r.ReadToEnd();
+                    var d = codeJson.DeserializeObject(txt) as Dictionary<string, object>;
+                    string id = d == null ? "" : S(d, "sessionId");
+                    if (d != null && LocalId.IsMatch(id) && !(d.ContainsKey("isArchived") && d["isArchived"] is bool && (bool)d["isArchived"]))
+                    {
+                        var sum = d.ContainsKey("postTurnSummary") ? d["postTurnSummary"] as Dictionary<string, object> : null;
+                        double turnEnd = D(d, "lastTurnEdgeAt"), userFrame = D(d, "latestUserFrameAt");
+                        one = new Dictionary<string, object> {
+                            { "link", "claude://claude.ai/epitaxy/" + id },
+                            { "titolo", S(d, "title") },
+                            { "turnEnd", turnEnd },
+                            { "focused", D(d, "lastFocusedAt") },
+                            { "activity", D(d, "lastActivityAt") },
+                            { "running", userFrame > turnEnd },
+                            { "needs", sum != null && S(sum, "needs_action") != "" },
+                            { "detail", sum == null ? "" : S(sum, "status_detail") },
+                        };
+                    }
+                }
+                catch (IOException) { continue; } // the app is writing it: read it next time
+                catch (Exception ex) { Program.Log("code record " + Path.GetFileName(f) + ": " + ex.Message); }
+                codeCache[f] = new KeyValuePair<DateTime, Dictionary<string, object>>(t, one);
+            }
+            foreach (var k in new List<string>(codeCache.Keys)) if (!seenFiles.Contains(k)) codeCache.Remove(k);
+
+            var list = new List<object>();
+            foreach (var v in codeCache.Values) if (v.Value != null) list.Add(v.Value);
+            string s = codeJson.Serialize(list);
+            if (s == lastCode) return;
+            if (lastCode == "") Program.Log("Code chats read from the Claude app: " + list.Count);
+            lastCode = s;
+            BeginInvoke(new Action(() => Post(new Dictionary<string, object> { { "tipo", "code" }, { "sessioni", list } })));
         }
 
         void OnClaudeShows(string name, string url)
