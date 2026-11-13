@@ -3,6 +3,8 @@ import { safeFetch } from './avatars.js';
 import { sendMail } from './mail/send.js';
 import { runAction } from './routes/threads.js';
 import { log } from './log.js';
+import { htmlToText } from './mail/sanitize.js';
+import { cleanSnippet } from './mail/parse.js';
 import type { AccountRow } from './views.js';
 
 /**
@@ -12,7 +14,7 @@ import type { AccountRow } from './views.js';
  */
 
 
-export type NewsletterSender = { email: string; name: string; count: number; latest: string; latestSubject: string; method: 'one-click' | 'email' | 'none'; unsubscribedAt: string | null };
+export type NewsletterSender = { email: string; name: string; count: number; latest: string; latestSubject: string; latestSnippet: string; method: 'one-click' | 'email' | 'none'; unsubscribedAt: string | null };
 
 /** Addresses Ema has written to, and his own mailboxes' addresses and domains: never newsletters to drop. */
 function protectedSenders(): { emails: Set<string>; domains: Set<string> } {
@@ -52,7 +54,7 @@ export function newsletterSenders(months = 12): NewsletterSender[] {
     .all(since) as { email: string; from_json: string; n: number; latest: string }[];
   const keep = protectedSenders();
   const latestOf = db.prepare("SELECT subject, list_unsubscribe FROM messages WHERE lower(from_email) = ? AND list_unsubscribe IS NOT NULL AND list_unsubscribe != '' ORDER BY date DESC LIMIT 1");
-  const subjectOf = db.prepare('SELECT subject FROM messages WHERE lower(from_email) = ? ORDER BY date DESC LIMIT 1');
+  const subjectOf = db.prepare('SELECT subject, snippet FROM messages WHERE lower(from_email) = ? ORDER BY date DESC LIMIT 1');
   const done = db.prepare('SELECT at FROM unsubscribed WHERE email = ?');
   const out: NewsletterSender[] = [];
   for (const r of rows) {
@@ -70,6 +72,7 @@ export function newsletterSenders(months = 12): NewsletterSender[] {
       count: r.n,
       latest: r.latest,
       latestSubject: (u?.subject ?? (subjectOf.get(r.email) as { subject: string } | undefined)?.subject ?? '').slice(0, 120),
+      latestSnippet: cleanSnippet(((subjectOf.get(r.email) as { snippet: string } | undefined)?.snippet ?? '')).slice(0, 160),
       method: !u ? 'none' : /^mailto:/i.test(u.list_unsubscribe) ? 'email' : 'one-click',
       unsubscribedAt: ((done.get(r.email) as { at: string } | undefined)?.at) ?? null,
     });
@@ -90,22 +93,85 @@ async function requestUnsubscribe(email: string): Promise<{ method: string; resu
     await sendMail({ account, to: u.pathname, subject: (u.searchParams.get('subject') || 'Unsubscribe').replace(/[\r\n]/g, ' ').slice(0, 200), text: u.searchParams.get('body') || 'Unsubscribe', attachments: [] });
     return { method: 'email', result: 'unsubscribe email sent' };
   }
-  // RFC 8058 one-click: a POST with this exact body. Senders that do not support it just answer
-  // with a page; the week-later block covers them.
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), 20_000);
-  try {
-    const res = await safeFetch(url, {
-      signal: ctrl.signal,
-      method: 'POST',
-      body: 'List-Unsubscribe=One-Click',
-      noRedirect: true,
-      headers: { 'content-type': 'application/x-www-form-urlencoded', 'user-agent': 'Mozilla/5.0 (compatible; Postino)' },
-    });
-    return { method: 'one-click', result: res.status < 400 ? `accepted (${res.status})` : `refused (${res.status})` };
-  } finally {
-    clearTimeout(t);
+  return verifyWebUnsubscribe(url);
+}
+
+export const CONFIRMED = /(unsubscribed|you('ve| have) been removed|been unsubscribed|no longer (receive|be sent)|successfully (removed|opted out)|opted out|disiscritt|iscrizione (è stata )?(annullata|cancellata)|cancellazione (effettuata|completata|avvenuta)|non riceverai più|sei stat[oa] rimoss|rimoss[oa] dalla|désabonn|desuscrit|dado de baja|abgemeldet|abmeldung (war )?erfolgreich)/i;
+const ASKS = /(confirm|conferma|are you sure|sei sicur|click (the button|below|here) to unsubscribe|clicca|unsubscribe from (all|this)|annulla (l'|l’)?iscrizione|cancella (l'|l’)?iscrizione)/i;
+
+function attr(tag: string, name: string): string | null {
+  const m = new RegExp(`\\b${name}\\s*=\\s*("([^"]*)"|'([^']*)'|([^\\s>]+))`, 'i').exec(tag);
+  return m ? (m[2] ?? m[3] ?? m[4] ?? '').replace(/&amp;/g, '&') : null;
+}
+
+/** The first form on the page, as the browser would submit it with its first button. */
+export function firstForm(html: string, base: string): { url: string; method: 'GET' | 'POST'; body: string } | null {
+  const m = /<form\b([^>]*)>([\s\S]*?)<\/form>/i.exec(html);
+  if (!m) return null;
+  const action = attr(m[1], 'action') || base;
+  const method = (attr(m[1], 'method') || 'GET').toUpperCase() === 'POST' ? 'POST' : 'GET';
+  const fields = new URLSearchParams();
+  let button = false;
+  for (const t of m[2].match(/<(input|button)\b[^>]*>/gi) || []) {
+    const name = attr(t, 'name');
+    const type = (attr(t, 'type') || (t.toLowerCase().startsWith('<button') ? 'submit' : 'text')).toLowerCase();
+    if (!name) continue;
+    if (type === 'submit' || type === 'image') {
+      if (!button) fields.append(name, attr(t, 'value') || '');
+      button = true;
+      continue;
+    }
+    if ((type === 'checkbox' || type === 'radio') && !/\bchecked\b/i.test(t)) continue;
+    fields.append(name, attr(t, 'value') || '');
   }
+  const url = new URL(action, base).toString();
+  return method === 'POST' ? { url, method, body: fields.toString() } : { url: `${url.split('?')[0]}?${fields.toString()}`, method, body: '' };
+}
+
+/**
+ * Unsubscribe over the web and check the answer: RFC 8058 one-click first; if the sender instead
+ * shows a page, read it, and when it asks for a confirmation press its button once. Only an
+ * explicit "you are unsubscribed" counts as confirmed (a page that needs scripts stays unconfirmed).
+ */
+async function verifyWebUnsubscribe(url: string): Promise<{ method: string; result: string }> {
+  const fetchPage = async (u: string, init: { method?: 'GET' | 'POST'; body?: string; type?: string }) => {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 20_000);
+    try {
+      return await safeFetch(u, {
+        signal: ctrl.signal,
+        method: init.method ?? 'GET',
+        body: init.body,
+        noRedirect: init.method === 'POST',
+        headers: { 'user-agent': 'Mozilla/5.0 (compatible; Postino)', accept: 'text/html,*/*', ...(init.type ? { 'content-type': init.type } : {}) },
+      });
+    } finally {
+      clearTimeout(t);
+    }
+  };
+  // 1. One-click.
+  let res = await fetchPage(url, { method: 'POST', body: 'List-Unsubscribe=One-Click', type: 'application/x-www-form-urlencoded' });
+  if (res.status >= 300 && res.status < 400 && res.headers.get('location')) res = await fetchPage(new URL(String(res.headers.get('location')), url).toString(), {});
+  let html = await res.text(200_000);
+  let text = htmlToText(html);
+  if (res.status < 300 && CONFIRMED.test(text)) return { method: 'one-click', result: 'confirmed' };
+  if (res.status < 300 && !text.trim()) return { method: 'one-click', result: 'confirmed (one-click accepted)' };
+  // 2. The sender wants its page: open it like a browser.
+  if (res.status >= 400 || !ASKS.test(text)) {
+    res = await fetchPage(url, {});
+    html = await res.text(200_000);
+    text = htmlToText(html);
+    if (res.ok && CONFIRMED.test(text) && !ASKS.test(text)) return { method: 'web page', result: 'confirmed' };
+  }
+  // 3. A confirmation button: press it once.
+  const form = res.ok ? firstForm(html, res.url || url) : null;
+  if (form && (ASKS.test(text) || /unsubscri|disiscriv|iscrizione/i.test(html))) {
+    let r2 = await fetchPage(form.url, form.method === 'POST' ? { method: 'POST', body: form.body, type: 'application/x-www-form-urlencoded' } : {});
+    if (r2.status >= 300 && r2.status < 400 && r2.headers.get('location')) r2 = await fetchPage(new URL(String(r2.headers.get('location')), form.url).toString(), {});
+    if (r2.ok && CONFIRMED.test(htmlToText(await r2.text(200_000)))) return { method: 'web page + button', result: 'confirmed' };
+  }
+  return { method: 'web page', result: `not confirmed: their page needs a manual click (${res.status})` };
+
 }
 
 /** Unsubscribe from these senders; their mail already received goes to Trash when asked. */

@@ -43,3 +43,14 @@ describe('unsubscribe from newsletters', () => {
     expect(ignoresUnsubscribe(friend)).toBe(false);
   });
 });
+
+describe('reading unsubscribe pages', () => {
+  it('finds the confirmation form and recognises a confirmation', async () => {
+    const { firstForm, CONFIRMED } = await import('./newsletters.js');
+    const page = `<html><body><p>Are you sure?</p><form action="/unsub/confirm" method="post"><input type="hidden" name="token" value="abc&amp;1"><input type="checkbox" name="all"><button type="submit" name="go" value="yes">Unsubscribe</button></form></body></html>`;
+    expect(firstForm(page, 'https://mail.shop.test/u/1')).toEqual({ url: 'https://mail.shop.test/unsub/confirm', method: 'POST', body: 'token=abc%261&go=yes' });
+    expect(CONFIRMED.test('You have been unsubscribed.')).toBe(true);
+    expect(CONFIRMED.test('La tua iscrizione è stata annullata')).toBe(true);
+    expect(CONFIRMED.test('Manage your preferences')).toBe(false);
+  });
+});

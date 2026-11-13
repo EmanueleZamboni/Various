@@ -481,13 +481,13 @@ const TOOLS: Tool[] = [
     annotations: { readOnlyHint: true, openWorldHint: false },
     run: (a) => {
       const list = newsletterSenders(Number(a.months) || 12);
-      return { count: list.length, senders: list.map((x) => ({ email: x.email, name: x.name, emails: x.count, latest: x.latest.slice(0, 10), latest_subject: x.latestSubject, unsubscribe: x.method, already_unsubscribed: x.unsubscribedAt ? x.unsubscribedAt.slice(0, 10) : undefined })) };
+      return { count: list.length, senders: list.map((x) => ({ email: x.email, name: x.name, emails: x.count, latest: x.latest.slice(0, 10), latest_subject: x.latestSubject, latest_preview: x.latestSnippet, unsubscribe: x.method, already_unsubscribed: x.unsubscribedAt ? x.unsubscribedAt.slice(0, 10) : undefined })) };
     },
   },
   {
     name: 'unsubscribe_newsletters',
     title: 'Unsubscribe from newsletters',
-    description: 'Unsubscribe from these newsletter senders (emails from list_newsletters): a one-click request or the unsubscribe email each sender asks for. With trash_existing, their emails already received go to Trash (only conversations entirely from them). Anyone still writing a week later is blocked automatically. Only after the user approved the exact list.',
+    description: 'Unsubscribe from these newsletter senders (emails from list_newsletters): a one-click request or the unsubscribe email each sender asks for; for web unsubscribes Postino reads the answer page, presses its confirmation button when there is one, and reports confirmed or not. With trash_existing, their emails already received go to Trash (only conversations entirely from them). Anyone still writing a week later is blocked automatically. Only after the user approved the exact list.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -501,7 +501,18 @@ const TOOLS: Tool[] = [
     run: async (a) => {
       const res = await unsubscribeSenders(strList(a.senders), { trashExisting: a.trash_existing !== false });
       const n = (k: string) => res.filter((r) => r.result.startsWith(k)).length;
-      return { done: res.length, accepted: n('accepted') + n('unsubscribe email sent'), no_link: n('no unsubscribe link'), refused_or_failed: n('refused') + n('failed'), skipped: n('skipped'), trashed: res.reduce((t, r) => t + r.trashed, 0), details: res };
+      return {
+        done: res.length,
+        confirmed: n('confirmed'),
+        unsubscribe_email_sent: n('unsubscribe email sent'),
+        not_confirmed_needs_click: n('not confirmed'),
+        no_link: n('no unsubscribe link'),
+        failed: n('failed'),
+        skipped: n('skipped'),
+        trashed: res.reduce((t, r) => t + r.trashed, 0),
+        note: 'Anyone not confirmed who still writes after 7 days goes to Blocked automatically.',
+        details: res,
+      };
     },
   },
   {
