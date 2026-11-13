@@ -431,19 +431,19 @@ namespace SegretarioBar
             int w = (int)Math.Round(wCss * s), h = (int)Math.Ceiling((hCss + 2) * s);
             var want = new Rectangle(r.L + (fullW - w) / 2, r.T + (int)Math.Round(TopCss * s), w, h);
 
-            // Docked: inside the free middle of Claude's top row, sitting on the row's bottom edge (Chrome's tab strip).
-            // The bar starts 3 px below the row's top so the row's own colour can still be read above it.
+            // Docked: inside the free middle of Claude's top row, exactly on the line of Claude's own buttons there
+            // (same top, same height), so the tabs line up with the chat title and the icons. The row's colour is read
+            // just above the bar, where the row is empty.
             bool docked = false; double rowCss = 0;
             int[] rel = rowRel;
-            if (rel != null)
+            if (rel != null && rel.Length > 4)
             {
-                int pad = (int)Math.Round(10 * s);
-                int L = r.L + rel[0] + pad, R = r.L + rel[1] - pad, top = r.T + rel[2] + (int)Math.Round(3 * s);
-                int rowBottom = r.T + rel[3] + (int)Math.Round(2 * s);
-                if ((R - L) / s >= 360 && rowBottom - top > 20 * s)
+                int pad = (int)Math.Round(12 * s);
+                int L = r.L + rel[0] + pad, R = r.L + rel[1] - pad, top = r.T + rel[4], bottom = r.T + rel[3];
+                if ((R - L) / s >= 360 && bottom - top > 20 * s && top - (r.T + rel[2]) >= 3)
                 {
                     docked = true;
-                    rowCss = Math.Round((rowBottom - top) / s);
+                    rowCss = Math.Round((bottom - top) / s);
                     want = new Rectangle(L, top, R - L, h);
                 }
             }
@@ -593,7 +593,7 @@ namespace SegretarioBar
                             {
                                 Native.RECT fr;
                                 if (dock == null || Native.DwmGetWindowAttribute(h, 9, out fr, Marshal.SizeOf(typeof(Native.RECT))) != 0) { rowRel = null; return; }
-                                rowRel = new[] { dock[0] - fr.L, dock[1] - fr.L, dock[2] - fr.T, dock[3] - fr.T };
+                                rowRel = new[] { dock[0] - fr.L, dock[1] - fr.L, dock[2] - fr.T, dock[3] - fr.T, dock[4] - fr.T };
                             }));
                         }
                     }
@@ -698,7 +698,7 @@ namespace SegretarioBar
             cr.TreeScope = TreeScope.Element;
             AutomationElementCollection all;
             using (cr.Activate()) all = doc.FindAll(TreeScope.Descendants, System.Windows.Automation.Condition.TrueCondition);
-            double mid = dr.Left + dr.Width / 2, leftEdge = dr.Left, rightEdge = dr.Right, bottom = 0;
+            double mid = dr.Left + dr.Width / 2, leftEdge = dr.Left, rightEdge = dr.Right, bottom = 0, top = double.MaxValue;
             int n = 0;
             foreach (AutomationElement e in all)
             {
@@ -708,11 +708,12 @@ namespace SegretarioBar
                 if (r.Top < dr.Top - 4 || r.Top > dr.Top + 14 || r.Height > 64) continue;  // only the top row's controls
                 if (r.Width > dr.Width * 0.45) continue;                                    // not a whole-row container
                 if (r.Left + r.Width / 2 < mid) leftEdge = Math.Max(leftEdge, r.Right); else rightEdge = Math.Min(rightEdge, r.Left);
-                bottom = Math.Max(bottom, r.Bottom);
+                if (r.Height >= 28 * 0.75) { bottom = Math.Max(bottom, r.Bottom); top = Math.Min(top, r.Top); } // button-sized ones set the line
                 n++;
             }
-            if (n < 3 || bottom <= dr.Top) return null;
-            return new[] { (int)leftEdge, (int)rightEdge, (int)dr.Top, (int)bottom };
+            if (n < 3 || bottom <= dr.Top || top == double.MaxValue) return null;
+            // left, right of the free space; the page's top; the row buttons' bottom and top (the tabs copy them)
+            return new[] { (int)leftEdge, (int)rightEdge, (int)dr.Top, (int)bottom, (int)top };
         }
 
         static readonly Regex CodeUrl = new Regex(@"^https://claude\.ai/epitaxy/(local_[A-Za-z0-9-]{8,80})(?:[/?#].*)?$");
