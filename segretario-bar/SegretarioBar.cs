@@ -428,7 +428,7 @@ namespace SegretarioBar
         // the top row's free space: left end from the window's LEFT edge, right end from its RIGHT edge (Claude's icons
         // stay against the right edge when the window is resized), top and button line from its top
         int[] rowRel;
-        bool dockedNow; double rowCssNow = -1;
+        bool dockedNow, compactNow; double rowCssNow = -1;
 
         void Follow()
         {
@@ -457,24 +457,32 @@ namespace SegretarioBar
             // Docked: inside the free middle of Claude's top row, exactly on the line of Claude's own buttons there
             // (same top, same height), so the tabs line up with the chat title and the icons. The row's colour is read
             // just above the bar, where the row is empty.
-            bool docked = false; double rowCss = 0;
+            // The bar lives ONLY in Claude's top row, never over the chat or the sidebar (it once fell back to floating
+            // under the row when the window was narrow). Room for tabs: tabs. A little room: one compact "Tabs" button
+            // that drops down the list (the drop-down may be wider than the button: it hangs below the row). No room:
+            // hidden until there is.
+            bool docked = false, compact = false; double rowCss = 0;
             int[] rel = rowRel;
             if (rel != null && rel.Length > 4)
             {
                 int pad = (int)Math.Round(12 * s);
                 int L = r.L + rel[0] + pad, R = r.R - rel[1] - pad, top = r.T + rel[4], bottom = r.T + rel[3];
-                if ((R - L) / s >= 360 && bottom - top > 20 * s && top - (r.T + rel[2]) >= 3)
+                double free = (R - L) / s;
+                if (free >= 110 && bottom - top > 20 * s && top - (r.T + rel[2]) >= 3)
                 {
                     docked = true;
+                    compact = free < 360;
                     rowCss = Math.Round((bottom - top) / s);
-                    want = new Rectangle(L, top, R - L, h);
+                    int wide = open ? Math.Max(R - L, (int)Math.Round(440 * s)) : R - L;
+                    want = new Rectangle(R - wide, top, wide, h);
                 }
             }
-            if (docked != dockedNow || rowCss != rowCssNow)
+            if (!docked) { Hide2(); return; }
+            if (docked != dockedNow || compact != compactNow || rowCss != rowCssNow)
             {
-                Program.Log("place: " + (docked ? "docked in the top row" : "under the top row") + " at " + want);
-                dockedNow = docked; rowCssNow = rowCss;
-                Post(new Dictionary<string, object> { { "tipo", "modo" }, { "docked", docked }, { "alto", rowCss } });
+                Program.Log("place: " + (compact ? "compact button" : "tabs") + " in the top row at " + want);
+                dockedNow = docked; compactNow = compact; rowCssNow = rowCss;
+                Post(new Dictionary<string, object> { { "tipo", "modo" }, { "docked", docked }, { "compatto", compact }, { "alto", rowCss } });
             }
             string shapeKey = json.Serialize(shape) + "|" + want.Width + "|" + shapeVw; // a resize re-cuts the window too
             if (want != placed || s != placedScale || !shown)

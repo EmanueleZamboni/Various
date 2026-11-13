@@ -266,25 +266,40 @@
     if (!st.ready.lista) { riga.appendChild(el("span", "avviso", "Recent chats: loading…")); root.appendChild(riga); return forma(); }
 
     const n = VISIBLE(), vis = T.order.slice(0, n), resto = T.order.slice(n);
-    const tabs = el("div", "tabs");
-    vis.forEach((k, i) => tabs.appendChild(scheda(k, i)));
-    if (!vis.length) tabs.appendChild(el("span", "avviso", "No tabs: open a chat, or pick one in History"));
-    riga.appendChild(tabs);
-    if (resto.length) riga.appendChild(bottone(st.more === 1 ? "‹" : `› ${resto.length}`, "freccia", () => { st.more = st.more === 1 ? 0 : 1; st.open = ""; }, st.more === 1 ? "Close" : "More tabs"));
-    riga.appendChild(bottone(st.more === 2 ? "Close history" : "History", "quiet", () => { st.more = st.more === 2 ? 0 : 2; st.open = ""; }));
-    riga.appendChild(bottone("Hide", "quiet", () => nascondi(true)));
+    if (st.compatto) {
+      // the window is narrow: one "Tabs" button in Claude's row, the tabs drop down under it (more === 3)
+      const attesaTab = T.order.some((k) => perChiave.has(k) && aspetta(perChiave.get(k)));
+      const b = bottone("", "compatto" + (st.more === 3 ? " sel" : ""), () => { st.more = st.more === 3 ? 0 : 3; st.open = ""; }, "Your tabs");
+      if (attesaTab) b.appendChild(el("span", "punto"));
+      b.appendChild(document.createTextNode(`Tabs ${T.order.length} ▾`));
+      riga.appendChild(b);
+    } else {
+      const tabs = el("div", "tabs");
+      vis.forEach((k, i) => tabs.appendChild(scheda(k, i)));
+      if (!vis.length) tabs.appendChild(el("span", "avviso", "No tabs: open a chat, or pick one in History"));
+      riga.appendChild(tabs);
+      if (resto.length) riga.appendChild(bottone(st.more === 1 ? "‹" : `› ${resto.length}`, "freccia", () => { st.more = st.more === 1 ? 0 : 1; st.open = ""; }, st.more === 1 ? "Close" : "More tabs"));
+      riga.appendChild(bottone(st.more === 2 ? "Close history" : "History", "quiet", () => { st.more = st.more === 2 ? 0 : 2; st.open = ""; }));
+      riga.appendChild(bottone("Hide", "quiet", () => nascondi(true)));
+    }
     root.appendChild(riga);
 
-    if (st.more === 1 || st.more === 2) {
+    if (st.more !== 0) {
       const s = el("div", "storia");
-      const lista = st.more === 1 ? resto.map(voce) : tutte;
+      const lista = st.more === 3 ? T.order.map(voce) : st.more === 1 ? resto.map(voce) : tutte;
       lista.forEach((x) => {
-        const b = bottone("", "", () => { st.more = 0; st.open = ""; apriScheda(chiave(x)); vai(x); salva(); });
+        const b = bottone("", eQui(x) ? "qui" : "", () => { st.more = 0; st.open = ""; apriScheda(chiave(x)); vai(x); salva(); });
         const w = perChiave.has(chiave(x)) && aspetta(x);
         const dot = el("span", w ? "punto" : ""); if (!w) dot.style.width = "13px";
         b.append(dot, el("span", "q", quando(x.quando)), el("span", "t", x.titolo || "(untitled)"), el("span", "k", tipo(x) + sotto(x)));
         s.appendChild(b);
       });
+      if (st.more === 3) {
+        if (!lista.length) s.appendChild(el("p", "avviso", "No tabs: open a chat, or pick one in History"));
+        const piede = el("div", "piede");
+        piede.append(bottone("History", "quiet", () => { st.more = 2; }), bottone("Hide", "quiet", () => nascondi(true)));
+        s.appendChild(piede);
+      }
       root.appendChild(s);
     }
 
@@ -356,8 +371,9 @@
       return;
     } else if (m.tipo === "modo") {
       root.classList.toggle("docked", !!m.docked);
+      if (st.compatto !== !!m.compatto) { st.compatto = !!m.compatto; st.more = 0; st.open = ""; st.peek = ""; }
       if (m.alto > 0) root.style.setProperty("--alto", m.alto + "px");
-      ultima = ""; forma();
+      ultima = ""; disegna();
       return;
     } else if (m.tipo === "fuori") {
       if (!st.open && st.more === 0) return;
