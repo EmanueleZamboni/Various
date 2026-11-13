@@ -636,7 +636,8 @@ namespace SegretarioBar
         // %LOCALAPPDATA%\Claude-Data\claude_<id>\claude-code-sessions\<account>\<org>\local_<id>.json holds, among much
         // else: title, lastTurnEdgeAt (Claude finished a turn), lastFocusedAt (Ema last looked at it), latestUserFrameAt
         // (his last message), isArchived and postTurnSummary {status_category, status_detail, needs_action}.
-        // Only those fields are read; files untouched for 7 days are skipped; only changed files are read again.
+        // Only those fields (and previousTitles, the names a renamed chat had) are read; files untouched for 30 days are
+        // skipped; only changed files are read again.
         static readonly Regex LocalId = new Regex(@"^local_[A-Za-z0-9-]{8,80}$");
         readonly JavaScriptSerializer codeJson = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
         readonly Dictionary<string, KeyValuePair<DateTime, Dictionary<string, object>>> codeCache =
@@ -653,6 +654,22 @@ namespace SegretarioBar
                 if (Directory.Exists(s)) return s;
             }
             return null;
+        }
+
+        // the names a chat had before Ema renamed it (the app keeps them): the Segretario may still know it by one of them
+        static List<string> OldTitles(Dictionary<string, object> d)
+        {
+            var o = new List<string>();
+            object v;
+            if (d.TryGetValue("previousTitles", out v) && v is IEnumerable && !(v is string))
+                foreach (var x in (IEnumerable)v)
+                {
+                    string t = x as string;
+                    var dx = x as Dictionary<string, object>;
+                    if (t == null && dx != null) t = S(dx, "title");
+                    if (!string.IsNullOrEmpty(t) && o.Count < 8) o.Add(t.Length > 120 ? t.Substring(0, 120) : t);
+                }
+            return o;
         }
 
         static double D(Dictionary<string, object> d, string k)
@@ -672,7 +689,7 @@ namespace SegretarioBar
             foreach (var f in Directory.EnumerateFiles(root, "local_*.json", SearchOption.AllDirectories))
             {
                 DateTime t = File.GetLastWriteTimeUtc(f);
-                if (DateTime.UtcNow - t > TimeSpan.FromDays(7)) continue;
+                if (DateTime.UtcNow - t > TimeSpan.FromDays(30)) continue;
                 seenFiles.Add(f);
                 KeyValuePair<DateTime, Dictionary<string, object>> c;
                 if (codeCache.TryGetValue(f, out c) && c.Key == t) continue;
@@ -691,6 +708,7 @@ namespace SegretarioBar
                         one = new Dictionary<string, object> {
                             { "link", "claude://claude.ai/epitaxy/" + id },
                             { "titolo", S(d, "title") },
+                            { "prima", OldTitles(d) },
                             { "turnEnd", turnEnd },
                             { "focused", D(d, "lastFocusedAt") },
                             { "activity", D(d, "lastActivityAt") },

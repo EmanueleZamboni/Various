@@ -40,16 +40,41 @@
 
   // the Segretario's list plus the Claude app's Code chats, one entry per chat, newest first
   let tutte = [], perChiave = new Map();
+  // Names compared without case, spaces or punctuation. A Segretario entry with no link whose name is a Code chat's
+  // current or OLD name (the app keeps the names a chat had before you renamed it) is that chat: its notes go to the
+  // chat and the old-name ghost disappears. Long names may also match by one containing the other.
+  const norma = (v) => String(v || "").toLowerCase().normalize("NFD").replace(/[^a-z0-9]/g, "");
+  function stessoNome(a, b) {
+    if (!a || !b) return false;
+    if (a === b) return true;
+    return Math.min(a.length, b.length) >= 8 && (a.includes(b) || b.includes(a));
+  }
   function unisci() {
     const m = new Map();
-    st.items.forEach((x) => m.set(chiave(x), Object.assign({}, x)));
-    Object.values(st.code).forEach((c) => {
+    const codici = Object.values(st.code).map((c) => ({ c, nomi: [c.titolo].concat(c.prima || []).map(norma).filter(Boolean) }));
+    st.items.forEach((x) => {
+      if (!x.link && x.tipo !== "progetto") {
+        const n = norma(x.titolo);
+        const hit = codici.find((k) => k.nomi.some((v) => stessoNome(v, n)));
+        if (hit) { (hit.note = hit.note || []).push(x); return; }   // an old name of a Code chat: merged below
+      }
+      m.set(chiave(x), Object.assign({}, x));
+    });
+    codici.forEach((k) => {
+      const c = k.c;
       const old = m.get(c.link);
       const x = old || { tipo: "claude code", titolo: c.titolo, link: c.link, progetto: "", stato: "", aspetta: false,
         dove_sono: "", prossimo: "", domanda: "", quando: "", in_corso: false };
       x.titolo = c.titolo || x.titolo;               // the name you gave it in the app wins
       x.quando = [x.quando, roma(c.activity)].sort().pop();
       x.in_corso = c.running;
+      // notes the Segretario keeps under this chat's old names, newest first
+      (k.note || []).sort((a, b) => (b.quando || "").localeCompare(a.quando || "")).forEach((n) => {
+        if (!x.dove_sono && n.dove_sono) x.dove_sono = n.dove_sono;
+        if (!x.prossimo && n.prossimo) x.prossimo = n.prossimo;
+        if (!x.domanda && n.domanda) x.domanda = n.domanda;
+        if (!x.progetto && n.progetto) x.progetto = n.progetto;
+      });
       if (!x.dove_sono && c.detail) x.dove_sono = c.detail;
       x.code = c;
       m.set(c.link, x);
@@ -67,8 +92,10 @@
   // tabs follow what happens: a chat you open, or one that starts waiting for you, gets a tab
   let salvaTimer = 0;
   function salva() { clearTimeout(salvaTimer); salvaTimer = setTimeout(() => manda({ tipo: "salva", stato: T }), 800); }
+  // only a chat that can be opened gets a tab (a link-less entry stays in History)
+  const apribile = (k) => /^(https:|claude:)/.test(k);
   function apriScheda(k) {
-    if (T.order.includes(k)) return false;
+    if (!apribile(k) || T.order.includes(k)) return false;
     T.order.push(k); delete T.closed[k]; return true;
   }
   function aggiornaSchede() {
@@ -77,20 +104,29 @@
     // the very first tabs wait for the Code chats too (or 4 s, if the Claude app sends none)
     if (!T.init && !st.ready.code && Date.now() - T0 < 4000) { setTimeout(() => { aggiornaSchede(); disegna(); }, 4100 - (Date.now() - T0)); return; }
     let cambiato = false;
+    const prima = T.order.length;
+    T.order = T.order.filter(apribile);            // drop link-less tabs left from older versions
+    if (T.order.length !== prima) cambiato = true;
     if (!T.init) {
-      T.order = tutte.slice(0, 6).map(chiave); T.init = true;
+      T.order = tutte.map(chiave).filter(apribile).slice(0, 6); T.init = true;
       T.waiting = tutte.filter(aspetta).map(chiave).sort(); prevWaiting = new Set(T.waiting); // no flash for what already waited
       cambiato = true;
     }
+    // "started waiting" means Claude finished AFTER the bar last looked; a chat the bar merely sees for the first time
+    // (an older chat coming into the list) is not news and must not flash or get a tab
+    const dal = (T.visto || Date.now()) - 90000;
+    const fine = (x) => (x.code ? x.code.turnEnd : ms(x.quando));
     const ora = new Set();
     tutte.forEach((x) => {
       const k = chiave(x);
       if (eQui(x)) { T.seen[k] = Date.now(); if (apriScheda(k)) cambiato = true; }
       if (aspetta(x)) {
         ora.add(k);
-        if (!prevWaiting.has(k)) { st.flash[k] = Date.now() + FLASH_MS; if (apriScheda(k)) cambiato = true; setTimeout(disegna, FLASH_MS + 50); }
+        if (!prevWaiting.has(k) && fine(x) > dal) { st.flash[k] = Date.now() + FLASH_MS; if (apriScheda(k)) cambiato = true; setTimeout(disegna, FLASH_MS + 50); }
       }
     });
+    if (!T.visto || Date.now() - T.visto > 60000) cambiato = true;   // remember when the bar last looked
+    T.visto = Date.now();
     const lista = [...ora].sort();
     if (lista.join("|") !== [...prevWaiting].sort().join("|")) { T.waiting = lista; cambiato = true; }
     prevWaiting = ora;
