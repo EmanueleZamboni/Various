@@ -83,10 +83,18 @@
     perChiave = new Map(tutte.map((x) => [chiave(x), x]));
   }
 
+  // Waiting for you = Claude finished after you last looked, within the last 12 hours. Older unanswered turns are
+  // stale (chats you left days ago), not something waiting for you now.
+  const FRESCO = 12 * 3600e3, INATTIVA = 24 * 3600e3;
   function aspetta(x) {
-    const seen = T.seen[chiave(x)] || 0;
-    if (x.code) return x.code.turnEnd > 0 && x.code.turnEnd > Math.max(x.code.focused, seen) && !x.code.running;
-    return !!x.aspetta && ms(x.quando) > seen;
+    const seen = T.seen[chiave(x)] || 0, da = Date.now() - FRESCO;
+    if (x.code) return x.code.turnEnd > da && x.code.turnEnd > Math.max(x.code.focused, seen) && !x.code.running;
+    return !!x.aspetta && ms(x.quando) > Math.max(seen, da);
+  }
+  // the last time anything happened in a chat, or you looked at it
+  function ultimo(k) {
+    const x = perChiave.get(k);
+    return Math.max(T.seen[k] || 0, x ? ms(x.quando) : 0, x && x.code ? Math.max(x.code.activity || 0, x.code.focused || 0) : 0);
   }
 
   // tabs follow what happens: a chat you open, or one that starts waiting for you, gets a tab
@@ -105,7 +113,8 @@
     if (!T.init && !st.ready.code && Date.now() - T0 < 4000) { setTimeout(() => { aggiornaSchede(); disegna(); }, 4100 - (Date.now() - T0)); return; }
     let cambiato = false;
     const prima = T.order.length;
-    T.order = T.order.filter(apribile);            // drop link-less tabs left from older versions
+    // drop link-less tabs left from older versions, and tabs of chats nobody touched for 24 hours (they stay in History)
+    T.order = T.order.filter((k) => apribile(k) && (!st.ready.code || Date.now() - ultimo(k) < INATTIVA));
     if (T.order.length !== prima) cambiato = true;
     if (!T.init) {
       T.order = tutte.map(chiave).filter(apribile).slice(0, 6); T.init = true;
