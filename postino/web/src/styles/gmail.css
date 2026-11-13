@@ -2807,10 +2807,13 @@ a.btn {
 .group-line .bundle-title > span {
   font-weight: 400;
 }
-.group-line.fresh .bundle-title > span,
-.group-line.fresh .group-date {
+.group-line.unread .bundle-title > span,
+.group-line.unread .group-date {
   font-weight: 700;
   color: var(--ink);
+}
+.group-line:not(.unread) .bundle-title small {
+  color: var(--mute);
 }
 .group-line .group-count {
   font-size: 12px;
@@ -3749,5 +3752,53 @@ a.btn {
   }
   .list .row:has(.smart-chip) .smart-chip {
     margin-top: 6px;
+  }
+}
+
+/* Open Groups: the block goes back to the plain list colour, and only groups with unread mail
+   are tinted and bold, so read and unread groups are told apart at a glance. */
+:root .list .bundle.groups-row.open {
+  background: var(--sheet);
+}
+@container list (max-width: 759px) {
+  :root .list .bundle.groups-row.open {
+    background: var(--g-card);
+  }
+}
+:root .list .bundle.groups-row.open > .bundle-head {
+  background: var(--groups-tint);
+}
+:root .list .groups-list .group-line {
+  background: transparent;
+}
+:root .list .groups-list .group-line.unread {
+  background: var(--groups-tint);
+}
+:root .list .groups-list .group-line.open {
+  background: var(--sheet-2);
+}
+:root .list .groups-list .group-line .bundle-ico {
+  background: var(--search-bg);
+  color: var(--mute);
+}
+:root .list .groups-list .group-line.unread .bundle-ico {
+  background: var(--postal);
+  color: var(--pine);
+}
+/* A group line keeps its name on one line; on a phone the "important" pill makes room. */
+.group-line .bundle-title {
+  min-width: 0;
+  flex: 1;
+}
+.group-line .bundle-title > span,
+.group-line .bundle-title > small {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@container list (max-width: 480px) {
+  .groups-list .group-line .pill-imp {
+    display: none;
   }
 }

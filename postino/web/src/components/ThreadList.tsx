@@ -543,8 +543,8 @@ function GroupsRow({ lines, base, render, renderFull }: { lines: GroupSummary[];
   const markRead = useMarkGroupRead(base);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const press = useLongPress((x, y) => setMenu({ x, y }));
-  const fresh = lines.filter((g) => g.fresh > 0);
-  const newCount = fresh.reduce((n, g) => n + g.fresh, 0);
+  const fresh = lines.filter((g) => (g.unread ?? g.fresh) > 0);
+  const newCount = fresh.reduce((n, g) => n + (g.unread ?? g.fresh), 0);
   const importantCount = lines.reduce((n, g) => n + (g.important ?? 0), 0);
   const names = (fresh.length ? fresh : lines).map((g) => g.name);
   const summary = names.slice(0, 4).join(', ') + (names.length > 4 ? ` +${names.length - 4}` : '');
@@ -574,7 +574,7 @@ function GroupsRow({ lines, base, render, renderFull }: { lines: GroupSummary[];
           <small>{summary}</small>
         </span>
         {importantCount > 0 && <span className="pill pill-imp">{importantCount} important</span>}
-        {newCount > 0 && <span className="pill">{newCount} new</span>}
+        {newCount > 0 && <span className="pill">{newCount} unread</span>}
         <Icon name="chevronDown" size={18} className="bundle-chev" />
       </button>
       {menu && (
@@ -637,11 +637,13 @@ function GroupBundle({ summary: g, base, render }: { summary: GroupSummary; base
     }
   };
   const who = g.latestFrom.name || g.latestFrom.email;
+  // A group stands out (bold, tinted) only while it holds unread mail; read groups are plain.
+  const unread = g.unread ?? g.fresh;
   const markRead = useMarkGroupRead(base);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const press = useLongPress((x, y) => setMenu({ x, y }));
   return (
-    <section className={`bundle group-line${open ? ' open' : ''}${g.fresh ? ' fresh' : ''}`} aria-label={g.name}>
+    <section className={`bundle group-line${open ? ' open' : ''}${unread ? ' unread' : ''}`} aria-label={g.name}>
       {menu && (
         <RowMenu
           x={menu.x}
@@ -672,7 +674,7 @@ function GroupBundle({ summary: g, base, render }: { summary: GroupSummary; base
             <small>{open ? pluralize(g.total, 'conversation') : `${who}: ${g.latestSubject}`}</small>
           </span>
           {(g.important ?? 0) > 0 && <span className="pill pill-imp">{g.important} important</span>}
-          {g.fresh > 0 && <span className="pill">{g.fresh} new</span>}
+          {unread > 0 && <span className="pill">{unread} unread</span>}
           <span className="group-date">{formatListDate(g.latestDate)}</span>
         </button>
         <button className="ib group-done" onClick={() => void done()} aria-label={`Archive everything from ${g.name}`} title="Done: archive the whole group">

@@ -368,8 +368,8 @@ on('POST', '/api/groups', ({ body }) => { mockGroups[String(body.email).toLowerC
 on('DELETE', '/api/groups/sender/:email', ({ params }) => { delete mockGroups[decodeURIComponent(params.email)]; return json({ ok: true }); });
 on('PATCH', '/api/groups', () => json({ ok: true }));
 on('GET', '/api/groups/summary', () => {
-  const names = [...new Set(Object.values(mockGroups))];
-  return json({ groups: names.map((name, i) => ({ name, latestDate: new Date(Date.now() - (3 + i * 20) * 3600_000).toISOString(), latestThreadId: 't1', latestFrom: { name: name, email: 'no-reply@example.com' }, latestSubject: i ? 'Your weekly summary' : 'Security alert for your account', total: 4 + i, fresh: i ? 0 : 2, important: i ? 1 : 0 })) });
+  const names = [...new Set([...Object.values(mockGroups), 'Shop orders', 'Cloud hosting', 'Bank', 'Travel'])];
+  return json({ groups: names.map((name, i) => ({ name, latestDate: new Date(Date.now() - (3 + i * 20) * 3600_000).toISOString(), latestThreadId: 't1', latestFrom: { name: name, email: 'no-reply@example.com' }, latestSubject: i ? 'Your weekly summary' : 'Security alert for your account', total: 4 + i, fresh: i ? 0 : 2, unread: i % 2 ? 0 : 2 + i, important: i ? 0 : 1 })) });
 });
 on('POST', '/api/groups/seen', () => json({ ok: true }));
 on('GET', '/api/groups/important', () => json({ threads: [{ id: 'imp1', accountId: 'a1', subject: 'Hai venduto Lettore Dvd Sony', snippet: 'Prepara il pacco e spediscilo entro 5 giorni', participants: [{ name: 'Vinted', email: 'no-reply@vinted.it' }], lastFrom: { name: 'Vinted', email: 'no-reply@vinted.it' }, lastDate: new Date(Date.now() - 2 * 3600_000).toISOString(), firstDate: new Date().toISOString(), count: 1, unread: true, unreadCount: 1, pinned: false, answered: false, hasAttachments: true, draft: false, category: 'notification', folderRoles: ['inbox'], smart: mockSmart('Hai venduto') }], more: 4 }));

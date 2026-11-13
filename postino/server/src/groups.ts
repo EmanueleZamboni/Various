@@ -210,7 +210,7 @@ function aiImportantThreads(): Set<number> {
 
 export function groupSummaries(accountId: number | null) {
   const seen = groupSeenTimes();
-  const out = new Map<string, { name: string; latestDate: string; latestThreadId: string; latestFrom: { name: string; email: string }; latestSubject: string; total: number; fresh: number; important: number }>();
+  const out = new Map<string, { name: string; latestDate: string; latestThreadId: string; latestFrom: { name: string; email: string }; latestSubject: string; total: number; fresh: number; unread: number; important: number }>();
   const countedImp = new Set<string>();
   for (const r of groupedInboxThreads(accountId)) {
     let g = out.get(r.g);
@@ -221,10 +221,11 @@ export function groupSummaries(accountId: number | null) {
       } catch {
         /* keep empty */
       }
-      g = { name: r.g, latestDate: r.last_date, latestThreadId: String(r.id), latestFrom: from, latestSubject: r.subject, total: 0, fresh: 0, important: 0 };
+      g = { name: r.g, latestDate: r.last_date, latestThreadId: String(r.id), latestFrom: from, latestSubject: r.subject, total: 0, fresh: 0, unread: 0, important: 0 };
       out.set(r.g, g);
     }
     g.total++;
+    if (r.unread_count > 0) g.unread++;
     if (r.unread_count > 0 && r.last_date > (seen.get(r.g) ?? '')) g.fresh++;
     if (r.unread_count > 0 && isRecent(r.last_date) && isImportant(r.subject, r.snippet)) {
       const k = `${r.g}|${r.last_date.slice(0, 16)}`;

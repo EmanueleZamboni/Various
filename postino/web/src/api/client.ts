@@ -256,7 +256,7 @@ export const api = {
 };
 
 /** One sender group as a line in the inbox. */
-export type GroupSummary = { name: string; latestDate: string; latestThreadId: string; latestFrom: { name: string; email: string }; latestSubject: string; total: number; fresh: number; important?: number };
+export type GroupSummary = { name: string; latestDate: string; latestThreadId: string; latestFrom: { name: string; email: string }; latestSubject: string; total: number; fresh: number; unread?: number; important?: number };
 
 export type AiStatus = { configured: boolean; model: string; month: string; spentUsd: number; calls: number; capUsd: number };
 export type SpamVerdict = { verdict: 'safe' | 'spam' | 'phishing' | 'scam' | 'suspicious'; confidence: 'low' | 'medium' | 'high'; summary: string; reasons: string[]; messageId: number };
