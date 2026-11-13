@@ -9,7 +9,7 @@ Same bar as the claude.ai one in the Voce Chrome extension and the `segretario-t
 
 The Claude app is a sealed Store package, so this is a small window of its own that follows the Claude window:
 owned by it (moves, minimises and hides with it), cut to the shape of the tabs so clicks elsewhere reach Claude,
-never takes the keyboard focus. It reads which chat Claude shows (title and address only) through Windows
+hands the keyboard straight back to Claude after a click. It reads which chat Claude shows (title and address only) through Windows
 accessibility and tells the Segretario, exactly like the Chrome extension does on claude.ai.
 
 The list comes from `hub.emazamboni.com/chat-recenti.json`, with the Telegram-code cookie of the bar's own
