@@ -101,9 +101,33 @@ test('a month filter keeps only rows dated inside it, in both readers', async ()
   const row = (id: string, at: string) =>
     JSON.stringify({ type: 'assistant', message: { id, model: 'claude-opus-5-5', usage: { output_tokens: 100 } }, timestamp: at })
   const text = [row('msg_old', '2026-10-31T23:00:00Z'), row('msg_new', '2026-11-02T10:00:00Z')].join('\n')
-  expect(tallyJsonl(text, new Set(), since).messages).toBe(1)
+  expect(tallyJsonl(text, new Set(), { since }).messages).toBe(1)
   const grep = ['"model":"claude-opus-5-5"', '"id":"msg_old"', '"output_tokens":100', '"timestamp":"2026-10-31T23:00:00Z"',
     '"model":"claude-opus-5-5"', '"id":"msg_new"', '"output_tokens":100', '"timestamp":"2026-11-02T10:00:00Z"'].join('\n')
-  expect(tallyGrepLines(grep, new Set(), since).messages).toBe(1)
+  expect(tallyGrepLines(grep, new Set(), { since }).messages).toBe(1)
   expect(tallyGrepLines(grep).messages).toBe(2)
+})
+
+test('a fork leaves out what it copied from the original chat, in both readers', async () => {
+  const row = (id: string, forked: boolean) =>
+    JSON.stringify({
+      type: 'assistant',
+      message: { id, model: 'claude-opus-5-5', usage: { output_tokens: 100 } },
+      timestamp: '2026-11-02T10:00:00Z',
+      ...(forked ? { forkedFrom: { sessionId: 'original', messageUuid: 'u1' } } : {}),
+    })
+  const text = [row('msg_copied', true), row('msg_own', false)].join('\n')
+  const own = tallyJsonl(text, new Set(), { skipForked: true })
+  expect(own.messages).toBe(1)
+  expect(own.inherited).toBe(1)
+  // the monthly total counts the copy once, through the shared set of ids
+  const seen = new Set<string>()
+  const original = tallyJsonl(row('msg_copied', false), seen)
+  const fork = tallyJsonl(text, seen)
+  expect(original.messages + fork.messages).toBe(2)
+  const grep = ['"model":"claude-opus-5-5"', '"id":"msg_copied"', '"output_tokens":100', '"timestamp":"2026-11-02T10:00:00Z"', '"forkedFrom":{',
+    '"model":"claude-opus-5-5"', '"id":"msg_own"', '"output_tokens":100', '"timestamp":"2026-11-02T10:01:00Z"'].join('\n')
+  const g = tallyGrepLines(grep, new Set(), { skipForked: true })
+  expect(g.messages).toBe(1)
+  expect(g.inherited).toBe(1)
 })

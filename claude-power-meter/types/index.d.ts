@@ -38,6 +38,8 @@ export type Seed = {
   kind: 'none' | 'transcript' | 'fresh' | 'unavailable'
   /** Model responses counted from the transcript. */
   messages: number
+  /** Responses left out because this chat is a fork and they were copied from the original chat. */
+  inherited?: number
   /** The transcript path that was tried. */
   path: string | null
 }
