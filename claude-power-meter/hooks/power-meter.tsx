@@ -42,7 +42,7 @@ import {
   wattsOf,
   whOf,
 } from './estimate'
-import type { Counted, ImpactRates, Rates, UsageLike } from './estimate'
+import type { Counted, ImpactRates, Rates, ReadOptions, UsageLike } from './estimate'
 
 const COMMAND = 'power'
 const PANE = 'power-meter'
@@ -377,7 +377,7 @@ async function seedFromTranscript($: Dollar, knownPath: string | null): Promise<
   const finish = (kind: Seed['kind'], counted?: Counted): Promise<Meter> =>
     update($, meter, (m): Meter => ({
       ...m,
-      seed: { kind, messages: counted?.messages ?? 0, path },
+      seed: { kind, messages: counted?.messages ?? 0, inherited: counted?.inherited ?? 0, path },
       seeded: counted?.byModel ?? m.seeded,
       // Read back after live counting had started (an earlier try failed): the transcript already holds those
       // responses, so the live tokens would count twice. Turns and time stay; only the tokens move over.
@@ -401,16 +401,18 @@ async function seedFromTranscript($: Dollar, knownPath: string | null): Promise<
   try {
     // One set of message ids across the files, so a response stored twice is counted once.
     const seen = new Set<string>()
-    const counted = await tallyFile($, path, seen)
+    // This chat's own responses only: a fork's copies of its original chat are that chat's.
+    const counted = await tallyFile($, path, seen, { skipForked: true })
     // Subagents keep their own transcripts in <session id>/subagents/*.jsonl beside the main one.
     const dir = `${path.replace(/\.jsonl$/, '')}/subagents`
     const entries = (await $.fs.exists(dir).catch(() => false)) ? await $.fs.list(dir).catch(() => []) : []
     for (const entry of entries) {
       if (entry.kind !== 'file' || !entry.name.endsWith('.jsonl')) continue
       try {
-        const sub = await tallyFile($, `${dir}/${entry.name}`, seen)
+        const sub = await tallyFile($, `${dir}/${entry.name}`, seen, { skipForked: true })
         counted.byModel = mergeByModel(counted.byModel, sub.byModel)
         counted.messages += sub.messages
+        counted.inherited = (counted.inherited ?? 0) + (sub.inherited ?? 0)
       } catch {
         // One unreadable subagent file leaves the rest counted.
       }
@@ -421,9 +423,9 @@ async function seedFromTranscript($: Dollar, knownPath: string | null): Promise<
   }
 }
 
-async function tallyFile($: Dollar, path: string, seen: Set<string>): Promise<Counted> {
+async function tallyFile($: Dollar, path: string, seen: Set<string>, options: ReadOptions = {}): Promise<Counted> {
   const stat = await $.fs.stat(path)
-  return stat.size <= FOUR_MIB ? tallyJsonl(await $.fs.read(path), seen) : await tallyWithGrep($, path, seen)
+  return stat.size <= FOUR_MIB ? tallyJsonl(await $.fs.read(path), seen, options) : await tallyWithGrep($, path, seen, options)
 }
 
 /** The same search as `grep -oE`, through PowerShell, which every Windows has (grep does not). */
@@ -431,11 +433,11 @@ const PS_SELECT =
   'Select-String -LiteralPath $env:PM_FILE -Pattern $env:PM_PATTERN -AllMatches -CaseSensitive | ' +
   'ForEach-Object { foreach ($m in $_.Matches) { $m.Value } }'
 
-async function tallyWithGrep($: Dollar, path: string, seen: Set<string>, since?: number): Promise<Counted> {
+async function tallyWithGrep($: Dollar, path: string, seen: Set<string>, options: ReadOptions = {}): Promise<Counted> {
   try {
     const run = await $.process.run(['grep', '-oE', GREP_PATTERN, path], { timeoutMs: 60_000 })
     // grep exits 1 when nothing matched, which is an empty transcript, not a failure.
-    if (run.exitCode === 0 || run.exitCode === 1) return tallyGrepLines(run.stdout, seen, since)
+    if (run.exitCode === 0 || run.exitCode === 1) return tallyGrepLines(run.stdout, seen, options)
   } catch {
     // No grep here (Windows): PowerShell below.
   }
@@ -444,7 +446,7 @@ async function tallyWithGrep($: Dollar, path: string, seen: Set<string>, since?:
     env: { PM_FILE: path, PM_PATTERN: GREP_PATTERN },
   })
   if (run.exitCode !== 0) throw new Error(`powershell exited ${run.exitCode}`)
-  return tallyGrepLines(run.stdout.replace(/\r/g, ''), seen, since)
+  return tallyGrepLines(run.stdout.replace(/\r/g, ''), seen, options)
 }
 
 // ---- this month, every chat ----
@@ -476,7 +478,7 @@ async function scanMonth($: Dollar, force: boolean): Promise<void> {
     let messages = 0
     const add = async (path: string): Promise<boolean> => {
       const stat = await $.fs.stat(path)
-      const c = stat.size <= FOUR_MIB ? tallyJsonl(await $.fs.read(path), seen, since) : await tallyWithGrep($, path, seen, since)
+      const c = stat.size <= FOUR_MIB ? tallyJsonl(await $.fs.read(path), seen, { since }) : await tallyWithGrep($, path, seen, { since })
       byModel = mergeByModel(byModel, c.byModel)
       messages += c.messages
       return c.messages > 0
@@ -637,6 +639,9 @@ function report(m: Meter, now: number, rates: Rates, impact: ImpactRates): strin
   const live = sumTallies(m.live).requests + sumTallies(pending).requests
   let tokens = `Tokens counted: ${plural(m.turns, 'turn')}, ${plural(m.agentTurns, 'subagent turn')}, ${plural(live, 'model response')} while this plugin was loaded`
   if (m.seed.kind === 'transcript') tokens += `, plus ${plural(m.seed.messages, 'earlier response')} read back from the transcript`
+  if (m.seed.kind === 'transcript' && (m.seed.inherited ?? 0) > 0) {
+    tokens += ` (${plural(m.seed.inherited ?? 0, 'response')} copied from the chat this one was forked from left out: they are counted there)`
+  }
   lines.push(tokens)
   const table = mergeByModel(counted, pending)
   const models = Object.keys(table).sort()

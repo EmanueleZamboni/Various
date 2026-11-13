@@ -25,6 +25,10 @@ public measurements that exist, and every coefficient can be changed in
   intensity you set, everyday comparisons (phone charges, LED-bulb hours,
   microwave seconds, metres of electric driving, Google searches), and the
   token counts by model that the estimate rests on.
+- **Forks are not counted twice.** A forked chat starts with copies of the
+  original chat's messages, each marked `forkedFrom`. The fork's own meter
+  leaves those copies out (they are counted in the original chat), and the
+  monthly total counts every message once, however many forks copied it.
 - **This month, local Claude Code chats only**: `/power` and the panel add up every Claude Code
   chat on this computer this calendar month (main conversations and their
   subagents), read from the transcripts Claude Code keeps, refreshed every 10

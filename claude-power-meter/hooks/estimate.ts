@@ -247,16 +247,22 @@ export const padRight = (s: string, width: number): string => (s.length >= width
 
 // ---- reading a transcript back ----
 
-export type Counted = { byModel: Record<string, Tally>; messages: number }
+/** `inherited`: responses left out because a fork copied them from the chat it was forked from. */
+export type Counted = { byModel: Record<string, Tally>; messages: number; inherited?: number }
+
+/** How a transcript is read: `since` keeps rows dated from then on; `skipForked` leaves out rows a fork copied in. */
+export type ReadOptions = { since?: number; skipForked?: boolean }
 
 /**
  * Sums the model responses of a transcript file (one JSON row per line).
  * A response is written as one row per content block, each carrying the same
  * `message.id` and the same usage, so rows are counted once per id.
  */
-export function tallyJsonl(text: string, seen: Set<string> = new Set(), since?: number): Counted {
+export function tallyJsonl(text: string, seen: Set<string> = new Set(), options: ReadOptions = {}): Counted {
+  const { since, skipForked } = options
   let byModel: Record<string, Tally> = {}
   let messages = 0
+  let inherited = 0
   for (const line of text.split('\n')) {
     if (!line.includes('"usage"')) continue
     let row: unknown
@@ -279,11 +285,16 @@ export function tallyJsonl(text: string, seen: Set<string> = new Set(), since?: 
     seen.add(id)
     const t = tallyOf(usage as UsageLike)
     if (isEmptyTally(t)) continue
+    // A fork copies the original chat's rows and marks each with `forkedFrom`: they belong to that chat.
+    if (skipForked === true && typeof r['forkedFrom'] === 'object' && r['forkedFrom'] !== null) {
+      inherited += 1
+      continue
+    }
     const model = typeof m['model'] === 'string' ? m['model'] : 'unknown'
     byModel = addTo(byModel, model, t)
     messages += 1
   }
-  return { byModel, messages }
+  return { byModel, messages, inherited }
 }
 
 /**
@@ -293,23 +304,30 @@ export function tallyJsonl(text: string, seen: Set<string> = new Set(), since?: 
  * follow it; text quoted inside a tool result is escaped and never matches.
  */
 export const GREP_PATTERN =
-  '"id":"msg_[A-Za-z0-9_-]+"|"model":"[^"]+"|"(input_tokens|output_tokens|cache_read_input_tokens|cache_creation_input_tokens)":[0-9]+|"timestamp":"[^"]+"'
+  '"id":"msg_[A-Za-z0-9_-]+"|"model":"[^"]+"|"(input_tokens|output_tokens|cache_read_input_tokens|cache_creation_input_tokens)":[0-9]+|"timestamp":"[^"]+"|"forkedFrom":\\{'
 
 /** Sums the lines `grep -oE GREP_PATTERN` printed, once per message id. */
-export function tallyGrepLines(stdout: string, seen: Set<string> = new Set(), since?: number): Counted {
+export function tallyGrepLines(stdout: string, seen: Set<string> = new Set(), options: ReadOptions = {}): Counted {
+  const { since, skipForked } = options
   let byModel: Record<string, Tally> = {}
   let messages = 0
+  let inherited = 0
   let model = 'unknown'
   // A row's timestamp follows its message, so it lands on the response being read.
-  let current: { id: string; model: string; usage: Record<string, number>; at?: number } | null = null
+  // `forkedFrom` is the last key of a row a fork copied, so it too lands on the response being read.
+  let current: { id: string; model: string; usage: Record<string, number>; at?: number; forked?: boolean } | null = null
   const flush = (): void => {
     const inRange = since === undefined || (current?.at !== undefined && current.at >= since)
     if (current !== null && inRange && !seen.has(current.id)) {
       seen.add(current.id)
       const t = tallyOf(current.usage)
       if (!isEmptyTally(t)) {
-        byModel = addTo(byModel, current.model, t)
-        messages += 1
+        if (skipForked === true && current.forked === true) {
+          inherited += 1
+        } else {
+          byModel = addTo(byModel, current.model, t)
+          messages += 1
+        }
       }
     }
     current = null
@@ -326,6 +344,10 @@ export function tallyGrepLines(stdout: string, seen: Set<string> = new Set(), si
       current = { id: asId[1], model, usage: {} }
       continue
     }
+    if (line === '"forkedFrom":{') {
+      if (current !== null) current.forked = true
+      continue
+    }
     const asTime = /^"timestamp":"([^"]+)"$/.exec(line)
     if (asTime?.[1] !== undefined) {
       if (current !== null && current.at === undefined) current.at = Date.parse(asTime[1])
@@ -337,5 +359,5 @@ export function tallyGrepLines(stdout: string, seen: Set<string> = new Set(), si
     }
   }
   flush()
-  return { byModel, messages }
+  return { byModel, messages, inherited }
 }
