@@ -645,7 +645,7 @@ namespace SegretarioBar
                             string name = doc.Current.Name ?? "";
                             string u2 = url;
                             BeginInvoke(new Action(() => OnClaudeShows(name, u2)));
-                            int[] dock = MeasureTopRow(doc);
+                            int[] dock = MeasureTopRow(doc, CaptionLeft(root));
                             BeginInvoke(new Action(() =>
                             {
                                 Native.RECT fr;
@@ -792,44 +792,69 @@ namespace SegretarioBar
 
         // {left, right, top, bottom} of the free part of Claude's top row in screen pixels, or null when it can't be
         // measured. Everything in the row is one batch of accessibility reads (CacheRequest), not one call per element.
-        static int[] MeasureTopRow(AutomationElement doc)
+        static int[] MeasureTopRow(AutomationElement doc, double captionLeft)
         {
             var dr = doc.Current.BoundingRectangle;
             if (dr.IsEmpty || dr.Width < 400) return null;
             var cr = new CacheRequest();
             cr.Add(AutomationElement.BoundingRectangleProperty);
+            cr.Add(AutomationElement.ControlTypeProperty);
+            cr.Add(AutomationElement.NameProperty);
             cr.TreeScope = TreeScope.Element;
             AutomationElementCollection all;
             using (cr.Activate()) all = doc.FindAll(TreeScope.Descendants, System.Windows.Automation.Condition.TrueCondition);
             // The row's controls: small boxes starting near the page's top. Odd ones (a loading badge, a tooltip, a
             // menu) made the free space jump around, so only two unbroken groups count: the one that starts at the
             // left edge (menu, arrows, Chat/Code switch, chat title) and the one that ends at the right (panel icons).
-            var boxes = new List<System.Windows.Rect>();
+            var boxes = new List<System.Windows.Rect>(); var texts = new List<System.Windows.Rect>();
+            double renameLeft = -1;
             foreach (AutomationElement e in all)
             {
-                System.Windows.Rect r;
-                try { r = e.Cached.BoundingRectangle; } catch { continue; }
+                System.Windows.Rect r; ControlType ct; string name;
+                try { r = e.Cached.BoundingRectangle; ct = e.Cached.ControlType; name = e.Cached.Name ?? ""; } catch { continue; }
                 if (r.IsEmpty || r.Width < 8 || r.Height < 20) continue;
                 if (r.Top < dr.Top || r.Top > dr.Top + 14 || r.Height > 56) continue;   // only the top row's controls
                 if (r.Width > dr.Width * 0.3) continue;                                  // not a whole-row container
-                boxes.Add(r);
+                // the chat title is the button "<title>, rename session" (Chat and Code alike)
+                if (ct == ControlType.Button && name.EndsWith(", rename session")) renameLeft = r.Left;
+                if (ct == ControlType.Text) texts.Add(r); else boxes.Add(r);
             }
-            if (boxes.Count < 4) return null;
+            // A text that sits on a control is that control's label, sometimes much wider than what is drawn (in normal
+            // chats "<PC name>, Connected" is 270 px wide next to a 40 px icon): only free-standing texts count.
+            foreach (var t in texts)
+            {
+                bool label = false;
+                foreach (var b in boxes) if (b.Left < t.Right && t.Left < b.Right) { label = true; break; }
+                if (!label) boxes.Add(t);
+            }
+            if (boxes.Count < 3) return null;
             double gap = Math.Max(60, boxes[0].Height * 3);                             // up to ~3 buttons of empty space inside a group
             boxes.Sort((a, b) => a.Left.CompareTo(b.Left));
             double leftEdge = dr.Left;
             if (boxes[0].Left - dr.Left > gap) return null;
             var leftGroup = new List<System.Windows.Rect>();
             foreach (var r in boxes) { if (r.Left > leftEdge + gap) break; leftEdge = Math.Max(leftEdge, r.Right); leftGroup.Add(r); }
-            // where the chat title starts: the last wide control of the left group (the title is a wide button; the
-            // menu, arrows and icons are square), widened to any wide control it sits inside
-            double titleLeft = -1;
-            foreach (var r in leftGroup) if (r.Width >= r.Height * 2) titleLeft = r.Left;
-            if (titleLeft >= 0)
-                foreach (var r in leftGroup) if (r.Width >= r.Height * 2 && r.Left < titleLeft && r.Right > titleLeft) titleLeft = r.Left;
-            boxes.Sort((a, b) => b.Right.CompareTo(a.Right));
-            double rightEdge = boxes[0].Right;
-            foreach (var r in boxes) { if (r.Right < rightEdge - gap) break; rightEdge = Math.Min(rightEdge, r.Left); }
+            // where the chat title starts: the "rename session" button; failing that, the last wide control of the left
+            // group (the title is a wide button; the menu, arrows and icons are square), widened to any wide control it
+            // sits inside
+            double titleLeft = renameLeft;
+            if (titleLeft < 0)
+            {
+                foreach (var r in leftGroup) if (r.Width >= r.Height * 2) titleLeft = r.Left;
+                if (titleLeft >= 0)
+                    foreach (var r in leftGroup) if (r.Width >= r.Height * 2 && r.Left < titleLeft && r.Right > titleLeft) titleLeft = r.Left;
+            }
+            // the right group: only controls past the left group. Normal chats have none (no panel icons): then the free
+            // space runs to Claude's minimise button (it once hid the bar in every normal chat).
+            var rightBoxes = boxes.FindAll(r => r.Left > leftEdge);
+            double rightEdge = captionLeft > 0 ? Math.Min(captionLeft, dr.Right) : dr.Right;
+            if (rightBoxes.Count > 0)
+            {
+                rightBoxes.Sort((a, b) => b.Right.CompareTo(a.Right));
+                double re = rightBoxes[0].Right;
+                foreach (var r in rightBoxes) { if (r.Right < re - gap) break; re = Math.Min(re, r.Left); }
+                rightEdge = Math.Min(rightEdge, re);
+            }
             if (rightEdge <= leftEdge) return null;
             // the line of the buttons: the typical top and bottom, not the most extreme
             var tops = new List<double>(); var bottoms = new List<double>();
@@ -840,6 +865,22 @@ namespace SegretarioBar
             // left, right of the free space; the page's top; the row buttons' bottom and top (the tabs copy them);
             // where the chat title starts (-1 if not found)
             return new[] { (int)leftEdge, (int)rightEdge, (int)dr.Top, (int)bottom, (int)top, (int)titleLeft };
+        }
+
+        // Claude's own minimise button (it draws its window buttons itself), searched again every 20 s
+        double captionFromRight = -1; DateTime nextCaption = DateTime.MinValue;
+        double CaptionLeft(AutomationElement root)
+        {
+            var wr = root.Current.BoundingRectangle;
+            if (DateTime.Now >= nextCaption)
+            {
+                nextCaption = DateTime.Now.AddSeconds(20);
+                var c = new AndCondition(new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button),
+                    new PropertyCondition(AutomationElement.NameProperty, "Minimize"));
+                var mb = root.FindFirst(TreeScope.Descendants, c);
+                if (mb != null) { var r = mb.Current.BoundingRectangle; if (!r.IsEmpty && r.Top < wr.Top + 80) captionFromRight = wr.Right - r.Left; }
+            }
+            return captionFromRight > 0 ? wr.Right - captionFromRight : -1;
         }
 
         static readonly Regex CodeUrl = new Regex(@"^https://claude\.ai/epitaxy/(local_[A-Za-z0-9-]{8,80})(?:[/?#].*)?$");
