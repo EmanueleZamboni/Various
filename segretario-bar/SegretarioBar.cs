@@ -46,6 +46,7 @@ namespace SegretarioBar
         [DllImport("user32.dll")] public static extern short GetAsyncKeyState(int vk);
         [DllImport("user32.dll")] public static extern bool GetCursorPos(out POINT p);
         [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+        [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
         [StructLayout(LayoutKind.Sequential)] public struct RECT { public int L, T, R, B; }
         [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X, Y; }
     }
@@ -142,14 +143,15 @@ namespace SegretarioBar
             watcher.Start();
         }
 
-        // never take the focus away from Claude, and stay out of the taskbar and Alt+Tab
+        // Appearing never takes the focus; a click does (a NOACTIVATE window let no click reach the WebView2, seen
+        // 13/11/2026), and the page hands it back to Claude right after ("fatto"). Out of the taskbar and Alt+Tab.
         protected override bool ShowWithoutActivation { get { return true; } }
         protected override CreateParams CreateParams
         {
             get
             {
                 var cp = base.CreateParams;
-                cp.ExStyle |= 0x08000000 /*NOACTIVATE*/ | 0x00000080 /*TOOLWINDOW*/;
+                cp.ExStyle |= 0x00000080 /*TOOLWINDOW*/;
                 return cp;
             }
         }
@@ -265,6 +267,7 @@ namespace SegretarioBar
                 try { File.WriteAllText(Path.Combine(Program.DataDir, "hidden.txt"), v ? "1" : "0"); } catch { }
             }
             else if (tipo == "apri") OpenChat(m.ContainsKey("link") ? Convert.ToString(m["link"]) : "");
+            else if (tipo == "fatto" && claude != IntPtr.Zero && Native.GetForegroundWindow() == Handle) Native.SetForegroundWindow(claude);
         }
 
         // ---------- the Segretario, through the hub, with the Telegram-code cookie ----------
@@ -320,13 +323,25 @@ namespace SegretarioBar
             if (mc.Success) target = "claude://claude.ai/" + mc.Groups[1].Value + "/" + mc.Groups[2].Value;
             else if (CodeLink.IsMatch(link)) target = link;
             if (target == null) { Program.Log("refused to open: " + link); return; }
+            if (TestTarget != null) { Program.Log("test mode, would open: " + target); return; }
+            Program.Log("open " + target);
             try { Process.Start(new ProcessStartInfo(target) { UseShellExecute = true }); }
             catch (Exception ex) { Program.Log("open " + target + ": " + ex.Message); }
         }
 
         // ---------- the Claude window ----------
+        // SEGBAR_TARGET=notepad sticks the bar to another app's window instead (for testing clicks without
+        // touching Claude); in that mode chats are only logged, never opened.
+        static readonly string TestTarget = Environment.GetEnvironmentVariable("SEGBAR_TARGET");
+
         static IntPtr FindClaude()
         {
+            if (!string.IsNullOrEmpty(TestTarget))
+            {
+                foreach (var p in Process.GetProcessesByName(TestTarget))
+                    using (p) if (p.MainWindowHandle != IntPtr.Zero) return p.MainWindowHandle;
+                return IntPtr.Zero;
+            }
             foreach (var p in Process.GetProcessesByName("claude"))
             {
                 try
@@ -359,7 +374,8 @@ namespace SegretarioBar
             {
                 File.WriteAllText(Path.Combine(Program.DataDir, "status.txt"),
                     DateTime.Now.ToString("HH:mm:ss") + " claude=" + claude + " page=" + pageReady + " shapes=" + shape.Count +
-                    " shown=" + shown + " placed=" + placed + " qui=" + quiTitle + " | " + quiLink + " | " + why);
+                    " shown=" + shown + " placed=" + placed + " scale=" + placedScale + " qui=" + quiTitle + " | " + quiLink +
+                    " | " + why + " shape=" + json.Serialize(shape));
             }
             catch { }
         }

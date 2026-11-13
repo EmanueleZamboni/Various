@@ -6,7 +6,8 @@
    Telegram-code cookie and opens chats in the Claude app. Messages go both ways through chrome.webview. */
 (() => {
   const TABS = 6, MORE = 4;
-  const st = { items: [], err: "", open: "", more: 0, hidden: !!window.SEG_NASCOSTA, qui: { link: "", titolo: "", code: false } };
+  // open = the card pinned by a click (chats with no link), peek = the card shown while the mouse rests on a tab
+  const st = { items: [], err: "", open: "", peek: "", more: 0, hidden: !!window.SEG_NASCOSTA, qui: { link: "", titolo: "", code: false } };
   const host = window.chrome && window.chrome.webview;
   const manda = (m) => { try { host.postMessage(m); } catch (_) {} };
 
@@ -32,15 +33,34 @@
     const b = el("button", cls, testo);
     b.type = "button";
     if (titolo) b.title = titolo;
-    b.addEventListener("click", (ev) => { ev.preventDefault(); ev.stopPropagation(); fn(); disegna(); });
+    b.addEventListener("click", (ev) => { ev.preventDefault(); ev.stopPropagation(); fn(); disegna(); manda({ tipo: "fatto" }); });
     return b;
   }
 
+  // a click goes straight to the chat; a chat with no link yet opens its card instead
+  function vai(x) {
+    if (x.link && !eQui(x)) { manda({ tipo: "apri", link: x.link }); st.open = ""; st.peek = ""; st.more = 0; }
+    else st.open = st.open === chiave(x) ? "" : chiave(x);
+  }
+
+  // resting the mouse on a tab for a moment shows its card; it goes away when the mouse leaves tab and card
+  let timerPeek = 0;
+  function sbircia(n, x) {
+    n.addEventListener("mouseenter", () => { clearTimeout(timerPeek); timerPeek = setTimeout(() => { if (st.peek !== chiave(x)) { st.peek = chiave(x); disegna(); } }, 350); });
+    n.addEventListener("mouseleave", lascia);
+  }
+  function lascia() {
+    clearTimeout(timerPeek);
+    timerPeek = setTimeout(() => { if (st.peek) { st.peek = ""; disegna(); } }, 300);
+  }
+
   function scheda(x) {
-    const b = bottone("", (chiave(x) === st.open ? "sel " : "") + (eQui(x) ? "qui" : ""),
-      () => { st.open = st.open === chiave(x) ? "" : chiave(x); }, tipo(x) + sotto(x));
+    const k = chiave(x);
+    const b = bottone("", (k === st.open || k === st.peek ? "sel " : "") + (eQui(x) ? "qui" : ""), () => vai(x),
+      x.link ? (eQui(x) ? "You are here" : "Open this chat") : "Show what this chat is doing");
     if (x.aspetta) b.appendChild(el("span", "punto"));
     b.appendChild(document.createTextNode(corta(x.titolo || "(untitled)", 22)));
+    sbircia(b, x);
     return b;
   }
 
@@ -81,7 +101,7 @@
     if (st.more === 2) {
       const s = el("div", "storia");
       st.items.forEach((x) => {
-        const b = bottone("", "", () => { st.open = chiave(x); st.more = 0; });
+        const b = bottone("", "", () => { st.more = 0; st.open = ""; vai(x); });
         const dot = el("span", x.aspetta ? "punto" : ""); if (!x.aspetta) dot.style.width = "13px";
         b.append(dot, el("span", "q", quando(x.quando)), el("span", "t", x.titolo || "(untitled)"), el("span", "k", tipo(x) + sotto(x)));
         s.appendChild(b);
@@ -89,9 +109,11 @@
       root.appendChild(s);
     }
 
-    const sel = st.items.find((x) => chiave(x) === st.open);
+    const sel = st.items.find((x) => chiave(x) === (st.peek || st.open));
     if (sel) {
       const c = el("div", "scheda");
+      c.addEventListener("mouseenter", () => clearTimeout(timerPeek));
+      c.addEventListener("mouseleave", lascia);
       const t = el("div", "titolo", sel.titolo || "(untitled)");
       const stato = sel.aspetta ? "waiting for you" : sel.in_corso ? "working now" : sel.stato || "opened";
       t.appendChild(el("span", "meta", `${tipo(sel)}${sotto(sel)} · ${stato}${sel.quando ? " · " + quando(sel.quando) : ""}`));
@@ -101,7 +123,8 @@
       if (sel.domanda) c.appendChild(el("p", "domanda", "Claude asks you: " + corta(sel.domanda, 240)));
       if (!sel.dove_sono && !sel.prossimo) c.appendChild(el("p", "meta", "This chat hasn't written its progress to the Segretario yet."));
       if (eQui(sel)) c.appendChild(el("span", "qui-testo", "You are here"));
-      else if (sel.link) c.appendChild(bottone("Open this chat", "apri", () => { manda({ tipo: "apri", link: sel.link }); st.open = ""; st.more = 0; }));
+      else if (sel.link) c.appendChild(bottone("Open this chat", "apri", () => vai(sel)));
+      else c.appendChild(el("p", "meta", "No link to open yet: it gets one the next time you open this chat."));
       root.appendChild(c);
     }
     forma();
