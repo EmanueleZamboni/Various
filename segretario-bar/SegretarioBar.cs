@@ -153,9 +153,13 @@ namespace SegretarioBar
                 return cp;
             }
         }
+        // Shown and hidden through WinForms (Visible), never with a bare ShowWindow: the WebView2 control only draws
+        // while WinForms thinks its window is visible, otherwise the bar is a blank white box (seen 13/11/2026).
+        bool allowShow;
         protected override void SetVisibleCore(bool value)
         {
             if (!IsHandleCreated) { CreateHandle(); value = false; } // stay hidden until there is a shape to show
+            else if (value && !allowShow) value = false;
             base.SetVisibleCore(value);
         }
         protected override void OnHandleCreated(EventArgs e)
@@ -341,11 +345,12 @@ namespace SegretarioBar
         void Hide2()
         {
             if (!shown) return;
-            Native.ShowWindow(Handle, 0 /*SW_HIDE*/);
+            allowShow = false;
+            Visible = false;
             shown = false;
         }
 
-        DateTime nextStatus = DateTime.MinValue;
+        DateTime nextStatus = DateTime.MinValue, nextRaise = DateTime.MinValue;
         void WriteStatus(string why)
         {
             if (DateTime.Now < nextStatus) return;
@@ -386,8 +391,16 @@ namespace SegretarioBar
             if (want != placed || s != placedScale || !shown)
             {
                 Native.SetWindowPos(Handle, IntPtr.Zero, want.X, want.Y, want.Width, want.Height,
-                    0x0004 /*NOZORDER*/ | 0x0010 /*NOACTIVATE*/ | 0x0040 /*SHOWWINDOW*/);
-                placed = want; placedScale = s; shown = true;
+                    0x0004 /*NOZORDER*/ | 0x0010 /*NOACTIVATE*/);
+                placed = want; placedScale = s;
+                if (!shown) { allowShow = true; Visible = true; shown = true; } // ShowWithoutActivation: no focus taken
+            }
+            // Being owned keeps it above Claude only after Windows reorders the pair: lift it right above Claude
+            // whenever Claude is the window in front (cheap, no focus taken).
+            if (Native.GetForegroundWindow() == claude && DateTime.Now >= nextRaise)
+            {
+                Native.SetWindowPos(Handle, IntPtr.Zero /*HWND_TOP*/, 0, 0, 0, 0, 0x0001 /*NOSIZE*/ | 0x0002 /*NOMOVE*/ | 0x0010 /*NOACTIVATE*/);
+                nextRaise = DateTime.Now.AddMilliseconds(400);
             }
             if (shapeKey != placedShape || s != placedScale) { ApplyShape(s); placedShape = shapeKey; }
             else if (placedShape == "") { ApplyShape(s); placedShape = shapeKey; }
