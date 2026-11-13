@@ -17,6 +17,7 @@ import { stageAttachments, attachmentsSchema } from './mcpAttachments.js';
 import { enqueue, executeSend, listQueued } from './mail/outbox.js';
 import { cancelToDraft } from './routes/compose.js';
 import { parseSendAt } from './sendAt.js';
+import { newsletterSenders, unsubscribeSenders } from './newsletters.js';
 import { uiSettings } from './settings.js';
 import { htmlToText } from './mail/sanitize.js';
 import { looksLikeHtml } from './mail/parse.js';
@@ -470,6 +471,37 @@ const TOOLS: Tool[] = [
       const d = cancelToDraft(Number(a.outbox_id));
       if (!d) throw fail('Nothing scheduled with that outbox_id: it was already sent or cancelled.');
       return { ok: true, draft_id: String(d.id), note: 'Not sent. Kept in Postino → Drafts.' };
+    },
+  },
+  {
+    name: 'list_newsletters',
+    title: 'Newsletter senders',
+    description: 'The senders Postino files as newsletters in the last months (most mail first), with how many emails, the latest subject and how they can be unsubscribed (one-click, email, none). Senders the user has written to, brand offers and mail marked important are left out. Show this list to the user before unsubscribe_newsletters.',
+    inputSchema: { type: 'object', properties: { months: { type: 'integer', minimum: 1, maximum: 36, default: 12 } }, additionalProperties: false },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+    run: (a) => {
+      const list = newsletterSenders(Number(a.months) || 12);
+      return { count: list.length, senders: list.map((x) => ({ email: x.email, name: x.name, emails: x.count, latest: x.latest.slice(0, 10), latest_subject: x.latestSubject, unsubscribe: x.method, already_unsubscribed: x.unsubscribedAt ? x.unsubscribedAt.slice(0, 10) : undefined })) };
+    },
+  },
+  {
+    name: 'unsubscribe_newsletters',
+    title: 'Unsubscribe from newsletters',
+    description: 'Unsubscribe from these newsletter senders (emails from list_newsletters): a one-click request or the unsubscribe email each sender asks for. With trash_existing, their emails already received go to Trash (only conversations entirely from them). Anyone still writing a week later is blocked automatically. Only after the user approved the exact list.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        senders: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 500 },
+        trash_existing: { type: 'boolean', default: true },
+      },
+      required: ['senders'],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
+    run: async (a) => {
+      const res = await unsubscribeSenders(strList(a.senders), { trashExisting: a.trash_existing !== false });
+      const n = (k: string) => res.filter((r) => r.result.startsWith(k)).length;
+      return { done: res.length, accepted: n('accepted') + n('unsubscribe email sent'), no_link: n('no unsubscribe link'), refused_or_failed: n('refused') + n('failed'), skipped: n('skipped'), trashed: res.reduce((t, r) => t + r.trashed, 0), details: res };
     },
   },
   {

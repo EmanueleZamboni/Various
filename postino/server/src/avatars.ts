@@ -97,7 +97,7 @@ export type SafeResponse = { ok: boolean; status: number; url: string; headers: 
  * rebinding between the check and the connection), follows at most 3 redirects
  * through the same check, and caps the body.
  */
-export async function safeFetch(url: string, init: { signal: AbortSignal; headers?: Record<string, string> }, hops = 0): Promise<SafeResponse> {
+export async function safeFetch(url: string, init: { signal: AbortSignal; headers?: Record<string, string>; method?: 'GET' | 'POST'; body?: string; noRedirect?: boolean }, hops = 0): Promise<SafeResponse> {
   const u = new URL(url);
   if (u.protocol !== 'https:') throw new Error('https only');
   const vetted = await assertPublicHost(u.hostname);
@@ -105,8 +105,8 @@ export async function safeFetch(url: string, init: { signal: AbortSignal; header
     const req = https.request(
       u,
       {
-        method: 'GET',
-        headers: init.headers,
+        method: init.method || 'GET',
+        headers: init.body !== undefined ? { ...init.headers, 'content-length': String(Buffer.byteLength(init.body)) } : init.headers,
         signal: init.signal,
         servername: u.hostname,
         lookup: (_host, _opts, cb) => (cb as unknown as (err: null, addrs: { address: string; family: number }[]) => void)(null, [{ address: vetted.address, family: vetted.family }]),
@@ -128,9 +128,9 @@ export async function safeFetch(url: string, init: { signal: AbortSignal; header
       },
     );
     req.on('error', reject);
-    req.end();
+    req.end(init.body);
   });
-  if ([301, 302, 303, 307, 308].includes(res.status)) {
+  if (!init.noRedirect && [301, 302, 303, 307, 308].includes(res.status)) {
     const loc = res.headers.location;
     if (!loc || hops >= 3) throw new Error('too many redirects');
     return safeFetch(new URL(String(loc), u).toString(), init, hops + 1);

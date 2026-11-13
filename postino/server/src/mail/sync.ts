@@ -13,7 +13,7 @@ import type { AccountRow } from '../views.js';
 import { accountView, folderView, syncProgress } from '../views.js';
 import {
   upsertHeader, updateFlags, storeBody, markBodyError, recomputeThread, storeAttachment, registerAttachmentMeta, attachmentPath,
-  deleteMessagesByIds, deleteFolderMessages, refreshFolderCounts, isBlocked, isSafeSender, folderByRole, type FolderRow, type FolderRole, type MessageRow,
+  deleteMessagesByIds, deleteFolderMessages, refreshFolderCounts, isBlocked, isSafeSender, ignoresUnsubscribe, folderByRole, type FolderRow, type FolderRole, type MessageRow,
 } from './store.js';
 import { bodyFromParsed, looksLikeHtml, normalizeMsgId, parseReferences, pickUnsubscribe, splitQuoted, makeSnippet, parserOptions, defaultFilename, type ParsedHeaders, type Address } from './parse.js';
 import { sanitizeEmailHtml, htmlToText, textToHtml } from './sanitize.js';
@@ -816,7 +816,7 @@ export class AccountSync {
         structureJson: msg.bodyStructure ? JSON.stringify(msg.bodyStructure) : null,
       });
       const row = db.prepare('SELECT category FROM messages WHERE id = ?').get(r.id) as { category: string } | undefined;
-      const blocked = r.isNew && folder.role === 'inbox' && isBlocked(headers.from.email);
+      const blocked = r.isNew && folder.role === 'inbox' && (isBlocked(headers.from.email) || ignoresUnsubscribe(headers.from.email));
       return { id: r.id, isNew: r.isNew, threadId: r.threadId, from: headers.from, subject: headers.subject, category: row?.category || 'person', blocked };
     } catch (err) {
       log.warn({ account: this.email, uid: msg.uid, err: (err as Error).message }, 'ingest header failed');

@@ -330,6 +330,16 @@ export function setSetting(key: string, value: unknown): void {
 export const nowIso = (): string => new Date().toISOString();
 
 // Claude's verdict on new mail from people (see triage.ts); read by groups.ts and views.ts too.
+// Newsletter senders Ema unsubscribed from (newsletters.ts); still writing a week later = blocked.
+db.exec(`CREATE TABLE IF NOT EXISTS unsubscribed (
+  email TEXT PRIMARY KEY,
+  name TEXT NOT NULL DEFAULT '',
+  method TEXT NOT NULL,
+  result TEXT NOT NULL DEFAULT '',
+  at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+)`);
+
+
 db.exec(`CREATE TABLE IF NOT EXISTS ai_triage (
   message_row INTEGER PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE,
   thread_id INTEGER NOT NULL,

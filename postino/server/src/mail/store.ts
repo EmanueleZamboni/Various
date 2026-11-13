@@ -552,6 +552,12 @@ export function setSafeSenders(emails: string[], safe: boolean): void {
   for (const e of new Set(emails.map((x) => (x || '').trim().toLowerCase()).filter((x) => x.includes('@')))) stmt.run(e);
 }
 
+/** A sender Ema unsubscribed from more than a week ago that still writes: blocked on arrival. */
+export function ignoresUnsubscribe(email: string): boolean {
+  const r = db.prepare('SELECT at FROM unsubscribed WHERE email = ?').get((email || '').trim().toLowerCase()) as { at: string } | undefined;
+  return !!r && Date.now() - Date.parse(r.at) > 7 * 86_400_000;
+}
+
 export function isBlocked(email: string): boolean {
   const e = (email || '').toLowerCase();
   if (!e) return false;
