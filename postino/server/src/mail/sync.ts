@@ -770,6 +770,19 @@ export class AccountSync {
           log.warn({ account: this.email, err: (err as Error).message }, 'blocked move failed');
         }
       }
+      // 3b. Amazon Associates / Influencer program mail skips the inbox, except offers that only
+      // count once you click to activate them (Ema's rule).
+      const quiet = newInbox.filter((m) => !m.blocked && isAmazonProgramNoise(m.from.email, m.subject));
+      if (quiet.length) {
+        try {
+          const dest = await this.ensureFolder('archive');
+          const res = await client.messageMove(quiet.map((m) => m.uid), dest.path, { uid: true });
+          this.applyMoveResult(folder, dest, quiet.map((m) => m.uid), res && res.uidMap ? res.uidMap : null);
+          for (const m of quiet) m.blocked = true; // no "new mail" notification either
+        } catch (err) {
+          log.warn({ account: this.email, err: (err as Error).message }, 'amazon program archive failed');
+        }
+      }
       // 4. Senders marked "Not spam" that landed in Spam go back to the inbox.
       const inbox = rescued.length ? folderByRole(this.id, 'inbox') : undefined;
       if (inbox) {
@@ -1214,4 +1227,14 @@ function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
       timer = setTimeout(() => reject(new TimeoutError(`${what} took longer than ${Math.round(ms / 1000)} s`)), ms);
     }),
   ]).finally(() => clearTimeout(timer));
+}
+
+/** Amazon Associates / Influencer program senders (any country's Amazon). */
+const AMAZON_PROGRAM = /^(store-news|promotion[\w-]*|annonce|novedades|associates[\w-]*|amazon-offers)@amazon\.[a-z.]+$/i;
+/** Offers that only start once you click to activate them. */
+const AMAZON_ACTIVATE = /creator rewards|opt[\s-]?in|action (needed|required)|activate|attiva|aktivier|activer|activa|incentive|bonus|enroll|iscriviti|register now|registrati/i;
+
+/** Program news, reminders and promos: archived on arrival, unless they ask you to activate an offer. */
+export function isAmazonProgramNoise(fromEmail: string, subject: string): boolean {
+  return AMAZON_PROGRAM.test((fromEmail || '').trim()) && !AMAZON_ACTIVATE.test(subject || '');
 }
