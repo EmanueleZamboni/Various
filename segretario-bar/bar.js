@@ -2,7 +2,7 @@
    - Tabs stay where they are. × closes one. Drag a tab to move it. A click opens the chat; resting the mouse on a tab
      shows its card (last step, next step, Claude's question).
    - A chat gets a tab (at the right end, like Chrome) when you move to it, or when it starts waiting for you.
-     A tab you closed stays closed until you open that chat yourself. After a restart the tabs are exactly the
+     A tab you closed stays closed until you pick that chat in History. After a restart the tabs are exactly the
      ones you left: nothing is added or closed for you.
    - Waiting for you: the tab flashes for 3 seconds, then stays orange until you open the chat.
      Code chats: Claude finished a turn after you last looked at the chat (the Claude app's own records, read by
@@ -98,8 +98,8 @@
   function salva() { manda({ tipo: "salva", stato: T }); }
   // only a chat that can be opened gets a tab (a link-less entry stays in History)
   const apribile = (k) => /^(https:|claude:)/.test(k);
-  // `tua`: you opened the chat yourself, so even a tab you closed comes back. Anything automatic (a chat that starts
-  // waiting) never brings back a tab you closed.
+  // `tua`: you picked the chat in the bar's History, so even a tab you closed comes back. Anything else (moving to a
+  // chat in Claude, a chat that starts waiting) never brings back a tab you closed.
   function apriScheda(k, tua) {
     if (!apribile(k) || T.order.includes(k)) return false;
     if (T.closed[k] && !tua) return false;
@@ -108,7 +108,7 @@
   // The tabs are exactly what you left: after a restart nothing is added or removed. The first look after the bar
   // starts only takes note of what is open and what is waiting; later, only CHANGES count: you moving to another chat,
   // or a chat that starts waiting while the bar runs.
-  let primoGiro = true, quiPrima = "";
+  let primoGiro = true; const quiPrima = { code: "", chat: "" };
   function aggiornaSchede() {
     unisci();
     if (!st.ready.lista) return;
@@ -133,11 +133,16 @@
         if (!primoGiro && !prevWaiting.has(k)) { st.flash[k] = Date.now() + FLASH_MS; if (apriScheda(k, false)) cambiato = true; setTimeout(disegna, FLASH_MS + 50); }
       }
     });
-    // the open chat gets a tab when you MOVE to it from another chat. Closing the tab of the chat you are in sticks;
-    // a blink of the page (a new-chat screen, a reload) is not a move.
-    if (quiOra && quiOra !== quiPrima) {
-      if (quiPrima && apriScheda(quiOra, true)) cambiato = true;
-      quiPrima = quiOra;
+    // The open chat gets a tab when you MOVE to it from another chat of the same kind. Code and Chat are counted
+    // apart: switching between Claude's Code and Chat tabs shows the chat you left there, which is not opening it.
+    // A blink of the page (a new-chat screen, a reload) is not a move either. A tab you CLOSED never comes back this
+    // way: only by picking it in the bar's History.
+    if (quiOra) {
+      const tipoQui = quiOra.startsWith("claude://") ? "code" : "chat";
+      if (quiOra !== quiPrima[tipoQui]) {
+        if (quiPrima[tipoQui] && apriScheda(quiOra, false)) cambiato = true;
+        quiPrima[tipoQui] = quiOra;
+      }
     }
     primoGiro = false;
     delete T.visto;   // no longer used
@@ -211,12 +216,26 @@
   // ---- drag a tab to move it: the others slide aside, the order is saved on release ----
   function inizioTrascina(ev, t, k, i) {
     if (ev.button !== 0) return;
+    annullaTrascina(false);
     const tabs = [...root.querySelectorAll(".riga .tab")];
-    st.drag = { k, i, x0: ev.clientX, mosso: false, tabs, rects: tabs.map((n) => n.getBoundingClientRect()), to: i, el: t };
-    t.setPointerCapture(ev.pointerId);
+    st.drag = { k, i, x0: ev.clientX, mosso: false, tabs, rects: tabs.map((n) => n.getBoundingClientRect()), to: i, el: t, t0: Date.now() };
+    try { t.setPointerCapture(ev.pointerId); } catch (_) {}
     t.addEventListener("pointermove", muovi);
-    t.addEventListener("pointerup", fine, { once: true });
-    t.addEventListener("pointercancel", fine, { once: true });
+    t.addEventListener("pointerup", fine);
+    // the release went somewhere else (focus moved to Claude, the window was cut): forget the press, open nothing
+    t.addEventListener("pointercancel", () => annullaTrascina());
+    t.addEventListener("lostpointercapture", () => setTimeout(() => { if (st.drag && st.drag.el === t) annullaTrascina(); }, 0));
+  }
+  // A press whose release never arrived used to leave the bar thinking a tab was still being dragged: it then never
+  // redrew (History and every button looked dead) and a later click could open two chats. Now such a press is dropped.
+  // (no redraw when a new press is starting: it would swap the tab being pressed for a new copy)
+  function annullaTrascina(ridisegna) {
+    const d = st.drag; if (!d) return;
+    st.drag = null;
+    d.el.removeEventListener("pointermove", muovi);
+    d.el.removeEventListener("pointerup", fine);
+    d.el.classList.remove("trascina");
+    if (ridisegna !== false) disegna();
   }
   function muovi(ev) {
     const d = st.drag; if (!d) return;
@@ -237,9 +256,11 @@
       n.style.transform = s ? `translateX(${s}px)` : "";
     });
   }
-  function fine() {
-    const d = st.drag; st.drag = null; if (!d) return;
+  function fine(ev) {
+    const d = st.drag; if (!d || (ev && ev.currentTarget !== d.el)) return;
+    st.drag = null;
     d.el.removeEventListener("pointermove", muovi);
+    d.el.removeEventListener("pointerup", fine);
     if (!d.mosso) { const x = voce(d.k); vai(x); disegna(); manda({ tipo: "fatto" }); return; }
     const vis = T.order.slice(0, VISIBLE());
     const [m] = vis.splice(d.i, 1); vis.splice(d.to, 0, m);
@@ -250,7 +271,8 @@
   function nascondi(si) { st.hidden = si; st.open = ""; st.peek = ""; st.more = 0; manda({ tipo: "nascosta", valore: si }); }
 
   function disegna() {
-    if (st.drag) return;                 // never redraw under a tab being dragged
+    if (st.drag && Date.now() - st.drag.t0 > 15000) { const d = st.drag; st.drag = null; d.el.removeEventListener("pointermove", muovi); d.el.removeEventListener("pointerup", fine); }
+    if (st.drag) return;                 // never redraw under a tab being dragged (a press stuck for 15 s is dropped above)
     root.replaceChildren();
     const riga = el("div", "riga");
     const attese = tutte.filter(aspetta).length;
@@ -388,6 +410,8 @@
     disegna();
   });
 
+  // any new press while an old one is still "held" (its release got lost) drops the old one first
+  root.addEventListener("pointerdown", () => { if (st.drag) annullaTrascina(false); }, true);
   document.body.appendChild(root);
   new ResizeObserver(() => { ultima = ""; forma(); }).observe(root);
   let largo = window.innerWidth;   // the Claude window got wider or narrower: redo how many tabs fit

@@ -331,6 +331,7 @@ namespace SegretarioBar
                 else
                 {
                     m["errore"] = "http " + r.Key;
+                    Program.Log("recent chats from the Segretario: http " + r.Key);
                     if (r.Key == 401 && !loginOffered) { loginOffered = true; ShowLogin(); }
                 }
             }
