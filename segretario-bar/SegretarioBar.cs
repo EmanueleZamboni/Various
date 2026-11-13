@@ -47,6 +47,9 @@ namespace SegretarioBar
         [DllImport("user32.dll")] public static extern bool GetCursorPos(out POINT p);
         [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
         [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+        [DllImport("user32.dll")] public static extern IntPtr GetDC(IntPtr h);
+        [DllImport("user32.dll")] public static extern int ReleaseDC(IntPtr h, IntPtr dc);
+        [DllImport("gdi32.dll")] public static extern uint GetPixel(IntPtr dc, int x, int y);
         [StructLayout(LayoutKind.Sequential)] public struct RECT { public int L, T, R, B; }
         [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X, Y; }
     }
@@ -262,14 +265,15 @@ namespace SegretarioBar
                     {
                         var d = r as Dictionary<string, object>;
                         if (d == null) continue;
-                        list.Add(new[] { Num(d["x"]), Num(d["y"]), Num(d["w"]), Num(d["h"]), d.ContainsKey("ledge") ? Num(d["ledge"]) : 0 });
+                        list.Add(new[] { Num(d["x"]), Num(d["y"]), Num(d["w"]), Num(d["h"]), d.ContainsKey("ledge") ? Num(d["ledge"]) : 0,
+                            d.ContainsKey("top") ? Num(d["top"]) : 0 });
                     }
                 shape = list;
                 open = m.ContainsKey("aperto") && m["aperto"] is bool && (bool)m["aperto"];
                 pageReady = true;
                 Follow();
             }
-            else if (tipo == "lista") { lastCode = ""; Refresh(false); } // the page (re)loaded: send the Code chats again too
+            else if (tipo == "lista") { lastCode = ""; lastColour = ""; nextSample = DateTime.MinValue; rowCssNow = -1; Refresh(false); } // the page (re)loaded: send the Code chats again too
             else if (tipo == "login") ShowLogin();
             else if (tipo == "nascosta")
             {
@@ -400,6 +404,9 @@ namespace SegretarioBar
             catch { }
         }
 
+        int[] rowRel;            // the top row's free space, relative to the Claude window's top-left corner
+        bool dockedNow; double rowCssNow = -1;
+
         void Follow()
         {
             WriteStatus("tick");
@@ -423,6 +430,28 @@ namespace SegretarioBar
             foreach (var q in shape) hCss = Math.Max(hCss, q[1] + q[3] + q[4]);
             int w = (int)Math.Round(wCss * s), h = (int)Math.Ceiling((hCss + 2) * s);
             var want = new Rectangle(r.L + (fullW - w) / 2, r.T + (int)Math.Round(TopCss * s), w, h);
+
+            // Docked: inside the free middle of Claude's top row, sitting on the row's bottom edge (Chrome's tab strip).
+            // The bar starts 3 px below the row's top so the row's own colour can still be read above it.
+            bool docked = false; double rowCss = 0;
+            int[] rel = rowRel;
+            if (rel != null)
+            {
+                int pad = (int)Math.Round(10 * s);
+                int L = r.L + rel[0] + pad, R = r.L + rel[1] - pad, top = r.T + rel[2] + (int)Math.Round(3 * s);
+                int rowBottom = r.T + rel[3] + (int)Math.Round(2 * s);
+                if ((R - L) / s >= 360 && rowBottom - top > 20 * s)
+                {
+                    docked = true;
+                    rowCss = Math.Round((rowBottom - top) / s);
+                    want = new Rectangle(L, top, R - L, h);
+                }
+            }
+            if (docked != dockedNow || rowCss != rowCssNow)
+            {
+                dockedNow = docked; rowCssNow = rowCss;
+                Post(new Dictionary<string, object> { { "tipo", "modo" }, { "docked", docked }, { "alto", rowCss } });
+            }
             string shapeKey = json.Serialize(shape);
             if (want != placed || s != placedScale || !shown)
             {
@@ -440,6 +469,7 @@ namespace SegretarioBar
             }
             if (shapeKey != placedShape || s != placedScale) { ApplyShape(s); placedShape = shapeKey; }
             else if (placedShape == "") { ApplyShape(s); placedShape = shapeKey; }
+            SampleBelow(s);
 
             // a click anywhere outside the tabs closes the open card or history, as on claude.ai
             bool down = (Native.GetAsyncKeyState(0x01) & 0x8000) != 0;
@@ -449,6 +479,52 @@ namespace SegretarioBar
                 if (!Inside(p.X - placed.X, p.Y - placed.Y, s)) Post(new Dictionary<string, object> { { "tipo", "fuori" } });
             }
             mouseWasDown = down;
+        }
+
+        // Claude's page colour right under the bar (11 pixels across, the most common wins, so text doesn't count):
+        // the open tab is painted in it, which makes the tab flow into Claude's page like Chrome's active tab.
+        // Read every 2 s, only while Claude (or the bar) is the window in front, so another window's colour never leaks.
+        DateTime nextSample = DateTime.MinValue;
+        string lastColour = "";
+        void SampleBelow(double s)
+        {
+            if (DateTime.Now < nextSample || !shown) return;
+            nextSample = DateTime.Now.AddSeconds(2);
+            IntPtr fg = Native.GetForegroundWindow();
+            if (fg != claude && fg != Handle) return;
+            if (shape.Count == 0) return;
+            // the page: just under the tab strip (skipped while a card hangs over it); the row: just above the bar
+            int stripBottom = placed.Y + (int)Math.Ceiling((shape[0][1] + shape[0][3]) * s);
+            string page = open ? lastPage : Mode(stripBottom + (int)Math.Round(4 * s));
+            string row = dockedNow ? Mode(placed.Y - 2) : "";
+            if (page == "") return;
+            string key = page + "|" + row;
+            if (key == lastColour) return;
+            lastColour = key; lastPage = page;
+            Post(new Dictionary<string, object> { { "tipo", "sfondo" }, { "colore", page }, { "fila", row } });
+        }
+        string lastPage = "";
+
+        // the most common colour of 11 pixels across the bar's width at screen row y ("" when no colour wins)
+        string Mode(int y)
+        {
+            var counts = new Dictionary<uint, int>();
+            IntPtr dc = Native.GetDC(IntPtr.Zero);
+            try
+            {
+                for (int i = 0; i < 11; i++)
+                {
+                    int x = placed.X + (int)(placed.Width * (i + 0.5) / 11);
+                    uint c = Native.GetPixel(dc, x, y);
+                    if (c == 0xFFFFFFFF) continue;
+                    int n; counts.TryGetValue(c, out n); counts[c] = n + 1;
+                }
+            }
+            finally { Native.ReleaseDC(IntPtr.Zero, dc); }
+            uint best = 0; int bestN = 0;
+            foreach (var kv in counts) if (kv.Value > bestN) { best = kv.Key; bestN = kv.Value; }
+            if (bestN < 4) return "";
+            return string.Format("#{0:x2}{1:x2}{2:x2}", best & 0xFF, (best >> 8) & 0xFF, (best >> 16) & 0xFF); // COLORREF is 0x00BBGGRR
         }
 
         bool Inside(int x, int y, double s)
@@ -467,14 +543,26 @@ namespace SegretarioBar
                 int l = (int)Math.Floor(q[0] * s), t = (int)Math.Floor(q[1] * s);
                 int rr = (int)Math.Ceiling((q[0] + q[2]) * s), b = (int)Math.Ceiling((q[1] + q[3]) * s);
                 int ledge = (int)Math.Round(q[4] * s);
-                IntPtr one = Native.CreateRoundRectRgn(l, t, rr + 1, b + 1 + ledge, d, d);
+                IntPtr one = q.Length > 5 && q[5] >= 2 ? Native.CreateRectRgn(l, t, rr, b + ledge)   // docked strip: square
+                    : Native.CreateRoundRectRgn(l, t, rr + 1, b + 1 + ledge, d, d);
                 Native.CombineRgn(all, all, one, 2 /*RGN_OR*/);
                 Native.DeleteObject(one);
+                if (q.Length > 5 && q[5] > 0) // rounded on top only: square off the bottom half
+                {
+                    IntPtr low = Native.CreateRectRgn(l, t + d, rr, b + ledge);
+                    Native.CombineRgn(all, all, low, 2 /*RGN_OR*/);
+                    Native.DeleteObject(low);
+                }
             }
             Native.SetWindowRgn(Handle, all, true); // Windows owns the region from here
         }
 
         // ---------- which chat Claude shows: title + address, read through accessibility every 3 s ----------
+        // The Claude window holds several pages: the app's own claude.ai page (the one we want), the built-in browser
+        // panel, an app shell page, and this bar itself (Windows counts an owned window as part of its owner). Only a
+        // page at https://claude.ai/ counts, the widest one if several.
+        // The same pass measures Claude's top row: the free space between the buttons on its left (menu, back, chat
+        // title...) and on its right (panels, more...). The tabs dock into that space, like Chrome's tabs in its title bar.
         void WatchClaude()
         {
             var docCond = new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Document);
@@ -486,14 +574,27 @@ namespace SegretarioBar
                     if (h != IntPtr.Zero && Native.IsWindow(h) && !Native.IsIconic(h))
                     {
                         var root = AutomationElement.FromHandle(h);
-                        var doc = root.FindFirst(TreeScope.Descendants, docCond);
+                        AutomationElement doc = null; string url = ""; double widest = 0;
+                        foreach (AutomationElement d in root.FindAll(TreeScope.Descendants, docCond))
+                        {
+                            object vp; string u = "";
+                            if (d.TryGetCurrentPattern(ValuePattern.Pattern, out vp)) u = ((ValuePattern)vp).Current.Value ?? "";
+                            if (!u.StartsWith("https://claude.ai/")) continue;
+                            double w = d.Current.BoundingRectangle.Width;
+                            if (w > widest) { widest = w; doc = d; url = u; }
+                        }
                         if (doc != null)
                         {
                             string name = doc.Current.Name ?? "";
-                            string url = "";
-                            object vp;
-                            if (doc.TryGetCurrentPattern(ValuePattern.Pattern, out vp)) url = ((ValuePattern)vp).Current.Value ?? "";
-                            BeginInvoke(new Action(() => OnClaudeShows(name, url)));
+                            string u2 = url;
+                            BeginInvoke(new Action(() => OnClaudeShows(name, u2)));
+                            int[] dock = MeasureTopRow(doc);
+                            BeginInvoke(new Action(() =>
+                            {
+                                Native.RECT fr;
+                                if (dock == null || Native.DwmGetWindowAttribute(h, 9, out fr, Marshal.SizeOf(typeof(Native.RECT))) != 0) { rowRel = null; return; }
+                                rowRel = new[] { dock[0] - fr.L, dock[1] - fr.L, dock[2] - fr.T, dock[3] - fr.T };
+                            }));
                         }
                     }
                 }
@@ -586,6 +687,36 @@ namespace SegretarioBar
             BeginInvoke(new Action(() => Post(new Dictionary<string, object> { { "tipo", "code" }, { "sessioni", list } })));
         }
 
+        // {left, right, top, bottom} of the free part of Claude's top row in screen pixels, or null when it can't be
+        // measured. Everything in the row is one batch of accessibility reads (CacheRequest), not one call per element.
+        static int[] MeasureTopRow(AutomationElement doc)
+        {
+            var dr = doc.Current.BoundingRectangle;
+            if (dr.IsEmpty || dr.Width < 400) return null;
+            var cr = new CacheRequest();
+            cr.Add(AutomationElement.BoundingRectangleProperty);
+            cr.TreeScope = TreeScope.Element;
+            AutomationElementCollection all;
+            using (cr.Activate()) all = doc.FindAll(TreeScope.Descendants, System.Windows.Automation.Condition.TrueCondition);
+            double mid = dr.Left + dr.Width / 2, leftEdge = dr.Left, rightEdge = dr.Right, bottom = 0;
+            int n = 0;
+            foreach (AutomationElement e in all)
+            {
+                System.Windows.Rect r;
+                try { r = e.Cached.BoundingRectangle; } catch { continue; }
+                if (r.IsEmpty || r.Width < 8 || r.Height < 16) continue;
+                if (r.Top < dr.Top - 4 || r.Top > dr.Top + 14 || r.Height > 64) continue;  // only the top row's controls
+                if (r.Width > dr.Width * 0.45) continue;                                    // not a whole-row container
+                if (r.Left + r.Width / 2 < mid) leftEdge = Math.Max(leftEdge, r.Right); else rightEdge = Math.Min(rightEdge, r.Left);
+                bottom = Math.Max(bottom, r.Bottom);
+                n++;
+            }
+            if (n < 3 || bottom <= dr.Top) return null;
+            return new[] { (int)leftEdge, (int)rightEdge, (int)dr.Top, (int)bottom };
+        }
+
+        static readonly Regex CodeUrl = new Regex(@"^https://claude\.ai/epitaxy/(local_[A-Za-z0-9-]{8,80})(?:[/?#].*)?$");
+
         void OnClaudeShows(string name, string url)
         {
             string title = TitleTail.Replace(name, "").Trim();
@@ -593,6 +724,8 @@ namespace SegretarioBar
             string link = "";
             var mu = OpenUrl.Match(url);
             if (mu.Success) link = "https://claude.ai/" + mu.Groups[1].Value + "/" + mu.Groups[2].Value;
+            var mc = CodeUrl.Match(url);
+            if (mc.Success) link = "claude://claude.ai/epitaxy/" + mc.Groups[1].Value; // same link the tabs use for Code chats
             if (link != quiLink || title != quiTitle || code != quiCode)
             {
                 quiLink = link; quiTitle = title; quiCode = code;
@@ -602,16 +735,16 @@ namespace SegretarioBar
             KeyValuePair<string, DateTime> before;
             if (marked.TryGetValue(link, out before) && before.Key == title && DateTime.Now - before.Value < TimeSpan.FromMinutes(5)) return;
             marked[link] = new KeyValuePair<string, DateTime>(title, DateTime.Now);
-            MarkOpened(title, link);
+            MarkOpened(title, link, code ? "claude code" : "claude.ai");
         }
 
-        async void MarkOpened(string title, string link)
+        async void MarkOpened(string title, string link, string kind)
         {
             if (web.CoreWebView2 == null) return;
             try
             {
                 var body = json.Serialize(new Dictionary<string, object> {
-                    { "titolo", title.Length > 80 ? title.Substring(0, 80) : title }, { "link", link }, { "tipo", "claude.ai" } });
+                    { "titolo", title.Length > 80 ? title.Substring(0, 80) : title }, { "link", link }, { "tipo", kind } });
                 var r = await HubCallWith(web.CoreWebView2, HttpMethod.Post, "/chat-aperta", body);
                 if (r.Key == 200) Refresh(false);
                 else Program.Log("chat-aperta: http " + r.Key);

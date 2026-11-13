@@ -19,6 +19,8 @@ foreach ($f in 'Microsoft.Web.WebView2.Core.dll', 'Microsoft.Web.WebView2.WinFor
     if (-not (Test-Path $src)) { $src = Join-Path $sdk "runtimes\win-x64\native\$f" }
     $sig = Get-AuthenticodeSignature $src
     if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notmatch '^CN=Microsoft Corporation') { throw "$f is not signed by Microsoft" }
+    $dst = Join-Path $dist $f
+    if ((Test-Path $dst) -and (Get-FileHash $dst).Hash -eq (Get-FileHash $src).Hash) { continue } # in use by a running bar is fine
     Copy-Item $src $dist -Force
 }
 foreach ($f in 'bar.html', 'bar.css', 'bar.js') { Copy-Item (Join-Path $here $f) $dist -Force }

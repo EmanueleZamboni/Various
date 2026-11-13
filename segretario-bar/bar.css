@@ -11,9 +11,32 @@ html,body{margin:0;padding:0;background:transparent;overflow:hidden}
  --bg:#141416;--surface:#1E1E22;--surface-2:#26262B;--edge:#0C0C0E;--line:#2E2E34;
  --ink:#F1F0EC;--muted:#9A9AA2;--accent:#8D8FFF;--accent-ink:#101218;--accent-soft:#2A2B4A;
  --warn:#E8954A;--warn-soft:#3D2A17;--warn-ink:#FFD3A8}}
+/* once the bar has read Claude's page colour, the theme follows Claude rather than Windows */
+#seg-schede[data-tema=light]{
+ --bg:#ECEBE6;--surface:#F8F7F3;--surface-2:#FFFFFF;--edge:#CFCEC6;--line:#D6D5CE;
+ --ink:#16161A;--muted:#6B6B72;--accent:#4B4EDB;--accent-ink:#FFFFFF;--accent-soft:#E3E3FA;--warn:#D9822B;
+ --warn-soft:#F8E2CB;--warn-ink:#7A3E06}
+#seg-schede[data-tema=dark]{
+ --bg:#141416;--surface:#1E1E22;--surface-2:#26262B;--edge:#0C0C0E;--line:#3A3A40;
+ --ink:#F1F0EC;--muted:#9A9AA2;--accent:#8D8FFF;--accent-ink:#101218;--accent-soft:#2A2B4A;
+ --warn:#E8954A;--warn-soft:#3D2A17;--warn-ink:#FFD3A8}
 #seg-schede *{box-sizing:border-box}
-#seg-schede .riga{display:flex;align-items:center;gap:3px;flex-wrap:nowrap;justify-content:flex-start;background:var(--surface);
- border:1px solid var(--line);border-radius:12px;padding:3px;box-shadow:0 3px 0 var(--edge)}
+/* The row is a Chrome tab strip sitting on top of Claude's page: rounded top, flat bottom with a thin line, and the
+   tab of the chat you are in takes the page's own colour (--merge, read from the pixels under the bar) and flows
+   into it. --strip is that colour a little darker, like Chrome's frame around its tabs. */
+#seg-schede{--merge:var(--surface-2);--merge-ink:var(--ink);--strip:color-mix(in srgb,var(--merge) 88%,#000)}
+#seg-schede[data-tema=dark]{--strip:color-mix(in srgb,var(--merge) 62%,#000)}
+#seg-schede .riga{position:relative;display:flex;align-items:flex-end;gap:3px;flex-wrap:nowrap;justify-content:flex-start;
+ background:var(--strip);border:1px solid var(--line);border-bottom:0;border-radius:12px 12px 0 0;padding:5px 8px 0 12px}
+#seg-schede .riga::after{content:"";position:absolute;left:0;right:0;bottom:0;height:1px;background:var(--accent);opacity:.55}
+#seg-schede .riga>button{align-self:center;margin-bottom:3px;flex:none;max-width:none}
+/* docked inside Claude's top row (the program found room there): no frame of its own, the row's colour behind the
+   tabs, tabs standing on the row's bottom edge, left-aligned like Chrome's */
+#seg-schede.docked{left:0;transform:none;max-width:100vw}
+#seg-schede.docked .riga{height:var(--alto,36px);border:0;border-radius:0;padding:0 4px 0 10px}
+#seg-schede.docked .tab{height:calc(var(--alto,36px) - 7px)}
+#seg-schede.docked .tab.qui{height:calc(var(--alto,36px) - 6px)}
+#seg-schede.docked .scheda,#seg-schede.docked .storia{margin-left:10px;max-width:min(600px,calc(100vw - 20px))}
 #seg-schede button{appearance:none;font:inherit;color:var(--ink);background:var(--surface-2);border:1px solid var(--line);border-radius:999px;
  padding:3px 10px;cursor:pointer;white-space:nowrap;max-width:150px;font-size:12.5px;overflow:hidden;text-overflow:ellipsis}
 #seg-schede button:hover{border-color:var(--accent)}
@@ -24,25 +47,36 @@ html,body{margin:0;padding:0;background:transparent;overflow:hidden}
 #seg-schede button.quiet:hover{color:var(--ink)}
 #seg-schede button.freccia{font-size:15px;line-height:1;padding:2px 9px}
 /* Chrome-style tabs: they shrink as more open, × closes, drag moves */
-#seg-schede .tabs{display:flex;gap:3px;min-width:0;flex:1 1 auto}
-#seg-schede .tab{position:relative;display:flex;align-items:center;flex:0 1 auto;width:160px;min-width:64px;height:26px;padding:0 4px 0 10px;
- background:var(--surface-2);border:1px solid var(--line);border-radius:999px;font-size:12.5px;cursor:default;white-space:nowrap;
- transition:transform .16s ease,background-color .2s,border-color .2s;touch-action:none}
-#seg-schede .tab:hover{border-color:var(--accent)}
-#seg-schede .tab:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+#seg-schede .tabs{display:flex;align-items:flex-end;gap:0;min-width:0;flex:1 1 auto}
+#seg-schede .tab{position:relative;display:flex;align-items:center;flex:0 1 auto;width:170px;min-width:96px;height:30px;padding:0 5px 0 12px;
+ background:transparent;border:0;border-radius:9px 9px 0 0;font-size:12.5px;color:var(--ink);cursor:default;white-space:nowrap;
+ transition:transform .16s ease,background-color .2s;touch-action:none}
+/* thin separators between tabs, hidden next to the open one and the hovered one, as in Chrome */
+#seg-schede .tab::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:1px;background:var(--line)}
+#seg-schede .tab:first-child::before,#seg-schede .tab:hover::before,#seg-schede .tab:hover+.tab::before,
+#seg-schede .tab.qui+.tab::before,#seg-schede .tab.attesa::before,#seg-schede .tab.attesa+.tab::before{display:none}
+#seg-schede .tab:hover{background:color-mix(in srgb,var(--merge) 45%,var(--strip))}
+#seg-schede .tab:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 #seg-schede .tab .nome{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
 #seg-schede .tab .chiudi{flex:none;width:18px;height:18px;padding:0;margin-left:3px;border:0;border-radius:50%;background:transparent;
  color:var(--muted);font-size:14px;line-height:18px;text-align:center;max-width:none}
 #seg-schede .tab .chiudi:hover{background:var(--line);color:var(--ink)}
-#seg-schede .tab.sel{border-color:var(--accent)}
-#seg-schede .tab.qui{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
-#seg-schede .tab.qui .chiudi{color:var(--accent-ink)}
-#seg-schede .tab.attesa{background:var(--warn-soft);border-color:var(--warn);color:var(--warn-ink);font-weight:600}
+#seg-schede .tab.sel{box-shadow:inset 0 2px 0 var(--accent)}
+/* the open chat: page colour, outlined in the accent, covering the strip's bottom line and flowing into the page
+   through two curved feet */
+#seg-schede .tab.qui{z-index:1;height:31px;margin-bottom:-1px;background:var(--merge);color:var(--merge-ink);font-weight:600;
+ box-shadow:inset 1.5px 1.5px 0 var(--accent),inset -1.5px 0 0 var(--accent)}
+#seg-schede .tab.qui::before,#seg-schede .tab.qui::after{content:"";display:block;position:absolute;top:auto;bottom:0;width:9px;height:9px;
+ background:radial-gradient(circle at var(--c) 0,transparent 7.5px,var(--accent) 7.6px,var(--accent) 9px,var(--merge) 9.1px)}
+#seg-schede .tab.qui::before{left:-9px;--c:0}
+#seg-schede .tab.qui::after{right:-9px;--c:100%}
+#seg-schede .tab.qui .chiudi{color:var(--merge-ink)}
+#seg-schede .tab.attesa{background:var(--warn-soft);color:var(--warn-ink);font-weight:600;margin:0 1px}
 #seg-schede .tab.attesa .chiudi{color:var(--warn-ink)}
-#seg-schede .tab.trascina{z-index:2;transition:background-color .2s;box-shadow:0 4px 12px -4px rgba(0,0,0,.45);cursor:grabbing}
+#seg-schede .tab.trascina{z-index:2;transition:background-color .2s;background:var(--merge);box-shadow:0 4px 12px -4px rgba(0,0,0,.45);cursor:grabbing}
 @media(prefers-reduced-motion:no-preference){
  #seg-schede .tab.lampo{animation:seg-lampo .5s ease-in-out 6 alternate}}
-@keyframes seg-lampo{from{background:var(--warn);color:#fff;border-color:var(--warn)}to{background:var(--warn-soft)}}
+@keyframes seg-lampo{from{background:var(--warn);color:#fff}to{background:var(--warn-soft)}}
 #seg-schede .punto{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--warn);margin-right:6px;vertical-align:1px}
 #seg-schede .scheda{margin:9px auto 0;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px;max-width:600px}
 #seg-schede .titolo{font-weight:700;font-size:14px}

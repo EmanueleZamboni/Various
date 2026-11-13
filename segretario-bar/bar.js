@@ -10,7 +10,8 @@
    SegretarioBar.cs through chrome.webview; this page never talks to the network. Tab layout is saved by the program
    (tabs.json) through "salva". */
 (() => {
-  const VISIBLE = 12;              // more tabs than this go under ›
+  // as many tabs as fit at a readable width (about 118 px each, after the History and Hide buttons); the rest go under ›
+  const VISIBLE = () => Math.max(2, Math.min(12, Math.floor((window.innerWidth - 190) / 118)));
   const T0 = Date.now();
   const FLASH_MS = 3000;
   const host = window.chrome && window.chrome.webview;
@@ -190,9 +191,9 @@
     const d = st.drag; st.drag = null; if (!d) return;
     d.el.removeEventListener("pointermove", muovi);
     if (!d.mosso) { const x = voce(d.k); vai(x); disegna(); manda({ tipo: "fatto" }); return; }
-    const vis = T.order.slice(0, VISIBLE);
+    const vis = T.order.slice(0, VISIBLE());
     const [m] = vis.splice(d.i, 1); vis.splice(d.to, 0, m);
-    T.order = vis.concat(T.order.slice(VISIBLE));
+    T.order = vis.concat(T.order.slice(VISIBLE()));
     salva(); disegna(); manda({ tipo: "fatto" });
   }
 
@@ -219,7 +220,7 @@
     }
     if (!st.ready.lista) { riga.appendChild(el("span", "avviso", "Recent chats: loading…")); root.appendChild(riga); return forma(); }
 
-    const vis = T.order.slice(0, VISIBLE), resto = T.order.slice(VISIBLE);
+    const n = VISIBLE(), vis = T.order.slice(0, n), resto = T.order.slice(n);
     const tabs = el("div", "tabs");
     vis.forEach((k, i) => tabs.appendChild(scheda(k, i)));
     if (!vis.length) tabs.appendChild(el("span", "avviso", "No tabs: open a chat, or pick one in History"));
@@ -272,7 +273,10 @@
       const rects = [];
       root.querySelectorAll(":scope > .riga, :scope > .storia, :scope > .scheda").forEach((n) => {
         const r = n.getBoundingClientRect();
-        rects.push({ x: r.left, y: r.top, w: r.width, h: r.height, ledge: n.classList.contains("riga") ? 3 : 0 });
+        // the strip has square bottom corners (it sits on Claude's page); the cards are rounded all round
+        // (docked in Claude's top row it is square all round)
+        const riga = n.classList.contains("riga");
+        rects.push({ x: r.left, y: r.top, w: r.width, h: r.height, ledge: 0, top: riga ? (root.classList.contains("docked") ? 2 : 1) : 0 });
       });
       const m = { tipo: "forma", rects, aperto: !!st.open || st.more !== 0 };
       const s = JSON.stringify(m);
@@ -291,6 +295,24 @@
       st.code = c; st.ready.code = true;
     } else if (m.tipo === "qui") {
       st.qui = { link: String(m.link || ""), titolo: String(m.titolo || ""), code: !!m.code };
+    } else if (m.tipo === "sfondo") {
+      // Claude's page colour under the bar: the open tab takes it, and light/dark follows it
+      const c = String(m.colore || "");
+      if (!/^#[0-9a-f]{6}$/i.test(c)) return;
+      const [r, g, b] = [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16) / 255);
+      const scuro = 0.2126 * r + 0.7152 * g + 0.0722 * b < 0.45;
+      root.style.setProperty("--merge", c);
+      root.style.setProperty("--merge-ink", scuro ? "#F1F0EC" : "#16161A");
+      root.dataset.tema = scuro ? "dark" : "light";
+      // docked: the strip takes the colour of Claude's own top row, so only the tabs show
+      if (/^#[0-9a-f]{6}$/i.test(String(m.fila || ""))) root.style.setProperty("--strip", m.fila);
+      else root.style.removeProperty("--strip");
+      return;
+    } else if (m.tipo === "modo") {
+      root.classList.toggle("docked", !!m.docked);
+      if (m.alto > 0) root.style.setProperty("--alto", m.alto + "px");
+      ultima = ""; forma();
+      return;
     } else if (m.tipo === "fuori") {
       if (!st.open && st.more === 0) return;
       st.open = ""; st.more = 0;
@@ -301,6 +323,8 @@
 
   document.body.appendChild(root);
   new ResizeObserver(() => { ultima = ""; forma(); }).observe(root);
+  let largo = window.innerWidth;   // the Claude window got wider or narrower: redo how many tabs fit
+  window.addEventListener("resize", () => { if (Math.abs(window.innerWidth - largo) > 40) { largo = window.innerWidth; disegna(); } });
   disegna();
   manda({ tipo: "lista" });
   setInterval(() => manda({ tipo: "lista" }), 60000);
