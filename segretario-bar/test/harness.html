@@ -1,0 +1,27 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="color-scheme" content="light dark">
+<link rel="stylesheet" href="../bar.css">
+<style>html,body{background:#888 !important;overflow:visible !important;height:700px}.cut{position:absolute;outline:1px dashed red;pointer-events:none;z-index:9}</style>
+</head><body>
+<script>
+const ITEMS = [
+ ["claude code","Home assistant","claude://claude.ai/epitaxy/local_aaaaaaaa-1","Assistant","in corso",false,"tabs plugin installed","check the bar in the app",""],
+ ["claude.ai","Job search","https://claude.ai/chat/bbbbbbbb-2","Jobs","aspetta Ema",true,"sent 3 CVs","wait for replies","Shall I write to the third studio too?"],
+ ["progetto","Drum machine","","Drum machine","in corso",false,"","",""],
+ ["claude code","Claude power consumption plugin","claude://claude.ai/epitaxy/local_cccccccc-3","","in corso",false,"","",""],
+ ["claude.ai","Video subtitles final pass","https://claude.ai/chat/dddddddd-4","Video","finita",false,"subs v2 done","",""],
+ ["claude code","Old phone kit","claude://claude.ai/epitaxy/local_eeeeeeee-5","","in corso",false,"","",""],
+ ["claude.ai","Monitor calibration","https://claude.ai/chat/ffffffff-6","","in corso",false,"","",""],
+ ["progetto","Studio site","","Studio site","in corso",false,"","",""],
+ ["claude.ai","Camcorder search","https://claude.ai/chat/gggggggg-7","","aspetta Ema",true,"","","Buy the second one?"],
+].map(([tipo,titolo,link,progetto,stato,aspetta,dove_sono,prossimo,domanda],i)=>({tipo,titolo,link,progetto,stato,aspetta,dove_sono,prossimo,domanda,quando:`2026-11-13 ${String(20-i).padStart(2,"0")}:00`,in_corso:false}));
+const handlers = []; window.LOG = [];
+window.chrome = { webview: {
+  postMessage(m){ LOG.push(m); if (m.tipo==="lista") setTimeout(()=>handlers.forEach(h=>h({data:{tipo:"lista",dati:{chat:ITEMS}}})),50);
+    if (m.tipo==="forma") { document.querySelectorAll(".cut").forEach(n=>n.remove()); m.rects.forEach(r=>{const d=document.createElement("div");d.className="cut";Object.assign(d.style,{left:r.x+"px",top:r.y+"px",width:r.w+"px",height:(r.h+r.ledge)+"px"});document.documentElement.appendChild(d);}); } },
+  addEventListener(t,fn){ handlers.push(fn); } } };
+window.SEG_NASCOSTA = false;
+</script>
+<script src="../bar.js"></script>
+<script>setTimeout(()=>handlers.forEach(h=>h({data:{tipo:"qui",link:"https://claude.ai/chat/bbbbbbbb-2",titolo:"Job search",code:false}})),200);</script>
+</body></html>
