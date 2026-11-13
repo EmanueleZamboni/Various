@@ -121,6 +121,13 @@ export function ThreadList({ view }: { view: string }) {
   const groupsOn = view === 'inbox' && !isSearch && (groupsData?.groups ?? []).length > 0;
   const groupSum = useGroupSummary(nav.accountId, groupsOn);
   const groupLines = groupsOn ? [...(groupSum.data?.groups ?? [])].sort((a, b) => (a.latestDate < b.latestDate ? 1 : -1)) : [];
+  // What is new in the groups (shared with the Groups block, same query): where the block goes.
+  const groupPreview = useQuery({
+    queryKey: ['groupSummary', 'important', base.account ?? 'all'],
+    queryFn: () => api.groups.important(base.account),
+    staleTime: 30_000,
+    enabled: groupLines.length > 0,
+  });
   const people = useThreadList({ ...base, category: smart ? peopleCats : undefined, group: groupsOn ? 'none' : undefined }, !isSearch && view !== 'blocked');
   const notifs = useThreadList({ ...base, category: 'notification' }, smart && groupNotif);
   const news = useThreadList({ ...base, category: 'newsletter' }, smart && groupNews);
@@ -301,14 +308,23 @@ export function ThreadList({ view }: { view: string }) {
     setChecked(new Set());
   };
 
-  // All sender groups fold into ONE row at the top (like Gmail's Promotions row); open it to see each group.
+  // All sender groups fold into ONE tinted block (like Google Inbox's bundles): its line, what is
+  // new in it as ordinary rows, then "View N more". It sits among the emails where its newest
+  // new email falls in time, never above the first few emails and never far down the list.
+  const groupsRow = groupLines.length > 0 ? <GroupsRow key="groups-block" lines={groupLines} base={base} render={(t) => renderRow(t, true)} renderFull={(t) => renderRow(t)} /> : null;
   const groupBlock = (
     <>
       {view === 'inbox' && !isSearch && <UpcomingBlock onOpen={(id) => nav.openThread(id)} />}
-      {groupLines.length > 0 && <GroupsRow lines={groupLines} base={base} render={(t) => renderRow(t, true)} renderFull={(t) => renderRow(t)} />}
     </>
   );
-  const weave = (list: ThreadSummary[]): ReactNode[] => list.map((t) => renderRow(t));
+  const newestGroupMail = (groupPreview.data?.threads ?? []).reduce((d, t) => (t.lastDate > d ? t.lastDate : d), '');
+  const weave = (list: ThreadSummary[]): ReactNode[] => {
+    const out: ReactNode[] = list.map((t) => renderRow(t));
+    if (!groupsRow) return out;
+    const newer = newestGroupMail ? list.filter((t) => t.lastDate > newestGroupMail).length : GROUPS_MIN_ABOVE;
+    out.splice(Math.min(list.length, Math.max(GROUPS_MIN_ABOVE, Math.min(GROUPS_MAX_ABOVE, newer))), 0, groupsRow);
+    return out;
+  };
 
   let body: ReactNode;
   if (view === 'blocked') body = <BlockedList />;
@@ -330,6 +346,7 @@ export function ThreadList({ view }: { view: string }) {
       </div>
     );
   else if (!rows.length && !notifRows.length && !newsRows.length && !groupLines.length) body = <>{groupBlock}{scheduled.length || drafts.length ? scheduledBlock : <Empty view={view} q={nav.q} />}</>;
+  else if (!rows.length && groupsRow) body = <>{groupBlock}{scheduledBlock}{groupsRow}</>;
   else if (smart) {
     body = (
       <>
@@ -514,6 +531,10 @@ function useMarkGroupRead(base: { account?: string }) {
     }
   };
 }
+
+/** The Groups block goes after at least this many emails, and at most this many. */
+const GROUPS_MIN_ABOVE = 3;
+const GROUPS_MAX_ABOVE = 8;
 
 function GroupsRow({ lines, base, render, renderFull }: { lines: GroupSummary[]; base: { view: string; account?: string }; render: (t: ThreadSummary) => ReactNode; renderFull: (t: ThreadSummary) => ReactNode }) {
   const open = useUI((s) => !!s.bundlesOpen.groups);

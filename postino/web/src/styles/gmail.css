@@ -3692,3 +3692,62 @@ a.btn {
 .imp-note svg {
   color: #f9ab00;
 }
+
+/* The Groups block sits among the emails, so it gets its own tint and frame: you can tell at a
+   glance where the groups start and end (its line, the new emails in it, "View N more"). */
+:root {
+  --groups-tint: color-mix(in srgb, var(--pine) 9%, var(--sheet));
+  --groups-edge: color-mix(in srgb, var(--pine) 22%, transparent);
+}
+:root[data-theme='dark'] {
+  --groups-tint: color-mix(in srgb, #a8c7fa 11%, #1e1f20);
+  --groups-edge: color-mix(in srgb, #a8c7fa 24%, transparent);
+}
+:root .list .bundle.groups-row {
+  background: var(--groups-tint);
+  border: 1px solid var(--groups-edge);
+  border-radius: 16px;
+  margin: 10px 8px;
+  overflow: hidden;
+}
+:root .list .bundle.groups-row .row,
+:root .list .bundle.groups-row .row.unread,
+:root .list .bundle.groups-row .row-wrap > .row {
+  background: transparent;
+}
+:root .list .bundle.groups-row .row:hover {
+  background: var(--hover-ov);
+}
+:root .list .bundle.groups-row .groups-preview,
+:root .list .bundle.groups-row .groups-more,
+:root .list .bundle.groups-row .row {
+  border-color: var(--groups-edge);
+}
+:root .list .bundle.groups-row > .bundle-head .bundle-title > span {
+  color: var(--pine);
+}
+@container list (max-width: 759px) {
+  :root .list .bundle.groups-row {
+    margin: 8px 0 10px;
+    border-radius: 16px;
+  }
+}
+
+/* Wide list: a row with a package or trip chip grows to show it under the subject (as in Gmail),
+   instead of the chip spilling over the next row. */
+@container list (min-width: 760px) {
+  .list .row:has(.smart-chip) {
+    height: auto;
+    min-height: 40px;
+    align-items: flex-start;
+    padding-top: 10px;
+    padding-bottom: 8px;
+  }
+  .list .row:has(.smart-chip) .row-text {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .list .row:has(.smart-chip) .smart-chip {
+    margin-top: 6px;
+  }
+}
