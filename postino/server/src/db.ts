@@ -132,6 +132,7 @@ CREATE TABLE IF NOT EXISTS messages (
 CREATE INDEX IF NOT EXISTS messages_thread ON messages(thread_id);
 CREATE INDEX IF NOT EXISTS messages_msgid ON messages(account_id, message_id);
 CREATE INDEX IF NOT EXISTS messages_from ON messages(from_email);
+CREATE INDEX IF NOT EXISTS messages_from_lower ON messages(lower(from_email));
 CREATE INDEX IF NOT EXISTS messages_folder_date ON messages(folder_id, date DESC);
 CREATE INDEX IF NOT EXISTS messages_unfetched ON messages(body_fetched, date DESC);
 
@@ -339,6 +340,12 @@ db.exec(`CREATE TABLE IF NOT EXISTS unsubscribed (
   at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 )`);
 
+
+try {
+  db.exec('ALTER TABLE unsubscribed ADD COLUMN trashed INTEGER NOT NULL DEFAULT 0');
+} catch {
+  // already there
+}
 
 db.exec(`CREATE TABLE IF NOT EXISTS ai_triage (
   message_row INTEGER PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE,

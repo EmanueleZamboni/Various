@@ -54,3 +54,16 @@ describe('reading unsubscribe pages', () => {
     expect(CONFIRMED.test('Manage your preferences')).toBe(false);
   });
 });
+
+describe('background unsubscribe run', () => {
+  it('starts, refuses a second run while busy, and reports per sender', async () => {
+    const { startUnsubscribe, unsubscribeStatus } = await import('./newsletters.js');
+    const a = startUnsubscribe(['nobody-here@void.test'], { trashExisting: false });
+    expect(a.started).toBe(true);
+    expect(startUnsubscribe(['x@void.test'], { trashExisting: false }).started).toBe(false);
+    for (let i = 0; i < 50 && unsubscribeStatus().running; i++) await new Promise((r) => setTimeout(r, 20));
+    const s = unsubscribeStatus();
+    expect(s.running).toBe(false);
+    expect(s.done).toBe(1);
+  });
+});

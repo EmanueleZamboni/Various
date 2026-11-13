@@ -182,6 +182,7 @@ export async function unsubscribeSenders(emails: string[], opts: { trashExisting
     const s = known.get(raw);
     if (!s) {
       out.push({ email: raw, method: 'none', result: 'skipped: not a newsletter sender (or one you wrote to)', trashed: 0 });
+      job.done++;
       continue;
     }
     let r: { method: string; result: string };
@@ -192,7 +193,7 @@ export async function unsubscribeSenders(emails: string[], opts: { trashExisting
     }
     db.prepare('INSERT INTO unsubscribed(email, name, method, result) VALUES (?, ?, ?, ?) ON CONFLICT(email) DO UPDATE SET method = excluded.method, result = excluded.result, at = excluded.at').run(raw, s.name, r.method, r.result);
     let trashed = 0;
-    if (opts.trashExisting) {
+    if (opts.trashExisting && !r.result.startsWith('failed')) {
       // Only conversations that are entirely from this sender (never one with your replies in it).
       const threads = (
         db
@@ -211,7 +212,32 @@ export async function unsubscribeSenders(emails: string[], opts: { trashExisting
         }
       }
     }
+    db.prepare('UPDATE unsubscribed SET trashed = trashed + ? WHERE email = ?').run(trashed, raw);
     out.push({ email: raw, ...r, trashed });
+    job.done++;
   }
   return out;
+}
+
+// One run at a time, in the background: unsubscribing from dozens of senders takes minutes
+// (each sender's page is fetched and checked), far longer than a connector call may wait.
+const job = { running: false, total: 0, done: 0, startedAt: '', finishedAt: '' };
+
+/** Start unsubscribing in the background; senders already confirmed are not asked again. */
+export function startUnsubscribe(emails: string[], opts: { trashExisting: boolean }): { started: boolean; total: number; alreadyDone: string[]; reason?: string } {
+  if (job.running) return { started: false, total: job.total, alreadyDone: [], reason: `a run is already going (${job.done} of ${job.total} done)` };
+  const done = new Set((db.prepare("SELECT email FROM unsubscribed WHERE result LIKE 'confirmed%' OR result = 'unsubscribe email sent'").all() as { email: string }[]).map((r) => r.email));
+  const wanted = [...new Set(emails.map((e) => e.trim().toLowerCase()).filter(Boolean))];
+  const todo = wanted.filter((e) => !done.has(e));
+  Object.assign(job, { running: true, total: todo.length, done: 0, startedAt: new Date().toISOString(), finishedAt: '' });
+  void unsubscribeSenders(todo, opts)
+    .catch((err) => log.warn({ err: (err as Error).message }, 'newsletter unsubscribe run failed'))
+    .finally(() => Object.assign(job, { running: false, finishedAt: new Date().toISOString() }));
+  return { started: true, total: todo.length, alreadyDone: wanted.filter((e) => done.has(e)) };
+}
+
+/** Where the run is, and what happened to every sender unsubscribed so far. */
+export function unsubscribeStatus(): { running: boolean; total: number; done: number; startedAt: string; finishedAt: string; senders: { email: string; name: string; method: string; result: string; trashed: number; at: string }[] } {
+  const senders = db.prepare('SELECT email, name, method, result, trashed, at FROM unsubscribed ORDER BY at DESC').all() as { email: string; name: string; method: string; result: string; trashed: number; at: string }[];
+  return { ...job, senders };
 }

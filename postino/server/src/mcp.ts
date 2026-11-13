@@ -17,7 +17,7 @@ import { stageAttachments, attachmentsSchema } from './mcpAttachments.js';
 import { enqueue, executeSend, listQueued } from './mail/outbox.js';
 import { cancelToDraft } from './routes/compose.js';
 import { parseSendAt } from './sendAt.js';
-import { newsletterSenders, unsubscribeSenders } from './newsletters.js';
+import { newsletterSenders, startUnsubscribe, unsubscribeStatus } from './newsletters.js';
 import { uiSettings } from './settings.js';
 import { htmlToText } from './mail/sanitize.js';
 import { looksLikeHtml } from './mail/parse.js';
@@ -498,20 +498,33 @@ const TOOLS: Tool[] = [
       additionalProperties: false,
     },
     annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
-    run: async (a) => {
-      const res = await unsubscribeSenders(strList(a.senders), { trashExisting: a.trash_existing !== false });
-      const n = (k: string) => res.filter((r) => r.result.startsWith(k)).length;
+    run: (a) => {
+      const r = startUnsubscribe(strList(a.senders), { trashExisting: a.trash_existing !== false });
+      if (!r.started) throw fail(`Not started: ${r.reason}. Check unsubscribe_status.`);
+      return { started: true, senders_to_do: r.total, already_confirmed_skipped: r.alreadyDone, note: 'Runs in the background (a few minutes for dozens of senders). Call unsubscribe_status for progress and results.' };
+    },
+  },
+  {
+    name: 'unsubscribe_status',
+    title: 'Unsubscribe results',
+    description: 'Progress of the newsletter unsubscribe run, and the result for every sender unsubscribed so far: confirmed, unsubscribe email sent, not confirmed (their page needs a manual click), failed, plus how many old emails went to Trash.',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+    run: () => {
+      const s = unsubscribeStatus();
+      const n = (k: string) => s.senders.filter((x) => x.result.startsWith(k)).length;
       return {
-        done: res.length,
+        running: s.running,
+        progress: s.total ? `${s.done} of ${s.total}` : undefined,
+        started_at: s.startedAt || undefined,
+        finished_at: s.finishedAt || undefined,
         confirmed: n('confirmed'),
         unsubscribe_email_sent: n('unsubscribe email sent'),
         not_confirmed_needs_click: n('not confirmed'),
         no_link: n('no unsubscribe link'),
         failed: n('failed'),
-        skipped: n('skipped'),
-        trashed: res.reduce((t, r) => t + r.trashed, 0),
-        note: 'Anyone not confirmed who still writes after 7 days goes to Blocked automatically.',
-        details: res,
+        trashed: s.senders.reduce((t, x) => t + x.trashed, 0),
+        senders: s.senders.map((x) => ({ email: x.email, name: x.name || undefined, method: x.method, result: x.result, trashed: x.trashed, at: x.at.slice(0, 16) })),
       };
     },
   },
