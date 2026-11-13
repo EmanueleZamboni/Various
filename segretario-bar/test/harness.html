@@ -24,10 +24,10 @@ const handlers = []; window.LOG = [];
 const send = (m) => handlers.forEach(h=>h({data:m}));
 window.FAKE = { sfondo: (c)=>{ document.body.style.background=c; send({tipo:"sfondo",colore:c}); }, code: (s)=>send({tipo:"code",sessioni:s}), lista: (c)=>send({tipo:"lista",dati:{chat:c}}), qui:(q)=>send(Object.assign({tipo:"qui"},q)) };
 window.chrome = { webview: {
-  postMessage(m){ LOG.push(JSON.parse(JSON.stringify(m))); if (m.tipo==="lista") setTimeout(()=>{FAKE.lista(ITEMS); FAKE.code(CODE);},50);
+  postMessage(m){ LOG.push(JSON.parse(JSON.stringify(m))); if (m.tipo==="salva") sessionStorage.setItem("tabs", JSON.stringify(m.stato)); if (m.tipo==="lista") setTimeout(()=>{FAKE.lista(ITEMS); FAKE.code(CODE);},50);
     if (m.tipo==="forma") { document.querySelectorAll(".cut").forEach(n=>n.remove()); m.rects.forEach(r=>{const d=document.createElement("div");d.className="cut";Object.assign(d.style,{left:r.x+"px",top:r.y+"px",width:r.w+"px",height:(r.h+r.ledge)+"px"});document.documentElement.appendChild(d);}); } },
   addEventListener(t,fn){ handlers.push(fn); } } };
-window.SEG_NASCOSTA = false; window.SEG_TABS = null;
+window.SEG_NASCOSTA = false; window.SEG_TABS = JSON.parse(sessionStorage.getItem("tabs") || "null"); // reload the page = restart the bar
 </script>
 <script src="../bar.js"></script>
 </body></html>

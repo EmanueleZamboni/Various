@@ -1,7 +1,9 @@
 /* Segretario Bar (13/11/2026): Chrome-style tabs glued to the top of the Claude desktop app.
    - Tabs stay where they are. × closes one. Drag a tab to move it. A click opens the chat; resting the mouse on a tab
      shows its card (last step, next step, Claude's question).
-   - A chat gets a tab (at the right end, like Chrome) when you open it, or when it starts waiting for you.
+   - A chat gets a tab (at the right end, like Chrome) when you move to it, or when it starts waiting for you.
+     A tab you closed stays closed until you open that chat yourself. After a restart the tabs are exactly the
+     ones you left: nothing is added or closed for you.
    - Waiting for you: the tab flashes for 3 seconds, then stays orange until you open the chat.
      Code chats: Claude finished a turn after you last looked at the chat (the Claude app's own records, read by
      SegretarioBar.cs). Other chats: the chat told the Segretario it waits for you, after you last opened it.
@@ -85,57 +87,60 @@
 
   // Waiting for you = Claude finished after you last looked, within the last 12 hours. Older unanswered turns are
   // stale (chats you left days ago), not something waiting for you now.
-  const FRESCO = 12 * 3600e3, INATTIVA = 24 * 3600e3;
+  const FRESCO = 12 * 3600e3;
   function aspetta(x) {
     const seen = T.seen[chiave(x)] || 0, da = Date.now() - FRESCO;
     if (x.code) return x.code.turnEnd > da && x.code.turnEnd > Math.max(x.code.focused, seen) && !x.code.running;
     return !!x.aspetta && ms(x.quando) > Math.max(seen, da);
   }
-  // the last time anything happened in a chat, or you looked at it
-  function ultimo(k) {
-    const x = perChiave.get(k);
-    return Math.max(T.seen[k] || 0, x ? ms(x.quando) : 0, x && x.code ? Math.max(x.code.activity || 0, x.code.focused || 0) : 0);
-  }
-
   // tabs follow what happens: a chat you open, or one that starts waiting for you, gets a tab
-  let salvaTimer = 0;
-  function salva() { clearTimeout(salvaTimer); salvaTimer = setTimeout(() => manda({ tipo: "salva", stato: T }), 800); }
+  // saved at once (not after a pause): a close or a move must survive the PC shutting down a second later
+  function salva() { manda({ tipo: "salva", stato: T }); }
   // only a chat that can be opened gets a tab (a link-less entry stays in History)
   const apribile = (k) => /^(https:|claude:)/.test(k);
-  function apriScheda(k) {
+  // `tua`: you opened the chat yourself, so even a tab you closed comes back. Anything automatic (a chat that starts
+  // waiting) never brings back a tab you closed.
+  function apriScheda(k, tua) {
     if (!apribile(k) || T.order.includes(k)) return false;
+    if (T.closed[k] && !tua) return false;
     T.order.push(k); delete T.closed[k]; return true;
   }
+  // The tabs are exactly what you left: after a restart nothing is added or removed. The first look after the bar
+  // starts only takes note of what is open and what is waiting; later, only CHANGES count: you moving to another chat,
+  // or a chat that starts waiting while the bar runs.
+  let primoGiro = true, quiPrima = "";
   function aggiornaSchede() {
     unisci();
     if (!st.ready.lista) return;
     // the very first tabs wait for the Code chats too (or 4 s, if the Claude app sends none)
-    if (!T.init && !st.ready.code && Date.now() - T0 < 4000) { setTimeout(() => { aggiornaSchede(); disegna(); }, 4100 - (Date.now() - T0)); return; }
+    if (!st.ready.code && Date.now() - T0 < 4000) { setTimeout(() => { aggiornaSchede(); disegna(); }, 4100 - (Date.now() - T0)); return; }
     let cambiato = false;
     const prima = T.order.length;
-    // drop link-less tabs left from older versions, and tabs of chats nobody touched for 24 hours (they stay in History)
-    T.order = T.order.filter((k) => apribile(k) && (!st.ready.code || Date.now() - ultimo(k) < INATTIVA));
+    // drop link-less tabs left from older versions (nothing else is ever closed for you)
+    T.order = T.order.filter(apribile);
     if (T.order.length !== prima) cambiato = true;
     if (!T.init) {
       T.order = tutte.map(chiave).filter(apribile).slice(0, 6); T.init = true;
-      T.waiting = tutte.filter(aspetta).map(chiave).sort(); prevWaiting = new Set(T.waiting); // no flash for what already waited
       cambiato = true;
     }
-    // "started waiting" means Claude finished AFTER the bar last looked; a chat the bar merely sees for the first time
-    // (an older chat coming into the list) is not news and must not flash or get a tab
-    const dal = (T.visto || Date.now()) - 90000;
-    const fine = (x) => (x.code ? x.code.turnEnd : ms(x.quando));
     const ora = new Set();
+    let quiOra = "";
     tutte.forEach((x) => {
       const k = chiave(x);
-      if (eQui(x)) { T.seen[k] = Date.now(); if (apriScheda(k)) cambiato = true; }
+      if (eQui(x)) { T.seen[k] = Date.now(); quiOra = k; }
       if (aspetta(x)) {
         ora.add(k);
-        if (!prevWaiting.has(k) && fine(x) > dal) { st.flash[k] = Date.now() + FLASH_MS; if (apriScheda(k)) cambiato = true; setTimeout(disegna, FLASH_MS + 50); }
+        if (!primoGiro && !prevWaiting.has(k)) { st.flash[k] = Date.now() + FLASH_MS; if (apriScheda(k, false)) cambiato = true; setTimeout(disegna, FLASH_MS + 50); }
       }
     });
-    if (!T.visto || Date.now() - T.visto > 60000) cambiato = true;   // remember when the bar last looked
-    T.visto = Date.now();
+    // the open chat gets a tab when you MOVE to it from another chat. Closing the tab of the chat you are in sticks;
+    // a blink of the page (a new-chat screen, a reload) is not a move.
+    if (quiOra && quiOra !== quiPrima) {
+      if (quiPrima && apriScheda(quiOra, true)) cambiato = true;
+      quiPrima = quiOra;
+    }
+    primoGiro = false;
+    delete T.visto;   // no longer used
     const lista = [...ora].sort();
     if (lista.join("|") !== [...prevWaiting].sort().join("|")) { T.waiting = lista; cambiato = true; }
     prevWaiting = ora;
@@ -288,7 +293,7 @@
       const s = el("div", "storia");
       const lista = st.more === 3 ? T.order.map(voce) : st.more === 1 ? resto.map(voce) : tutte;
       lista.forEach((x) => {
-        const b = bottone("", eQui(x) ? "qui" : "", () => { st.more = 0; st.open = ""; apriScheda(chiave(x)); vai(x); salva(); });
+        const b = bottone("", eQui(x) ? "qui" : "", () => { st.more = 0; st.open = ""; apriScheda(chiave(x), true); vai(x); salva(); });
         const w = perChiave.has(chiave(x)) && aspetta(x);
         const dot = el("span", w ? "punto" : ""); if (!w) dot.style.width = "13px";
         b.append(dot, el("span", "q", quando(x.quando)), el("span", "t", x.titolo || "(untitled)"), el("span", "k", tipo(x) + sotto(x)));
