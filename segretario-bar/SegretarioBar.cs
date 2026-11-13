@@ -612,14 +612,15 @@ namespace SegretarioBar
         // A new top-row layout is used only once two readings in a row agree (within 4 px): while a chat loads, the row
         // is briefly half-built and one reading would throw the bar to the wrong place. A few failed readings in a row
         // are needed before the bar leaves the row.
-        int[] rowCandidate; int rowHits, rowMisses;
+        int[] rowCandidate; int rowHits, rowMisses; DateTime rowSince;
         void TakeRow(int[] rel)
         {
             if (rel == null) { if (++rowMisses >= 4) { rowRel = null; rowCandidate = null; } return; }
             rowMisses = 0;
             if (SameRow(rel, rowRel)) { rowCandidate = null; return; }
-            if (SameRow(rel, rowCandidate)) rowHits++; else { rowCandidate = rel; rowHits = 1; }
-            if (rowHits >= 2)
+            if (SameRow(rel, rowCandidate)) rowHits++; else { rowCandidate = rel; rowHits = 1; rowSince = DateTime.Now; }
+            // a new layout must hold for 2.5 s (several readings), so a page caught mid-load never moves the bar
+            if (rowHits >= 2 && (DateTime.Now - rowSince).TotalSeconds >= 2.5 || rowRel == null && rowHits >= 2)
             {
                 Program.Log("top row: free " + rel[0] + ".." + rel[1] + ", buttons " + rel[4] + ".." + rel[3]);
                 rowRel = rowCandidate; rowCandidate = null;
@@ -744,20 +745,35 @@ namespace SegretarioBar
             cr.TreeScope = TreeScope.Element;
             AutomationElementCollection all;
             using (cr.Activate()) all = doc.FindAll(TreeScope.Descendants, System.Windows.Automation.Condition.TrueCondition);
-            double mid = dr.Left + dr.Width / 2, leftEdge = dr.Left, rightEdge = dr.Right, bottom = 0, top = double.MaxValue;
-            int n = 0;
+            // The row's controls: small boxes starting near the page's top. Odd ones (a loading badge, a tooltip, a
+            // menu) made the free space jump around, so only two unbroken groups count: the one that starts at the
+            // left edge (menu, arrows, Chat/Code switch, chat title) and the one that ends at the right (panel icons).
+            var boxes = new List<System.Windows.Rect>();
             foreach (AutomationElement e in all)
             {
                 System.Windows.Rect r;
                 try { r = e.Cached.BoundingRectangle; } catch { continue; }
-                if (r.IsEmpty || r.Width < 8 || r.Height < 16) continue;
-                if (r.Top < dr.Top - 4 || r.Top > dr.Top + 14 || r.Height > 64) continue;  // only the top row's controls
-                if (r.Width > dr.Width * 0.45) continue;                                    // not a whole-row container
-                if (r.Left + r.Width / 2 < mid) leftEdge = Math.Max(leftEdge, r.Right); else rightEdge = Math.Min(rightEdge, r.Left);
-                if (r.Height >= 28 * 0.75) { bottom = Math.Max(bottom, r.Bottom); top = Math.Min(top, r.Top); } // button-sized ones set the line
-                n++;
+                if (r.IsEmpty || r.Width < 8 || r.Height < 20) continue;
+                if (r.Top < dr.Top || r.Top > dr.Top + 14 || r.Height > 56) continue;   // only the top row's controls
+                if (r.Width > dr.Width * 0.3) continue;                                  // not a whole-row container
+                boxes.Add(r);
             }
-            if (n < 3 || bottom <= dr.Top || top == double.MaxValue) return null;
+            if (boxes.Count < 4) return null;
+            double gap = Math.Max(60, boxes[0].Height * 3);                             // up to ~3 buttons of empty space inside a group
+            boxes.Sort((a, b) => a.Left.CompareTo(b.Left));
+            double leftEdge = dr.Left;
+            if (boxes[0].Left - dr.Left > gap) return null;
+            foreach (var r in boxes) { if (r.Left > leftEdge + gap) break; leftEdge = Math.Max(leftEdge, r.Right); }
+            boxes.Sort((a, b) => b.Right.CompareTo(a.Right));
+            double rightEdge = boxes[0].Right;
+            foreach (var r in boxes) { if (r.Right < rightEdge - gap) break; rightEdge = Math.Min(rightEdge, r.Left); }
+            if (rightEdge <= leftEdge) return null;
+            // the line of the buttons: the typical top and bottom, not the most extreme
+            var tops = new List<double>(); var bottoms = new List<double>();
+            foreach (var r in boxes) if (r.Height >= 28) { tops.Add(r.Top); bottoms.Add(r.Bottom); }
+            if (tops.Count < 3) return null;
+            tops.Sort(); bottoms.Sort();
+            double top = tops[tops.Count / 2], bottom = bottoms[bottoms.Count / 2];
             // left, right of the free space; the page's top; the row buttons' bottom and top (the tabs copy them)
             return new[] { (int)leftEdge, (int)rightEdge, (int)dr.Top, (int)bottom, (int)top };
         }
