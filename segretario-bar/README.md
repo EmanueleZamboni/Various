@@ -5,7 +5,7 @@ Same bar as the claude.ai one in the Voce Chrome extension and the `segretario-t
 
 - Chrome-style tabs: × closes one, drag to move, a click opens the chat, resting the mouse shows its card;
 - a chat gets a tab (on the right) when you open it or when it starts waiting for you; **History** lists all;
-- waiting for you = the tab flashes for 3 s, then stays orange until you open it (Code chats: read from the Claude app's own records in `%LOCALAPPDATA%Claude-Dataaude_*aude-code-sessions`);
+- waiting for you = the tab flashes for 3 s, then stays orange until you open it (Code chats: read from the Claude app's own records in `%LOCALAPPDATA%\Claude-Data\claude_*\claude-code-sessions`: Claude finished a turn after you last looked).
 
 The Claude app is a sealed Store package, so this is a small window of its own that follows the Claude window:
 owned by it (moves, minimises and hides with it), cut to the shape of the tabs so clicks elsewhere reach Claude,
