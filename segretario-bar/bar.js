@@ -339,7 +339,7 @@
         rects.push({ x: r.left, y: r.top, w: r.width, h: r.height, ledge: 0, top: riga ? (root.classList.contains("docked") ? 2 : 1) : 0 });
       });
       // vw: the page width these were measured at, so the program can shift them itself the moment the window resizes
-      const m = { tipo: "forma", rects, aperto: !!st.open || st.more !== 0, vw: window.innerWidth, destra: root.classList.contains("docked") };
+      const m = { tipo: "forma", rects, aperto: !!st.open || st.more !== 0, vw: window.innerWidth, destra: false };   // anchored on the left (after the chat title)
       const s = JSON.stringify(m);
       if (s !== ultima) { ultima = s; manda(m); }
     }, 0);

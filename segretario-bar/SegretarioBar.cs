@@ -97,6 +97,7 @@ namespace SegretarioBar
     class BarForm : Form
     {
         public const string Hub = "https://hub.emazamboni.com";
+        const int TitleRoomCss = 320; // room left for the chat title before the tabs start
         const int TopCss = 40;       // just under the Claude app's top row (36 points tall)
         const int MaxWidthCss = 1100;
         static readonly Regex ChatLink = new Regex(@"^https://claude\.ai/(chat|project)/([A-Za-z0-9-]{8,80})$");
@@ -473,8 +474,17 @@ namespace SegretarioBar
                     docked = true;
                     compact = free < 360;
                     rowCss = Math.Round((bottom - top) / s);
-                    int wide = open ? Math.Max(R - L, (int)Math.Round(440 * s)) : R - L;
-                    want = new Rectangle(R - wide, top, wide, h);
+                    // The tabs start a fixed distance after where the chat title starts (room for a normal title), so
+                    // they sit near the title like Chrome's and don't move when you switch between chats; only a very
+                    // long title pushes them right. Without room for that, they start right after the title.
+                    int start = L;
+                    if (rel.Length > 5 && rel[5] >= 0)
+                    {
+                        int anchor = r.L + rel[5] + (int)Math.Round(TitleRoomCss * s);
+                        if (anchor > L && (R - anchor) / s >= 360) start = anchor;
+                    }
+                    int wide = open ? Math.Max(R - start, (int)Math.Round(440 * s)) : R - start;
+                    want = new Rectangle(start, top, wide, h);
                 }
             }
             if (!docked) { Hide2(); return; }
@@ -567,7 +577,7 @@ namespace SegretarioBar
         {
             if (shapeVw <= 0 || placed.Width <= 0) return 0;
             double d = placed.Width / s - shapeVw;
-            return shapeRight ? d : d / 2;
+            return shapeRight ? d : 0; // tabs anchored on the left don't move when the window gets wider
         }
 
         bool Inside(int x, int y, double s)
@@ -639,7 +649,7 @@ namespace SegretarioBar
                             {
                                 Native.RECT fr;
                                 if (dock == null || Native.DwmGetWindowAttribute(h, 9, out fr, Marshal.SizeOf(typeof(Native.RECT))) != 0) { TakeRow(null); return; }
-                                TakeRow(new[] { dock[0] - fr.L, fr.R - dock[1], dock[2] - fr.T, dock[3] - fr.T, dock[4] - fr.T });
+                                TakeRow(new[] { dock[0] - fr.L, fr.R - dock[1], dock[2] - fr.T, dock[3] - fr.T, dock[4] - fr.T, dock[5] >= 0 ? dock[5] - fr.L : -1 });
                             }));
                             if (url != lastUrl) { lastUrl = url; fastUntil = DateTime.Now.AddSeconds(3); } // a chat switch: look again soon
                         }
@@ -808,7 +818,14 @@ namespace SegretarioBar
             boxes.Sort((a, b) => a.Left.CompareTo(b.Left));
             double leftEdge = dr.Left;
             if (boxes[0].Left - dr.Left > gap) return null;
-            foreach (var r in boxes) { if (r.Left > leftEdge + gap) break; leftEdge = Math.Max(leftEdge, r.Right); }
+            var leftGroup = new List<System.Windows.Rect>();
+            foreach (var r in boxes) { if (r.Left > leftEdge + gap) break; leftEdge = Math.Max(leftEdge, r.Right); leftGroup.Add(r); }
+            // where the chat title starts: the last wide control of the left group (the title is a wide button; the
+            // menu, arrows and icons are square), widened to any wide control it sits inside
+            double titleLeft = -1;
+            foreach (var r in leftGroup) if (r.Width >= r.Height * 2) titleLeft = r.Left;
+            if (titleLeft >= 0)
+                foreach (var r in leftGroup) if (r.Width >= r.Height * 2 && r.Left < titleLeft && r.Right > titleLeft) titleLeft = r.Left;
             boxes.Sort((a, b) => b.Right.CompareTo(a.Right));
             double rightEdge = boxes[0].Right;
             foreach (var r in boxes) { if (r.Right < rightEdge - gap) break; rightEdge = Math.Min(rightEdge, r.Left); }
@@ -819,8 +836,9 @@ namespace SegretarioBar
             if (tops.Count < 3) return null;
             tops.Sort(); bottoms.Sort();
             double top = tops[tops.Count / 2], bottom = bottoms[bottoms.Count / 2];
-            // left, right of the free space; the page's top; the row buttons' bottom and top (the tabs copy them)
-            return new[] { (int)leftEdge, (int)rightEdge, (int)dr.Top, (int)bottom, (int)top };
+            // left, right of the free space; the page's top; the row buttons' bottom and top (the tabs copy them);
+            // where the chat title starts (-1 if not found)
+            return new[] { (int)leftEdge, (int)rightEdge, (int)dr.Top, (int)bottom, (int)top, (int)titleLeft };
         }
 
         static readonly Regex CodeUrl = new Regex(@"^https://claude\.ai/epitaxy/(local_[A-Za-z0-9-]{8,80})(?:[/?#].*)?$");
