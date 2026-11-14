@@ -2,7 +2,7 @@
    - Tabs stay where they are. × closes one. Drag a tab to move it. A click opens the chat; resting the mouse on a tab
      shows its card (last step, next step, Claude's question).
    - A chat gets a tab (at the right end, like Chrome) when you move to it, or when it starts waiting for you.
-     A tab you closed stays closed until you pick that chat in History. After a restart the tabs are exactly the
+     A tab you closed stays closed until you go to that chat yourself. After a restart the tabs are exactly the
      ones you left: nothing is added or closed for you.
    - Waiting for you: the tab flashes for 3 seconds, then stays orange until you open the chat.
      Code chats: Claude finished a turn after you last looked at the chat (the Claude app's own records, read by
@@ -98,8 +98,8 @@
   function salva() { manda({ tipo: "salva", stato: T }); }
   // only a chat that can be opened gets a tab (a link-less entry stays in History)
   const apribile = (k) => /^(https:|claude:)/.test(k);
-  // `tua`: you picked the chat in the bar's History, so even a tab you closed comes back. Anything else (moving to a
-  // chat in Claude, a chat that starts waiting) never brings back a tab you closed.
+  // `tua`: you went to the chat yourself (from another chat of the same kind, or from History), so even a tab you closed
+  // comes back. Something automatic (a chat that starts waiting, switching Code/Chat) never brings back a closed tab.
   function apriScheda(k, tua) {
     if (!apribile(k) || T.order.includes(k)) return false;
     if (T.closed[k] && !tua) return false;
@@ -135,12 +135,12 @@
     });
     // The open chat gets a tab when you MOVE to it from another chat of the same kind. Code and Chat are counted
     // apart: switching between Claude's Code and Chat tabs shows the chat you left there, which is not opening it.
-    // A blink of the page (a new-chat screen, a reload) is not a move either. A tab you CLOSED never comes back this
-    // way: only by picking it in the bar's History.
+    // A blink of the page (a new-chat screen, a reload) is not a move either. A tab you CLOSED does not come back
+    // by itself; going to it yourself (from another chat of the same kind, or from History) brings it back.
     if (quiOra) {
       const tipoQui = quiOra.startsWith("claude://") ? "code" : "chat";
       if (quiOra !== quiPrima[tipoQui]) {
-        if (quiPrima[tipoQui] && apriScheda(quiOra, false)) cambiato = true;
+        if (quiPrima[tipoQui] && apriScheda(quiOra, true)) cambiato = true;
         quiPrima[tipoQui] = quiOra;
       }
     }

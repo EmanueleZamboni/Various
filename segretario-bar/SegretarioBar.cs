@@ -54,6 +54,8 @@ namespace SegretarioBar
         [DllImport("user32.dll")] public static extern IntPtr GetDC(IntPtr h);
         [DllImport("user32.dll")] public static extern int ReleaseDC(IntPtr h, IntPtr dc);
         [DllImport("gdi32.dll")] public static extern uint GetPixel(IntPtr dc, int x, int y);
+        [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr h, out RECT r);
+        [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr h, ref POINT p);
         [StructLayout(LayoutKind.Sequential)] public struct RECT { public int L, T, R, B; }
         [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X, Y; }
     }
@@ -389,8 +391,10 @@ namespace SegretarioBar
             return IntPtr.Zero;
         }
 
-        void Hide2()
+        string hideWhy = "";
+        void Hide2(string why = "")
         {
+            hideWhy = why;
             if (!shown) return;
             allowShow = false;
             Visible = false;
@@ -407,7 +411,8 @@ namespace SegretarioBar
                 File.WriteAllText(Path.Combine(Program.DataDir, "status.txt"),
                     DateTime.Now.ToString("HH:mm:ss") + " claude=" + claude + " page=" + pageReady + " shapes=" + shape.Count +
                     " shown=" + shown + " placed=" + placed + " scale=" + placedScale + " qui=" + quiTitle + " | " + quiLink +
-                    " | " + why + " shape=" + json.Serialize(shape));
+                    " | " + why + " shape=" + json.Serialize(shape) + " hidden-because=" + hideWhy +
+                    " row=" + (rowRel == null ? "none" : string.Join(",", rowRel)) + " last-reading=" + (measureWhy == "" ? "ok" : measureWhy));
             }
             catch { }
         }
@@ -465,12 +470,22 @@ namespace SegretarioBar
             // hidden until there is.
             bool docked = false, compact = false; double rowCss = 0;
             int[] rel = rowRel;
-            if (rel != null && rel.Length > 4)
+            Native.RECT cr; Native.POINT co = new Native.POINT();
+            bool haveClient = Native.GetClientRect(claude, out cr) && Native.ClientToScreen(claude, ref co);
+            if (rel != null && rel.Length > 5 && haveClient)
             {
+                // the claude.ai page fills Claude's client area, whose top-left corner is (co.X, co.Y) right now
+                int cL = co.X, cR = co.X + cr.R, cT = co.Y;
+                // read at another width (the window is being resized): hidden until the next reading, asked for now
+                if (Math.Abs(cr.R - rel[2]) > 3)
+                {
+                    if (DateTime.Now >= fastUntil) { fastUntil = DateTime.Now.AddSeconds(3); wake.Set(); }
+                    Hide2("row read at width " + rel[2] + ", window is " + cr.R); return;
+                }
                 int pad = (int)Math.Round(12 * s);
-                int L = r.L + rel[0] + pad, R = r.R - rel[1] - pad, top = r.T + rel[4], bottom = r.T + rel[3];
+                int L = cL + rel[0] + pad, R = cR - rel[1] - pad, top = cT + rel[4], bottom = cT + rel[3];
                 double free = (R - L) / s;
-                if (free >= 110 && bottom - top > 20 * s && top - (r.T + rel[2]) >= 3)
+                if (free >= 110 && bottom - top > 20 * s && rel[4] >= 0 && rel[3] < 80 * s)
                 {
                     docked = true;
                     compact = free < 360;
@@ -479,16 +494,16 @@ namespace SegretarioBar
                     // they sit near the title like Chrome's and don't move when you switch between chats; only a very
                     // long title pushes them right. Without room for that, they start right after the title.
                     int start = L;
-                    if (rel.Length > 5 && rel[5] >= 0)
+                    if (rel[5] >= 0)
                     {
-                        int anchor = r.L + rel[5] + (int)Math.Round(TitleRoomCss * s);
+                        int anchor = cL + rel[5] + (int)Math.Round(TitleRoomCss * s);
                         if (anchor > L && (R - anchor) / s >= 360) start = anchor;
                     }
                     int wide = open ? Math.Max(R - start, (int)Math.Round(440 * s)) : R - start;
                     want = new Rectangle(start, top, wide, h);
                 }
             }
-            if (!docked) { Hide2(); return; }
+            if (!docked) { Hide2(rel == null ? "no top-row reading" : "no room in the top row"); return; }
             if (docked != dockedNow || compact != compactNow || rowCss != rowCssNow)
             {
                 Program.Log("place: " + (compact ? "compact button" : "tabs") + " in the top row at " + want);
@@ -501,7 +516,7 @@ namespace SegretarioBar
                 Native.SetWindowPos(Handle, IntPtr.Zero, want.X, want.Y, want.Width, want.Height,
                     0x0004 /*NOZORDER*/ | 0x0010 /*NOACTIVATE*/);
                 placed = want; placedScale = s;
-                if (!shown) { allowShow = true; Visible = true; shown = true; } // ShowWithoutActivation: no focus taken
+                if (!shown) { allowShow = true; Visible = true; shown = true; hideWhy = ""; } // ShowWithoutActivation: no focus taken
             }
             // Being owned keeps it above Claude only after Windows reorders the pair: lift it right above Claude
             // whenever Claude is the window in front (cheap, no focus taken).
@@ -623,6 +638,8 @@ namespace SegretarioBar
         void WatchClaude()
         {
             var docCond = new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Document);
+            AutomationElement known = null;                  // the claude.ai page found last time
+            DateTime nextFull = DateTime.MinValue, nextScan = DateTime.MinValue;
             while (true)
             {
                 try
@@ -630,40 +647,61 @@ namespace SegretarioBar
                     IntPtr h = claude;
                     if (h != IntPtr.Zero && Native.IsWindow(h) && !Native.IsIconic(h))
                     {
-                        var root = AutomationElement.FromHandle(h);
-                        AutomationElement doc = null; string url = ""; double widest = 0;
-                        foreach (AutomationElement d in root.FindAll(TreeScope.Descendants, docCond))
+                        // every half second only the page address is asked (one cheap call): a chat switch is seen at once
+                        // and the row read straight away, instead of up to 3 s later with the old chat's layout in place
+                        bool full = DateTime.Now >= nextFull || known == null;
+                        if (!full)
                         {
-                            object vp; string u = "";
-                            if (d.TryGetCurrentPattern(ValuePattern.Pattern, out vp)) u = ((ValuePattern)vp).Current.Value ?? "";
-                            if (!u.StartsWith("https://claude.ai/")) continue;
-                            double w = d.Current.BoundingRectangle.Width;
-                            if (w > widest) { widest = w; doc = d; url = u; }
+                            string now = "";
+                            try { object vp; if (known.TryGetCurrentPattern(ValuePattern.Pattern, out vp)) now = ((ValuePattern)vp).Current.Value ?? ""; }
+                            catch { known = null; }
+                            if (now != lastUrl) full = true;
                         }
-                        if (doc != null)
+                        if (full)
                         {
-                            string name = doc.Current.Name ?? "";
-                            string u2 = url;
-                            BeginInvoke(new Action(() => OnClaudeShows(name, u2)));
-                            int[] dock = MeasureTopRow(doc, CaptionLeft(root));
-                            BeginInvoke(new Action(() =>
+                            var root = AutomationElement.FromHandle(h);
+                            AutomationElement doc = null; string url = ""; double widest = 0;
+                            foreach (AutomationElement d in root.FindAll(TreeScope.Descendants, docCond))
                             {
-                                Native.RECT fr;
-                                if (dock == null || Native.DwmGetWindowAttribute(h, 9, out fr, Marshal.SizeOf(typeof(Native.RECT))) != 0) { TakeRow(null); return; }
-                                TakeRow(new[] { dock[0] - fr.L, fr.R - dock[1], dock[2] - fr.T, dock[3] - fr.T, dock[4] - fr.T, dock[5] >= 0 ? dock[5] - fr.L : -1 });
-                            }));
-                            if (url != lastUrl) { lastUrl = url; fastUntil = DateTime.Now.AddSeconds(3); } // a chat switch: look again soon
+                                object vp; string u = "";
+                                if (d.TryGetCurrentPattern(ValuePattern.Pattern, out vp)) u = ((ValuePattern)vp).Current.Value ?? "";
+                                if (!u.StartsWith("https://claude.ai/")) continue;
+                                double w = d.Current.BoundingRectangle.Width;
+                                if (w > widest) { widest = w; doc = d; url = u; }
+                            }
+                            known = doc;
+                            if (doc != null)
+                            {
+                                if (url != lastUrl) { lastUrl = url; fastUntil = DateTime.Now.AddSeconds(3); chatChangedUntil = DateTime.Now.AddSeconds(3); }
+                                string name = doc.Current.Name ?? "";
+                                string u2 = url;
+                                BeginInvoke(new Action(() => OnClaudeShows(name, u2)));
+                                // measured relative to the page itself, from ONE reading: where the window is now is asked
+                                // separately when the bar is placed (mixing an older reading with the window's new place
+                                // could throw the bar off the row)
+                                int[] dock = MeasureTopRow(doc, CaptionLeft(root));
+                                BeginInvoke(new Action(() => TakeRow(dock)));
+                            }
+                            nextFull = DateTime.Now.AddMilliseconds(DateTime.Now < fastUntil ? 400 : 3000);
                         }
                     }
                 }
-                catch (Exception ex) { Program.Log("watch: " + ex.GetType().Name + " " + ex.Message); }
-                try { ScanCode(); } catch (Exception ex) { Program.Log("code scan: " + ex.GetType().Name + " " + ex.Message); }
-                Thread.Sleep(DateTime.Now < fastUntil ? 500 : 3000);
+                catch (Exception ex) { Program.Log("watch: " + ex.GetType().Name + " " + ex.Message); known = null; }
+                if (DateTime.Now >= nextScan)
+                {
+                    nextScan = DateTime.Now.AddSeconds(3);
+                    try { ScanCode(); } catch (Exception ex) { Program.Log("code scan: " + ex.GetType().Name + " " + ex.Message); }
+                }
+                if (wake.WaitOne(DateTime.Now < fastUntil ? 400 : 500)) nextFull = DateTime.MinValue;   // woken: read the row now
             }
         }
 
+        // the open chat changed a moment ago: its row is taken from the first reading (the old chat's layout is wrong)
+        DateTime chatChangedUntil = DateTime.MinValue;
+
         string lastUrl = "";
         DateTime fastUntil = DateTime.MinValue;
+        readonly AutoResetEvent wake = new AutoResetEvent(false);
 
         // A new top-row layout is used only once two readings in a row agree (within 4 px): while a chat loads, the row
         // is briefly half-built and one reading would throw the bar to the wrong place. A few failed readings in a row
@@ -674,6 +712,25 @@ namespace SegretarioBar
             if (rel == null) { if (++rowMisses >= 4) { rowRel = null; rowCandidate = null; } return; }
             rowMisses = 0;
             if (SameRow(rel, rowRel)) { rowCandidate = null; return; }
+            // just switched to another chat: the old chat's layout is wrong, the first reading of the new one is used
+            if (rowRel != null && DateTime.Now < chatChangedUntil)
+            {
+                Program.Log("top row (other chat): free from " + rel[0] + " px after the left edge to " + rel[1] + " px before the right edge");
+                rowRel = rel; rowCandidate = null; Follow(); return;
+            }
+            // less free space than before (a chat with a longer title, a new icon): taken at once, so the bar never sits
+            // on one of Claude's controls even for a moment. More free space waits for the steady readings below.
+            if (rowRel != null && Math.Abs(rel[2] - rowRel[2]) <= 3 && (rel[0] > rowRel[0] + 4 || rel[1] > rowRel[1] + 4))
+            {
+                Program.Log("top row (less room): free from " + rel[0] + " px after the left edge to " + rel[1] + " px before the right edge");
+                rowRel = rel; rowCandidate = null; Follow(); return;
+            }
+            // the window changed width: the old reading is certainly wrong (Claude reflows its row), take the new one now
+            if (rowRel == null || Math.Abs(rel[2] - rowRel[2]) > 3)
+            {
+                Program.Log("top row (new width " + rel[2] + "): free from " + rel[0] + " px after the left edge to " + rel[1] + " px before the right edge, buttons " + rel[4] + ".." + rel[3]);
+                rowRel = rel; rowCandidate = null; Follow(); return;
+            }
             if (SameRow(rel, rowCandidate)) rowHits++; else { rowCandidate = rel; rowHits = 1; rowSince = DateTime.Now; }
             // a new layout must hold for 2.5 s (several readings), so a page caught mid-load never moves the bar
             if (rowHits >= 2 && (DateTime.Now - rowSince).TotalSeconds >= 2.5 || rowRel == null && rowHits >= 2)
@@ -792,10 +849,24 @@ namespace SegretarioBar
 
         // {left, right, top, bottom} of the free part of Claude's top row in screen pixels, or null when it can't be
         // measured. Everything in the row is one batch of accessibility reads (CacheRequest), not one call per element.
+        // Only real controls count: buttons, links, the Chat/Code switch, status icons, and texts that are not a control's
+        // label. Containers (groups, panes, toolbars) are invisible boxes that can span half the row, and the chat text
+        // scrolling under the row is not part of it: both made the free space jump, and the bar cover Claude's icons.
+        static readonly ControlType[] RowTypes = { ControlType.Button, ControlType.RadioButton, ControlType.Hyperlink,
+            ControlType.MenuItem, ControlType.SplitButton, ControlType.ComboBox, ControlType.CheckBox, ControlType.StatusBar,
+            ControlType.Edit, ControlType.Image, ControlType.Tab, ControlType.TabItem };
+
+        // Returns, relative to the claude.ai page's own top-left corner: left and right ends of the free space (the right
+        // one counted from the page's right edge), the page width it was measured at, the row buttons' bottom and top, where the chat title starts (-1 if
+        // not found). Null when the row can't be read.
+        // why the last reading failed, logged when it changes (null = it worked)
+        static string measureWhy = "";
+        static int[] Why(string why) { if (why != measureWhy) { measureWhy = why; Program.Log("top row not read: " + why); } return null; }
+
         static int[] MeasureTopRow(AutomationElement doc, double captionLeft)
         {
             var dr = doc.Current.BoundingRectangle;
-            if (dr.IsEmpty || dr.Width < 400) return null;
+            if (dr.IsEmpty || dr.Width < 400) return Why("dr.IsEmpty || dr.Width < 400");
             var cr = new CacheRequest();
             cr.Add(AutomationElement.BoundingRectangleProperty);
             cr.Add(AutomationElement.ControlTypeProperty);
@@ -803,68 +874,83 @@ namespace SegretarioBar
             cr.TreeScope = TreeScope.Element;
             AutomationElementCollection all;
             using (cr.Activate()) all = doc.FindAll(TreeScope.Descendants, System.Windows.Automation.Condition.TrueCondition);
-            // The row's controls: small boxes starting near the page's top. Odd ones (a loading badge, a tooltip, a
-            // menu) made the free space jump around, so only two unbroken groups count: the one that starts at the
-            // left edge (menu, arrows, Chat/Code switch, chat title) and the one that ends at the right (panel icons).
             var boxes = new List<System.Windows.Rect>(); var texts = new List<System.Windows.Rect>();
-            double renameLeft = -1;
+            double renameLeft = -1, renameRight = -1;
             foreach (AutomationElement e in all)
             {
                 System.Windows.Rect r; ControlType ct; string name;
                 try { r = e.Cached.BoundingRectangle; ct = e.Cached.ControlType; name = e.Cached.Name ?? ""; } catch { continue; }
-                if (r.IsEmpty || r.Width < 8 || r.Height < 20) continue;
-                if (r.Top < dr.Top || r.Top > dr.Top + 14 || r.Height > 56) continue;   // only the top row's controls
-                if (r.Width > dr.Width * 0.3) continue;                                  // not a whole-row container
-                // the chat title is the button "<title>, rename session" (Chat and Code alike)
-                if (ct == ControlType.Button && name.EndsWith(", rename session")) renameLeft = r.Left;
-                if (ct == ControlType.Text) texts.Add(r); else boxes.Add(r);
+                if (r.IsEmpty || r.Width < 8 || r.Height < 18 || r.Height > 56) continue;
+                if (r.Top < dr.Top - 2 || r.Top > dr.Top + 20) continue;                 // only the top row
+                if (r.Width > dr.Width * 0.4) continue;
+                if (ct == ControlType.Button && name.EndsWith(", rename session")) { renameLeft = r.Left; renameRight = r.Right; }
+                if (ct == ControlType.Text) texts.Add(r);
+                else if (Array.IndexOf(RowTypes, ct) >= 0) boxes.Add(r);
             }
-            // A text that sits on a control is that control's label, sometimes much wider than what is drawn (in normal
-            // chats "<PC name>, Connected" is 270 px wide next to a 40 px icon): only free-standing texts count.
+            // a text on a control is its label (sometimes far wider than what is drawn): only free-standing texts count
             foreach (var t in texts)
             {
                 bool label = false;
                 foreach (var b in boxes) if (b.Left < t.Right && t.Left < b.Right) { label = true; break; }
                 if (!label) boxes.Add(t);
             }
-            if (boxes.Count < 3) return null;
-            double gap = Math.Max(60, boxes[0].Height * 3);                             // up to ~3 buttons of empty space inside a group
+            if (boxes.Count < 3) return Why("boxes.Count < 3");
+            // The row's line: the controls at the very left (menu, sidebar, arrows) are always there. Only boxes with the
+            // same top AND bottom (within 3 px) belong to the row. The chat text scrolls under the row and its buttons
+            // ("Ran 2 commands", 30 px tall) were taken for row controls: the free space then jumped by 150 px.
+            // The reference is the line most controls share (menu, arrows, icons...): the leftmost box once was a 360 px
+            // wide element that hid the bar in some chats.
             boxes.Sort((a, b) => a.Left.CompareTo(b.Left));
+            System.Windows.Rect first = System.Windows.Rect.Empty; int most = 0;
+            foreach (var c in boxes)
+            {
+                if (c.Height < 28 || c.Width >= c.Height * 2) continue;                  // square buttons set the line
+                int n = 0;
+                foreach (var r in boxes) if (Math.Abs(r.Top - c.Top) <= 3 && Math.Abs(r.Bottom - c.Bottom) <= 3) n++;
+                if (n > most) { most = n; first = c; }
+            }
+            if (most < 3) return Why("no line shared by 3 controls");
+            var line = first;
+            boxes = boxes.FindAll(r => Math.Abs(r.Top - line.Top) <= 3 && Math.Abs(r.Bottom - line.Bottom) <= 3 && r.Width >= 20);
+            if (boxes.Count < 3 || boxes[0].Left - dr.Left > 120) return Why("the row's line does not start at the left edge: " + boxes[0]);
+            first = boxes[0];
+            double gap = Math.Max(60, first.Height * 3);                                // up to ~3 buttons of empty space inside a group
             double leftEdge = dr.Left;
-            if (boxes[0].Left - dr.Left > gap) return null;
-            var leftGroup = new List<System.Windows.Rect>();
-            foreach (var r in boxes) { if (r.Left > leftEdge + gap) break; leftEdge = Math.Max(leftEdge, r.Right); leftGroup.Add(r); }
-            // where the chat title starts: the "rename session" button; failing that, the last wide control of the left
-            // group (the title is a wide button; the menu, arrows and icons are square), widened to any wide control it
-            // sits inside
+            foreach (var r in boxes) { if (r.Left > leftEdge + gap) break; leftEdge = Math.Max(leftEdge, r.Right); }
+            // where the chat title starts: the "rename session" button, else the last wide control of the left group
             double titleLeft = renameLeft;
-            if (titleLeft < 0)
+            if (titleLeft < 0) foreach (var r in boxes) if (r.Right <= leftEdge && r.Width >= r.Height * 2) titleLeft = r.Left;
+            // The right group ends at the page's right edge, or at Claude's minimise button where that sits on the page.
+            // Only controls past the left group count; with none (normal chats can have no panel icons), the free space
+            // runs to that limit.
+            double limit = dr.Right;
+            if (captionLeft > dr.Left + dr.Width / 2 && captionLeft < dr.Right) limit = captionLeft;
+            var right = boxes.FindAll(r => r.Left > leftEdge && r.Left < limit);
+            double rightEdge = limit;
+            if (right.Count > 0)
             {
-                foreach (var r in leftGroup) if (r.Width >= r.Height * 2) titleLeft = r.Left;
-                if (titleLeft >= 0)
-                    foreach (var r in leftGroup) if (r.Width >= r.Height * 2 && r.Left < titleLeft && r.Right > titleLeft) titleLeft = r.Left;
+                right.Sort((a, b) => b.Right.CompareTo(a.Right));
+                double re = right[0].Right;
+                if (limit - re < gap * 3)                                                // a group that really ends at the right
+                {
+                    foreach (var r in right) { if (r.Right < re - gap) break; re = Math.Min(re, r.Left); }
+                    rightEdge = re;
+                }
+                // a lone control in the middle: stop before the first one
+                foreach (var r in right) rightEdge = Math.Min(rightEdge, r.Left);
             }
-            // the right group: only controls past the left group. Normal chats have none (no panel icons): then the free
-            // space runs to Claude's minimise button (it once hid the bar in every normal chat).
-            var rightBoxes = boxes.FindAll(r => r.Left > leftEdge);
-            double rightEdge = captionLeft > 0 ? Math.Min(captionLeft, dr.Right) : dr.Right;
-            if (rightBoxes.Count > 0)
-            {
-                rightBoxes.Sort((a, b) => b.Right.CompareTo(a.Right));
-                double re = rightBoxes[0].Right;
-                foreach (var r in rightBoxes) { if (r.Right < re - gap) break; re = Math.Min(re, r.Left); }
-                rightEdge = Math.Min(rightEdge, re);
-            }
-            if (rightEdge <= leftEdge) return null;
-            // the line of the buttons: the typical top and bottom, not the most extreme
+            if (rightEdge <= leftEdge) return Why("rightEdge <= leftEdge");
+            // the window changed size while the page was being read: this reading mixes two layouts
+            var dr2 = doc.Current.BoundingRectangle;
+            if (Math.Abs(dr2.Left - dr.Left) > 1 || Math.Abs(dr2.Right - dr.Right) > 1 || Math.Abs(dr2.Top - dr.Top) > 1) return Why("Math.Abs(dr2.Left - dr.Left) > 1 || Math.Abs(dr2.Right - dr.Right) > 1 || Math.Abs(dr2.Top - dr.Top) > 1");
             var tops = new List<double>(); var bottoms = new List<double>();
             foreach (var r in boxes) if (r.Height >= 28) { tops.Add(r.Top); bottoms.Add(r.Bottom); }
-            if (tops.Count < 3) return null;
+            if (tops.Count < 3) return Why("tops.Count < 3");
             tops.Sort(); bottoms.Sort();
             double top = tops[tops.Count / 2], bottom = bottoms[bottoms.Count / 2];
-            // left, right of the free space; the page's top; the row buttons' bottom and top (the tabs copy them);
-            // where the chat title starts (-1 if not found)
-            return new[] { (int)leftEdge, (int)rightEdge, (int)dr.Top, (int)bottom, (int)top, (int)titleLeft };
+            measureWhy = "";
+            return new[] { (int)Math.Round(leftEdge - dr.Left), (int)Math.Round(dr.Right - rightEdge), (int)Math.Round(dr.Width),
+                (int)Math.Round(bottom - dr.Top), (int)Math.Round(top - dr.Top), titleLeft >= 0 ? (int)Math.Round(titleLeft - dr.Left) : -1 };
         }
 
         // Claude's own minimise button (it draws its window buttons itself), searched again every 20 s
