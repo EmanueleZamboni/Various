@@ -772,6 +772,19 @@ export class AccountSync {
       }
       // 3b. Amazon Associates / Influencer program mail skips the inbox, except offers that only
       // count once you click to activate them (Ema's rule).
+      // DMARC aggregate reports (machine reports about the domain's mail): straight to Trash.
+      const reports = newInbox.filter((m) => !m.blocked && isDmarcReport(m.from.email, m.subject));
+      if (reports.length) {
+        try {
+          const dest = await this.ensureFolder('trash');
+          await client.messageFlagsAdd(reports.map((m) => m.uid), ['\\Seen'], { uid: true });
+          const res = await client.messageMove(reports.map((m) => m.uid), dest.path, { uid: true });
+          this.applyMoveResult(folder, dest, reports.map((m) => m.uid), res && res.uidMap ? res.uidMap : null);
+          for (const m of reports) m.blocked = true; // no "new mail" notification either
+        } catch (err) {
+          log.warn({ account: this.email, err: (err as Error).message }, 'dmarc report trash failed');
+        }
+      }
       const quiet = newInbox.filter((m) => !m.blocked && isAmazonProgramNoise(m.from.email, m.subject));
       if (quiet.length) {
         try {
@@ -1237,4 +1250,16 @@ const AMAZON_ACTIVATE = /creator rewards|opt[\s-]?in|action (needed|required)|ac
 /** Program news, reminders and promos: archived on arrival, unless they ask you to activate an offer. */
 export function isAmazonProgramNoise(fromEmail: string, subject: string): boolean {
   return AMAZON_PROGRAM.test((fromEmail || '').trim()) && !AMAZON_ACTIVATE.test(subject || '');
+}
+
+/**
+ * DMARC aggregate reports: daily XML/zip reports that mail providers send to the address in the
+ * domain's DMARC record. Useful to a mail administrator only; delivery failures ("Undelivered
+ * Mail Returned to Sender") are something else and are never matched.
+ */
+export function isDmarcReport(fromEmail: string, subject: string): boolean {
+  const from = (fromEmail || '').toLowerCase();
+  const subj = subject || '';
+  if (/^(report domain:|\[preview\] report domain:|dmarc aggregate report)/i.test(subj.trim())) return true;
+  return /dmarc/.test(from) && /report/i.test(subj);
 }
