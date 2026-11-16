@@ -185,6 +185,8 @@ async function refresh($: EngineInterface, from = 'timer', force = false) {
   }
 }
 
+const BAND_OFF = true
+
 export const register: Register = (on) => {
   on('session.start', async ($, e, next) => {
     await $.tool.register({
@@ -193,6 +195,7 @@ export const register: Register = (on) => {
     })
     // from timers: work started straight from this hook could be cut off when the hook returns
     timer?.cancel()
+    if (BAND_OFF) return next(e)   // nothing to show: no refreshing either
     timer = $.clock.every(EVERY_MS, () => void refresh($))
     $.clock.after(1, () => void refresh($))
     return next(e)
@@ -206,11 +209,15 @@ export const register: Register = (on) => {
 
   // after each turn a chat may have just reported to the Segretario: look again
   on('turn.complete', async ($, e, next) => {
+    if (BAND_OFF) return next(e)
     $.clock.after(1, () => void refresh($))
     return next(e)
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    // OFF since 2026-11-16 (Ema: the tabs spilled into the power meter's band; the Segretario Bar in the Claude
+    // app's top row does this job now). Remove this line to bring the band back.
+    if (BAND_OFF) return next(e)
     if (e.props.hasSurvey) return next(e)
     const { Box, Button, Text, Link } = $.ui.resolve(e)
     const snap = await read($, data)
