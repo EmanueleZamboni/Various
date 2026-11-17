@@ -570,7 +570,8 @@ function GroupsRow({ lines, base, render, renderFull }: { lines: GroupSummary[];
       >
         <span className="bundle-ico"><Icon name="labelFilled" size={18} /></span>
         <span className="bundle-title">
-          <span>Groups <small className="group-count">{lines.length}</small></span>
+          {/* No number here: a number beside a mail list reads as "to read"; the "N unread" pill says that. */}
+          <span>Groups</span>
           <small>{summary}</small>
         </span>
         {importantCount > 0 && <span className="pill pill-imp">{importantCount} important</span>}
@@ -670,7 +671,7 @@ function GroupBundle({ summary: g, base, render }: { summary: GroupSummary; base
         >
           <span className="bundle-ico"><Icon name="labelFilled" size={16} /></span>
           <span className="bundle-title">
-            <span>{g.name} <small className="group-count">{g.total}</small></span>
+            <span>{g.name}</span>
             <small>{open ? pluralize(g.total, 'conversation') : `${who}: ${g.latestSubject}`}</small>
           </span>
           {(g.important ?? 0) > 0 && <span className="pill pill-imp">{g.important} important</span>}
