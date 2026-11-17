@@ -3802,3 +3802,17 @@ a.btn {
     display: none;
   }
 }
+
+/* An open group: its emails sit indented under it, joined by a line on the left, so it is
+   clear at a glance which emails belong to that group. */
+:root .list .groups-list .group-line > .row-wrap {
+  margin-left: 32px;
+  border-left: 2px solid var(--groups-edge);
+}
+:root .list .groups-list .group-line.open {
+  padding-bottom: 6px;
+}
+:root .list .groups-list .group-line > .bundle-more {
+  margin-left: 32px;
+  border-left: 2px solid var(--groups-edge);
+}
