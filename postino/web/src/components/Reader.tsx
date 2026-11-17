@@ -61,15 +61,22 @@ export function Reader({ view }: { view: string }) {
     setReplyMode(null);
     setReplyFor(null);
     if (scrollRef.current) scrollRef.current.scrollTop = 0;
-    // Mark as read: when opened, after a delay, or never automatically.
-    const mode = settings?.reading.markRead ?? 'open';
-    if (data.thread.unread && mode !== 'manual') {
-      const delay = mode === 'delay' ? Math.max(0, settings?.reading.markReadDelay ?? 2) * 1000 : 0;
-      const t = window.setTimeout(() => void act({ threadIds: [data.thread.id], action: 'read', view, scope: 'all', silent: true }), delay);
-      return () => window.clearTimeout(t);
-    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data?.thread.id]);
+
+  // Mark as read: when opened, after a delay, or never automatically. Checked again whenever the
+  // conversation's data changes (it may first come from the copy loaded in advance, from before a
+  // new message arrived), so an open conversation never stays unread.
+  const hasUnread = !!data && (data.thread.unread || data.messages.some((m) => !m.seen && !m.mine));
+  useEffect(() => {
+    if (!data || !hasUnread) return;
+    const mode = settings?.reading.markRead ?? 'open';
+    if (mode === 'manual') return;
+    const delay = mode === 'delay' ? Math.max(0, settings?.reading.markReadDelay ?? 2) * 1000 : 0;
+    const t = window.setTimeout(() => void act({ threadIds: [data.thread.id], action: 'read', view, scope: 'all', silent: true }), delay);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data?.thread.id, hasUnread, data?.messages.length]);
 
   // Bodies still downloading: poll until fetched (the server also pushes message.updated).
   useEffect(() => {

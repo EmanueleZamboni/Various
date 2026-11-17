@@ -30,7 +30,7 @@ import { registerWhatsAppRoutes, startWhatsApp } from './whatsapp.js';
 import { registerCallRoutes } from './calls.js';
 import { registerAiRoutes } from './ai.js';
 import { backfill, registerSmartRoutes } from './smart.js';
-import { fixHtmlInTextOnce } from './mail/repair.js';
+import { fixHtmlInTextOnce, recountUnreadOnce } from './mail/repair.js';
 import { registerTriageRoutes, startTriage } from './triage.js';
 import { manager } from './mail/manager.js';
 import { startPushBridge, vapidKeys } from './push.js';
@@ -230,6 +230,8 @@ async function main(): Promise<void> {
   setTimeout(() => fixSentUnreadOnce(), 20_000);
   setTimeout(() => {
     try {
+      const r = recountUnreadOnce();
+      if (r) log.info({ n: r }, 'unread conversations recounted');
       const n = fixHtmlInTextOnce();
       if (n) log.info({ n }, 'emails with HTML code as plain text repaired');
     } catch (err) {

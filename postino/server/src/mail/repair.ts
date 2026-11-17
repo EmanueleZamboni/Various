@@ -36,3 +36,15 @@ export function fixHtmlInTextOnce(): number {
   setSetting('migr.htmlInText', true);
   return fixed;
 }
+
+/**
+ * Unread counts from before a message read in one of its copies counted as read: recount, once,
+ * the conversations still marked unread.
+ */
+export function recountUnreadOnce(): number {
+  if (getSetting<boolean>('migr.unreadAnyCopy', false)) return 0;
+  const ids = (db.prepare('SELECT id FROM threads WHERE unread_count > 0').all() as { id: number }[]).map((r) => r.id);
+  for (const id of ids) recomputeThread(id);
+  setSetting('migr.unreadAnyCopy', true);
+  return ids.length;
+}

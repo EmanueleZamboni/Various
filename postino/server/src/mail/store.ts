@@ -409,11 +409,14 @@ export function deleteFolderMessages(folderId: number): void {
  */
 export function unreadCount(rows: { message_id: string; seen: number; mine: number; role: FolderRole }[]): number {
   const sentIds = new Set(rows.filter((r) => r.message_id && (r.mine || r.role === 'sent' || r.role === 'drafts')).map((r) => r.message_id));
+  // A message read in any of its copies (Gmail keeps one per label, each synced on its own
+  // schedule) is read: one stale copy must not keep the conversation unread.
+  const readIds = new Set(rows.filter((r) => r.message_id && r.seen).map((r) => r.message_id));
   const counted = new Set<string>();
   let n = 0;
   for (const r of rows) {
     if (r.seen || r.mine || r.role === 'sent' || r.role === 'drafts') continue;
-    if (r.message_id && sentIds.has(r.message_id)) continue;
+    if (r.message_id && (sentIds.has(r.message_id) || readIds.has(r.message_id))) continue;
     if (r.message_id) {
       if (counted.has(r.message_id)) continue;
       counted.add(r.message_id);
