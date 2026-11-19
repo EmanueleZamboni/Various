@@ -609,6 +609,31 @@ const FRAME_CSS = `
   blockquote{margin:0 0 0 .6em;padding-left:.9em;border-left:2px solid #cfd6d2;color:#6b7571}
   pre{white-space:pre-wrap}
 `;
+/** Mostly words: no more than one large picture. */
+function isTextMail(d: Document): boolean {
+  const big = Array.from(d.images).filter((i) => (i.naturalWidth || Number(i.getAttribute('width')) || 0) > 200).length;
+  return big <= 1 && (d.body.innerText || '').trim().length > 80;
+}
+
+/** Undo the fixed widths that make a text email wider than the screen. */
+function reflow(d: Document, w: number): void {
+  const win = d.defaultView;
+  if (!win) return;
+  for (const el of Array.from(d.body.querySelectorAll<HTMLElement>('*'))) {
+    if (el.scrollWidth <= w + 4 && el.offsetWidth <= w + 4) continue;
+    const tag = el.tagName;
+    if (tag === 'IMG' || tag === 'VIDEO' || tag === 'svg') continue;
+    const cs = win.getComputedStyle(el);
+    if (cs.whiteSpace === 'nowrap') el.style.whiteSpace = 'normal';
+    if (cs.whiteSpace === 'pre') el.style.whiteSpace = 'pre-wrap';
+    el.removeAttribute('width');
+    el.style.width = 'auto';
+    el.style.minWidth = '0';
+    el.style.maxWidth = '100%';
+    if (tag === 'TABLE') el.style.tableLayout = 'auto';
+  }
+}
+
 /**
  * An email's HTML in a sandboxed frame, always shown at its full height (never a box that scrolls).
  * The frame may not run scripts at all (no allow-scripts, and its CSP says script-src 'none'),
@@ -646,7 +671,14 @@ export function HtmlBody({ id, html, showImages }: { id: string; html: string; s
       b.style.transform = '';
       const cs = getComputedStyle(frame);
       const w = frame.clientWidth - parseFloat(cs.paddingLeft || '0') - parseFloat(cs.paddingRight || '0');
-      const natural = Math.max(b.scrollWidth, d.documentElement.scrollWidth);
+      let natural = Math.max(b.scrollWidth, d.documentElement.scrollWidth);
+      // A text email (few pictures) that is too wide only because of fixed desktop widths
+      // (a 1000 px table, a "nowrap" line) is reflowed to the screen, like Gmail does, instead of
+      // being shrunk to unreadable text. Designed newsletters with pictures are still shrunk to fit.
+      if (w > 0 && natural > w + 4 && isTextMail(d)) {
+        reflow(d, w);
+        natural = Math.max(b.scrollWidth, d.documentElement.scrollWidth);
+      }
       scale = w > 0 && natural > w + 4 ? w / natural : 1;
       if (scale < 1) {
         b.style.width = `${natural}px`;
