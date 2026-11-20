@@ -40,9 +40,9 @@ html,body{margin:0;padding:0;background:transparent;overflow:hidden}
 #seg-schede button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 #seg-schede button.quiet{color:var(--muted)}
 #seg-schede button.quiet:hover{color:var(--ink)}
-/* "+": add the chat you are in. Square, like Claude's own icon buttons */
-#seg-schede .riga>button.piu{width:var(--alto);padding:0;justify-content:center;font-size:18px;line-height:1;color:var(--muted)}
-#seg-schede .riga>button.piu:hover{color:var(--ink)}
+/* "+ Add": add the chat you are in; dimmed when it already has a tab or no chat is open */
+#seg-schede .riga>button.piu{padding:0 10px;font-weight:600;color:var(--ink)}
+#seg-schede button.spento{opacity:.45}
 #seg-schede button.freccia{color:var(--muted);font-variant-numeric:tabular-nums}
 /* tabs: they shrink as more open, × closes, drag moves */
 #seg-schede .tabs{display:flex;align-items:center;gap:2px;min-width:0;flex:1 1 auto;height:100%}

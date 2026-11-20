@@ -13,7 +13,7 @@
    (tabs.json) through "salva". */
 (() => {
   // as many tabs as fit at a readable width (about 118 px each, after the History and Hide buttons); the rest go under ›
-  const VISIBLE = () => Math.max(2, Math.min(12, Math.floor((window.innerWidth - 228) / 118)));
+  const VISIBLE = () => Math.max(2, Math.min(12, Math.floor((window.innerWidth - 270) / 118)));
   const T0 = Date.now();
   const FLASH_MS = 3000;
   const host = window.chrome && window.chrome.webview;
@@ -263,6 +263,16 @@
     salva(); disegna(); manda({ tipo: "fatto" });
   }
 
+  // The Add button is always there (Ema asked for it, 20/11/2026). It adds the chat you are in; when that chat
+  // already has a tab it is dimmed and a click just points at the tab; with no chat open it is dimmed too.
+  function aggiungi(qk, testo, cls) {
+    const gia = !!qk && T.order.includes(qk);
+    return bottone(testo, cls + (qk && !gia ? "" : " spento"), () => {
+      if (!qk) return;
+      if (gia) { st.flash[qk] = Date.now() + 1200; setTimeout(disegna, 1250); return; }
+      if (apriScheda(qk, "you clicked + Add")) salva();
+    }, !qk ? "Open a chat first, then add it" : gia ? "This chat already has a tab" : "Add this chat as a tab");
+  }
   function nascondi(si) { st.hidden = si; st.open = ""; st.peek = ""; st.more = 0; manda({ tipo: "nascosta", valore: si }); }
 
   function disegna() {
@@ -301,7 +311,7 @@
       if (!vis.length) tabs.appendChild(el("span", "avviso", "No tabs yet: + adds the chat you are in"));
       riga.appendChild(tabs);
       const qk = quiChiave();
-      if (qk && !T.order.includes(qk)) riga.appendChild(bottone("+", "piu", () => { if (apriScheda(qk, "you clicked +")) salva(); }, "Add this chat as a tab"));
+      riga.appendChild(aggiungi(qk, "+ Add", "piu"));
       if (resto.length) riga.appendChild(bottone(st.more === 1 ? "‹" : `› ${resto.length}`, "freccia", () => { st.more = st.more === 1 ? 0 : 1; st.open = ""; }, st.more === 1 ? "Close" : "More tabs"));
       riga.appendChild(bottone(st.more === 2 ? "Close history" : "History", "quiet", () => { st.more = st.more === 2 ? 0 : 2; st.open = ""; }));
       riga.appendChild(bottone("Hide", "quiet", () => nascondi(true)));
@@ -322,7 +332,7 @@
         if (!lista.length) s.appendChild(el("p", "avviso", "No tabs yet"));
         const piede = el("div", "piede");
         const qk = quiChiave();
-        if (qk && !T.order.includes(qk)) piede.append(bottone("+ Add this chat", "", () => { if (apriScheda(qk, "you clicked +")) salva(); }));
+        piede.append(aggiungi(qk, "+ Add this chat", ""));
         piede.append(bottone("History", "quiet", () => { st.more = 2; }), bottone("Hide", "quiet", () => nascondi(true)));
         s.appendChild(piede);
       }
