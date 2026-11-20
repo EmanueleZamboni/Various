@@ -232,12 +232,22 @@ namespace SegretarioBar
             bool hidden = false;
             try { hidden = File.ReadAllText(Path.Combine(Program.DataDir, "hidden.txt")).Trim() == "1"; } catch { }
             string tabs = "null";
-            try
+            var tries = new List<string> { TabsFile };
+            try { var old = new List<string>(Directory.GetFiles(BackupDir, "tabs-*.json")); old.Sort(); old.Reverse(); tries.AddRange(old); } catch { }
+            foreach (string f in tries)
             {
-                string t = File.ReadAllText(TabsFile, Encoding.UTF8);
-                if (json.DeserializeObject(t) is Dictionary<string, object>) tabs = t.Replace("</", "<\\/");
+                try
+                {
+                    string t = File.ReadAllText(f, Encoding.UTF8);
+                    var d = json.DeserializeObject(t) as Dictionary<string, object>;
+                    if (d == null) continue;
+                    tabs = t.Replace("</", "<\\/");
+                    lastTabCount = CountTabs(d);
+                    Program.Log("tabs loaded from " + Path.GetFileName(f) + ": " + lastTabCount + " tabs");
+                    break;
+                }
+                catch (Exception ex) { if (File.Exists(f)) Program.Log("tabs file " + Path.GetFileName(f) + " unreadable: " + ex.Message); }
             }
-            catch { }
             return Asset("bar.html")
                 .Replace("/*CSS*/", Asset("bar.css"))
                 .Replace("/*NASCOSTA*/false", hidden ? "true" : "false")
@@ -246,6 +256,28 @@ namespace SegretarioBar
         }
 
         static string TabsFile { get { return Path.Combine(Program.DataDir, "tabs.json"); } }
+        static string BackupDir { get { return Path.Combine(Program.DataDir, "backup"); } }
+        int lastTabCount = -1;
+        static int CountTabs(Dictionary<string, object> d)
+        {
+            var o = d != null && d.ContainsKey("order") ? d["order"] as ICollection : null;
+            return o == null ? 0 : o.Count;
+        }
+        // One copy of the tabs per day (the state at the first save of that day), 30 days kept: whatever happens, the
+        // tabs and the closed list of any recent day can be put back.
+        void BackupTabs()
+        {
+            try
+            {
+                string day = Path.Combine(BackupDir, "tabs-" + DateTime.Now.ToString("yyyy-MM-dd") + ".json");
+                if (File.Exists(day) || !File.Exists(TabsFile)) return;
+                Directory.CreateDirectory(BackupDir);
+                File.Copy(TabsFile, day);
+                var old = new List<string>(Directory.GetFiles(BackupDir, "tabs-*.json")); old.Sort();
+                for (int i = 0; i < old.Count - 30; i++) File.Delete(old[i]);
+            }
+            catch (Exception ex) { Program.Log("tabs backup: " + ex.Message); }
+        }
 
         void Post(Dictionary<string, object> m)
         {
@@ -293,12 +325,16 @@ namespace SegretarioBar
             {
                 try
                 {
+                    BackupTabs();
+                    int n = CountTabs(m["stato"] as Dictionary<string, object>);
+                    if (n != lastTabCount) { Program.Log("tabs saved: " + n + " tabs (was " + lastTabCount + ")"); lastTabCount = n; }
                     string tmp = TabsFile + ".tmp";
                     File.WriteAllText(tmp, json.Serialize(m["stato"]), Encoding.UTF8);
                     if (File.Exists(TabsFile)) File.Replace(tmp, TabsFile, null); else File.Move(tmp, TabsFile);
                 }
                 catch (Exception ex) { Program.Log("save tabs: " + ex.Message); }
             }
+            else if (tipo == "diario") Program.Log("tabs: " + (m.ContainsKey("testo") ? Convert.ToString(m["testo"]) : ""));
             else if (tipo == "apri") OpenChat(m.ContainsKey("link") ? Convert.ToString(m["link"]) : "");
             else if (tipo == "fatto" && claude != IntPtr.Zero && Native.GetForegroundWindow() == Handle) Native.SetForegroundWindow(claude);
         }
