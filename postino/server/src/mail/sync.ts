@@ -12,7 +12,7 @@ import { noteMessage } from '../smart.js';
 import type { AccountRow } from '../views.js';
 import { accountView, folderView, syncProgress } from '../views.js';
 import {
-  upsertHeader, updateFlags, storeBody, markBodyError, recomputeThread, storeAttachment, registerAttachmentMeta, attachmentPath,
+  upsertHeader, updateFlags, flagsFromSet, storeBody, markBodyError, recomputeThread, storeAttachment, registerAttachmentMeta, attachmentPath,
   deleteMessagesByIds, deleteFolderMessages, refreshFolderCounts, isBlocked, isSafeSender, ignoresUnsubscribe, folderByRole, type FolderRow, type FolderRole, type MessageRow,
 } from './store.js';
 import { bodyFromParsed, looksLikeHtml, normalizeMsgId, parseReferences, pickUnsubscribe, splitQuoted, makeSnippet, parserOptions, defaultFilename, type ParsedHeaders, type Address } from './parse.js';
@@ -136,6 +136,8 @@ export class AccountSync {
   private syncingAll = false;
   private connectPromise: Promise<void> | null = null;
   private lastFullReconcile = new Map<number, number>();
+  // The folder's mod-sequence when it was last fully reconciled (CONDSTORE servers).
+  private reconciledAt = new Map<number, string>();
   // A second connection that does nothing but sit in IDLE on the inbox, so new mail is seen the
   // moment the server has it, even while the main connection is busy with bodies or other folders.
   private watcher: ImapFlow | null = null;
@@ -729,14 +731,35 @@ export class AccountSync {
         }
         uidNextLocal = Math.max(uidNextLocal, maxUid + 1);
       }
-      // 2. Reconcile flags + deletions
-      if (opts.reconcile) {
+      // 2. Reconcile flags + deletions. Skipped when the server says nothing changed since the
+      // last reconcile (same CONDSTORE mod-sequence, same number of messages).
+      const modseq = mailbox.highestModseq ? String(mailbox.highestModseq) : '';
+      const unchanged =
+        opts.reconcile &&
+        !!modseq &&
+        this.reconciledAt.get(folder.id) === modseq &&
+        (db.prepare('SELECT COUNT(*) AS n FROM messages WHERE folder_id = ?').get(folder.id) as { n: number }).n === mailbox.exists;
+      if (unchanged) this.lastFullReconcile.set(folder.id, Date.now());
+      if (opts.reconcile && !unchanged) {
         const serverFlags = new Map<number, Set<string>>();
         if (mailbox.exists > 0) {
           for await (const msg of client.fetch('1:*', { uid: true, flags: true }, { uid: true })) serverFlags.set(msg.uid, msg.flags || new Set());
         }
-        const local = db.prepare('SELECT id, uid, thread_id FROM messages WHERE folder_id = ?').all(folder.id) as { id: number; uid: number; thread_id: number }[];
+        // One read of the folder and one write for what actually changed: comparing message by
+        // message (a query each) kept the whole server busy for seconds on a big folder, and
+        // every request (a search, opening an email) waited behind it.
+        const local = db.prepare('SELECT id, uid, thread_id, seen, flagged, answered, draft FROM messages WHERE folder_id = ?').all(folder.id) as {
+          id: number;
+          uid: number;
+          thread_id: number;
+          seen: number;
+          flagged: number;
+          answered: number;
+          draft: number;
+        }[];
         const gone: number[] = [];
+        const changed: { id: number; f: ReturnType<typeof flagsFromSet> }[] = [];
+        const flagThreads = new Set<number>();
         for (const m of local) {
           const flags = serverFlags.get(m.uid);
           if (!flags) {
@@ -744,11 +767,27 @@ export class AccountSync {
             changedThreads.add(m.thread_id);
             continue;
           }
-          const r = updateFlags(folder.id, m.uid, flags);
-          if (r.changed && r.threadId) changedThreads.add(r.threadId);
+          const f = flagsFromSet(flags);
+          if (f.seen !== m.seen || f.flagged !== m.flagged || f.answered !== m.answered || f.draft !== m.draft) {
+            changed.push({ id: m.id, f });
+            flagThreads.add(m.thread_id);
+          }
+        }
+        if (changed.length) {
+          const upd = db.prepare('UPDATE messages SET seen = ?, flagged = ?, answered = ?, draft = ? WHERE id = ?');
+          db.transaction(() => {
+            for (const c of changed) upd.run(c.f.seen, c.f.flagged, c.f.answered, c.f.draft, c.id);
+          })();
+          let n = 0;
+          for (const t of flagThreads) {
+            recomputeThread(t);
+            changedThreads.add(t);
+            if (++n % 200 === 0) await new Promise((r) => setImmediate(r)); // let waiting requests through
+          }
         }
         if (gone.length) deleteMessagesByIds(gone);
         this.lastFullReconcile.set(folder.id, Date.now());
+        if (modseq) this.reconciledAt.set(folder.id, modseq);
       }
       const reset = folder.uidvalidity !== null && folder.uidvalidity !== uidValidity;
       db.prepare(`UPDATE folders SET uidvalidity = ?, uidnext = ${reset ? '?' : 'MAX(COALESCE(uidnext, 0), ?)'}, highestmodseq = ? WHERE id = ?`).run(
