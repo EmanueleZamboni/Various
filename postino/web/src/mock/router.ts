@@ -450,7 +450,7 @@ on('GET', '/api/threads', ({ query }) => {
     list = list.filter((s) => {
       const t = threads.find((x) => x.id === s.id);
       const g = t ? groupOf(t) : null;
-      return group === 'none' ? g === null : g === group;
+      return group === 'none' ? g === null : group === '*' ? g !== null : g === group;
     });
   }
   return json(paginate(list, query));

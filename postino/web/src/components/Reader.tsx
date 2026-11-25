@@ -73,7 +73,13 @@ export function Reader({ view }: { view: string }) {
     const mode = settings?.reading.markRead ?? 'open';
     if (mode === 'manual') return;
     const delay = mode === 'delay' ? Math.max(0, settings?.reading.markReadDelay ?? 2) * 1000 : 0;
-    const t = window.setTimeout(() => void act({ threadIds: [data.thread.id], action: 'read', view, scope: 'all', silent: true }), delay);
+    const markRead = () => void act({ threadIds: [data.thread.id], action: 'read', view, scope: 'all', silent: true });
+    // Right away (not on a timer that closing the email would cancel); with a delay, only if it stays open.
+    if (!delay) {
+      markRead();
+      return;
+    }
+    const t = window.setTimeout(markRead, delay);
     return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data?.thread.id, hasUnread, data?.messages.length]);

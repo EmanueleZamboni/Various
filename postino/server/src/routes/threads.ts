@@ -57,9 +57,10 @@ export function listThreads(q: ListQuery) {
   const base = viewWhere(view, accountId, category, q.unread === '1');
   let { where } = base;
   const params = [...base.params];
-  // Sender groups: the inbox hides grouped conversations (group=none) or shows one group (group=<name>).
+  // Sender groups: the inbox hides grouped conversations (group=none), shows one group
+  // (group=<name>) or every group's conversations together (group=*).
   if (view === 'inbox' && typeof q.group === 'string' && q.group !== '' && hasGroups()) {
-    const g = groupedThreadsSql(q.group === 'none' ? undefined : q.group);
+    const g = groupedThreadsSql(q.group === 'none' || q.group === '*' ? undefined : q.group);
     const clause = `t.id ${q.group === 'none' ? 'NOT IN' : 'IN'} (${g.sql})`;
     where = where ? `${where} AND ${clause}` : `WHERE ${clause}`;
     params.push(...g.params);

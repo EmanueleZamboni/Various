@@ -259,6 +259,9 @@ export function ThreadList({ view }: { view: string }) {
 
   const open = (t: ThreadSummary) => {
     ui.setSelected(t.id);
+    // Read the moment it is opened (not after the conversation loads), so opening and closing
+    // straight away leaves it read in the list.
+    if (t.unread && (settings?.reading.markRead ?? 'open') === 'open') void act({ threadIds: [t.id], action: 'read', view, scope: 'all', silent: true });
     nav.openThread(t.id);
   };
   const swipe = (t: ThreadSummary, dir: 'left' | 'right') => {
@@ -556,6 +559,9 @@ function GroupsRow({ lines, base, render, renderFull }: { lines: GroupSummary[];
   });
   const shown = preview.data?.threads ?? [];
   const more = preview.data?.more ?? 0;
+  // Open: every unread email of every group comes first, newest first, then the groups.
+  const unreadQ = useThreadList({ view: 'inbox', account: base.account, group: '*', unread: true }, open);
+  const toRead = open ? flat(unreadQ.data) : [];
   return (
     <section className={`bundle groups-row${open ? ' open' : ''}${newCount ? ' fresh' : ''}`} aria-label="Groups">
       <button
@@ -601,7 +607,21 @@ function GroupsRow({ lines, base, render, renderFull }: { lines: GroupSummary[];
           )}
         </div>
       )}
-      {open && <div className="groups-list">{lines.map((g) => <GroupBundle key={g.name} summary={g} base={base} render={render} />)}</div>}
+      {open && (
+        <div className="groups-list">
+          {toRead.length > 0 && (
+            <div className="groups-toread" aria-label="To read in groups">
+              {toRead.map(renderFull)}
+              {unreadQ.hasNextPage && (
+                <button className="bundle-more" onClick={() => void unreadQ.fetchNextPage()} disabled={unreadQ.isFetchingNextPage}>
+                  {unreadQ.isFetchingNextPage ? 'Loading' : 'Load more'}
+                </button>
+              )}
+            </div>
+          )}
+          {lines.map((g) => <GroupBundle key={g.name} summary={g} base={base} render={render} />)}
+        </div>
+      )}
     </section>
   );
 }

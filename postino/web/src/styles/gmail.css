@@ -3816,3 +3816,10 @@ a.btn {
   margin-left: 32px;
   border-left: 2px solid var(--groups-edge);
 }
+
+/* Open Groups: the unread emails of every group come first, as ordinary emails, then the groups. */
+:root .list .groups-list .groups-toread {
+  border-bottom: 1px solid var(--groups-edge);
+  padding-bottom: 4px;
+  margin-bottom: 4px;
+}
